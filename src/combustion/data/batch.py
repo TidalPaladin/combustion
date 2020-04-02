@@ -4,7 +4,7 @@
 from abc import ABC, abstractclassmethod
 from collections import OrderedDict
 from itertools import islice
-from typing import Callable, Generator, Iterable, List, Optional, Tuple, Iterator
+from typing import Callable, Generator, Iterable, List, Optional, Tuple, Iterator, Union
 
 import torch
 from torch import Tensor
@@ -26,7 +26,9 @@ class Batch(ABC):
         * Application of Tensor operations to all tensors in batch via `apply`
 
     The following features are experimental:
-        * Application of Tensor operations to all tensors in batch via `getattr`
+        * Application of Tensor operations to all tensors in batch via `getattr`.
+        This allows for Tensor methods to be called on the batch as if it were a Tensor.
+        The invoked function is called on each tensor in the batch.
     """
 
     def __init__(self, **kwargs):
@@ -65,6 +67,7 @@ class Batch(ABC):
         s = f"{name}("
         it = iter(self._tensors.items())
         k, v = next(it, None)
+        # append tensor_name=tensor_data to repr
         if k:
             s += f"{k}=({tuple(v.shape)})"
         for k, v in it:
@@ -72,24 +75,25 @@ class Batch(ABC):
         s += ")"
         return s
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> Union[Tensor, "Batch"]:
         """
         Checks if the requested attribute exists on torch.Tensor and the Tensor 
         attribute is a callable. If so, the Tensor callable is invoked on all batch
         tensors. This is an experimental shortcut that allows for operations like
         `batch.cuda()`
         """
+        # try get tensor attribute first
         if attr in self._tensors:
             return self._tensors[attr]
+
+        # try finding attr as a callable on Tensor class
         elif hasattr(Tensor, attr) and hasattr(getattr(Tensor, attr), "__call__"):
+            # return wrapper func, calls attr(args, kwargs) on all of self._tensors
             def func(*args, **kwargs):
-                new_tensors = OrderedDict()
-                for k, v in self._tensors.items():
-                    new_v = getattr(v, attr)(*args, **kwargs)
-                    new_tensors[k] = new_v if new_v is not None else v
-                self._tensors.update(new_tensors)
+                self.apply(lambda x: getattr(x, attr)(*args, **kwargs))
                 return self
             return func
+
         else:
             raise AttributeError(f"{attr}")
 
@@ -102,7 +106,7 @@ class Batch(ABC):
         self._tensors.update(new_tensors)
 
     @classmethod
-    def collate_fn(cls, examples: Iterable[Tensor]):
+    def collate_fn(cls, examples: Iterable[Tensor]) -> "Batch":
         r"""Collate function used to collect an iterable of examples into 
         a batch. 
 

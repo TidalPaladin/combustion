@@ -10,9 +10,7 @@ from torch import Tensor
 
 
 class Window(ABC):
-    """Window
-    Applies a window function
-
+    """Helper to apply a window over an iterable or set of indices
     """
 
     def __init__(self, before: int = 0, after: int = 0):

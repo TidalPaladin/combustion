@@ -67,31 +67,6 @@ def load_data(args: Namespace, split: str) -> Dataset:
     return train, val
 
 
-def load_matlab(
-    path: str, data_key: str = "imstack_Ph5", label_key: str = "MB_post", transpose: Tuple[int] = None
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """load_matlab
-    Loads data and optionally label tensors from a `.mat` file.
-
-    :param path: Path of the `.mat` file to load
-    :type path: str
-    :param data_key: Dictionary key for the data array
-    :type data_key: str
-    :param label_key: Dictionary key for the label array
-    :type label_key: str
-    :param transpose: numpy.transpose arg to be ran on loaded data
-    :type label_key: Tuple[int]
-    :rtype: Tuple[torch.Tensor, torch.Tensor]
-    :returns: Tuple of data, label tensors
-    """
-    mat = sio.matlab.loadmat(path)
-    frames, labels = mat[data_key], mat[label_key]
-    assert frames.shape == labels.shape
-    if transpose is not None:
-        frames = frames.transpose(transpose)
-        labels = labels.transpose(transpose)
-    frames, labels = torch.as_tensor(frames), torch.as_tensor(labels)
-    return frames, labels
 
 
 def load_from_args(args: Namespace, split="train") -> Dataset:
