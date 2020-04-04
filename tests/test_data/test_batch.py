@@ -3,7 +3,7 @@
 
 import pytest
 
-from combustion.data.dataset import Batch
+from combustion.data import Batch
 
 class MyBatch(Batch):
     pass

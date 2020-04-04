@@ -13,7 +13,7 @@ import torch
 import torch.utils.data as data
 from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
 
-from .dataset import MatlabDataset, MBBatch
+from .batch import Batch
 from .preprocessing import power_of_two_crop
 
 
@@ -36,7 +36,7 @@ def load_data(args: Namespace, split: str) -> Dataset:
             x,
             batch_size=args.batch_size,
             pin_memory=True,
-            collate_fn=MBBatch.collate_fn,
+            collate_fn=Batch.collate_fn,
             shuffle=(sampler is None),
             sampler=sampler,
         )

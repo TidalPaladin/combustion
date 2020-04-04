@@ -3,7 +3,10 @@
 
 import pytest
 
-from combustion.data.dataset import MBBatch
+from combustion.data import Batch
+
+class MyBatch(Batch):
+    pass
 
 
 @pytest.fixture
@@ -13,7 +16,7 @@ def data(batch):
 
 @pytest.fixture
 def batch(mocker, torch):
-    m = mocker.MagicMock(spec_set=MBBatch, name="batch")
+    m = mocker.MagicMock(spec_set=MyBatch, name="batch")
     m.frames = torch.rand(10, 1, 3, 5, 5, requires_grad=True)
     m.labels = torch.rand(10, 1, 5, 5, requires_grad=True)
     m.to.return_value = m

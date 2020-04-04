@@ -17,10 +17,10 @@ test:
 	python -m pytest -n auto --dist=loadfile -s -v ./tests/
 
 test-%:
-	python -m pytest -n auto --dist=loadfile -k $* -s -v ./tests/ 
+	python -m pytest -k $* -s -v ./tests/ 
 
 test-pdb-%:
-	python -m pytest --pdb -n0 -k $* -s -v ./tests/ 
+	python -m pytest --pdb -k $* -s -v ./tests/ 
 
 clean: 
 	find -name '__pycache__' -delete
