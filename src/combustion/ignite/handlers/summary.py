@@ -8,6 +8,7 @@ from ignite.engine import Engine, Events
 from torch import Tensor
 from torch.nn import Module
 
+
 try:
     from pytorch_model_summary import summary
 except ImportError:

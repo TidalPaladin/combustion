@@ -4,7 +4,7 @@
 import pytest
 
 
-regional_max = pytest.importorskip('combustion.model.head.regional_max')
+regional_max = pytest.importorskip("combustion.model.head.regional_max")
 
 
 class TestRegionalMax:

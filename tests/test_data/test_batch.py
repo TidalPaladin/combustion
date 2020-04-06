@@ -5,8 +5,10 @@ import pytest
 
 from combustion.data import Batch
 
+
 class MyBatch(Batch):
     pass
+
 
 @pytest.fixture
 def batch_size():
@@ -60,8 +62,8 @@ def test_len(data, frames, labels, batch_size, torch):
 def test_repr(data, frames, labels, batch_size, torch):
     batch = MyBatch(frames=frames, labels=labels)
     rep = str(batch)
-    assert 'frames' in rep
-    assert 'labels' in rep
+    assert "frames" in rep
+    assert "labels" in rep
 
 
 def test_collate(data, frames, labels, batch_size, torch):

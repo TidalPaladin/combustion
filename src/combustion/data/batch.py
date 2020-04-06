@@ -4,12 +4,13 @@
 from abc import ABC, abstractclassmethod
 from collections import OrderedDict
 from itertools import islice
-from typing import Callable, Generator, Iterable, List, Optional, Tuple, Iterator, Union
+from typing import Callable, Generator, Iterable, Iterator, List, Optional, Tuple, Union
 
 import torch
 from torch import Tensor
 
 from combustion.util import Dim
+
 
 class Batch(ABC):
     r"""Abstract base class representing a batch of examples. Items are
@@ -48,7 +49,7 @@ class Batch(ABC):
 
             batch_size = len(self)
             if len(v) != batch_size:
-                raise ValueError(f'expected tensors of equal batch size: {len(v)} vs {batch_size}')
+                raise ValueError(f"expected tensors of equal batch size: {len(v)} vs {batch_size}")
 
     def __iter__(self) -> Iterator[Tensor]:
         """Iterates over batch tensors using order of keyword args when created"""
@@ -92,6 +93,7 @@ class Batch(ABC):
             def func(*args, **kwargs):
                 self.apply(lambda x: getattr(x, attr)(*args, **kwargs))
                 return self
+
             return func
 
         else:

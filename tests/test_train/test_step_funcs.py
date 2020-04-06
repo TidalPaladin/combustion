@@ -6,7 +6,8 @@ import os
 import pytest
 
 
-#from combustion.train import *
+# from combustion.train import *
+
 
 @pytest.mark.skip
 class TestIgniteTrainFunc:

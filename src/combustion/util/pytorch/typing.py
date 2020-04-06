@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
+
 TensorTuple = Tuple[Tensor, ...]
 
 Array = Union[Tensor, np.array]

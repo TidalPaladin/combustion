@@ -34,6 +34,7 @@ from .ignite.metrics import ScheduledLR
 from .loss import get_criterion
 from .model import get_model
 
+
 try:
     import apex
     from apex import amp

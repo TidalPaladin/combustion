@@ -23,4 +23,5 @@ test-pdb-%:
 	python -m pytest --pdb -k $* -s -v ./tests/ 
 
 clean: 
-	find -name '__pycache__' -delete
+	find src tests -name '__pycache__' -type d -exec rm -rf {} \;
+	find src tests -name '*@neomake*' -type f -delete

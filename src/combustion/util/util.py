@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from enum import IntEnum
 from typing import Tuple, Union
 
 from decorator import decorator
 
-from enum import IntEnum
 
 class Dim(IntEnum):
     BATCH = 0
@@ -13,6 +13,7 @@ class Dim(IntEnum):
     DEPTH = -3
     HEIGHT = -2
     WIDTH = -1
+
 
 def arg_factory(*required_args):
     def caller(f, cls, args, *pos, **kw):

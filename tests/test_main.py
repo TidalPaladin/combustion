@@ -44,12 +44,12 @@ class TestMain:
 
     @pytest.mark.usefixtures("mode")
     def test_parses_args(self, mock_args, parse_args, helpers):
-        main(args=['model1', 'bce'])
+        main(args=["model1", "bce"])
         parse_args.assert_called_once()
 
     def test_calls_helper(self, mock_args, parse_args, helpers, mode):
         train, test = helpers
-        main(args=['model1', 'bce'])
+        main(args=["model1", "bce"])
         if mode == "train":
             train.assert_called_once()
         else:

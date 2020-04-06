@@ -5,6 +5,7 @@ from argparse import Namespace
 
 import torch.nn as nn
 
+
 def get_model(args: Namespace) -> nn.Module:
     logging.info("Loading model %s", args.model)
 

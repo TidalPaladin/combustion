@@ -7,6 +7,7 @@ import pytest
 
 from combustion.train import *
 
+
 class TestGetOptimizer:
     @pytest.mark.parametrize("opt", ["adam", "rmsprop"])
     def test_get_valid_optimizer(self, mocker, mock_args, opt, torch):

@@ -5,7 +5,9 @@ import pytest
 
 from combustion.modules.conv import DownSample3d
 
+
 pytest.skip(allow_module_level=True)
+
 
 @pytest.fixture
 def input(torch):

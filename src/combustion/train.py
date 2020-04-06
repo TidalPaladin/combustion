@@ -35,7 +35,8 @@ from .ignite.handlers import (
 )
 from .ignite.metrics import ScheduledLR
 from .loss import get_criterion
-from .model import get_model#, regional_max
+from .model import get_model  # , regional_max
+
 
 try:
     import apex
@@ -122,7 +123,7 @@ def preprocess_fn(state, threshold=None, suppression=None):
         frame = frame.squeeze(channel_dim)
 
         if suppression is not None:
-            #label = regional_max(label.unsqueeze(channel_dim), suppression).squeeze(channel_dim)
+            # label = regional_max(label.unsqueeze(channel_dim), suppression).squeeze(channel_dim)
             pass
         if threshold is not None:
             label = (label >= threshold).to(label)
@@ -135,7 +136,7 @@ def thresh_fn(threshold):
         with torch.no_grad():
             ypred, ytrue = output
             ypred = torch.sigmoid(ypred)
-            #ypred = regional_max(ypred, 12)
+            # ypred = regional_max(ypred, 12)
             pass
             ypred = (ypred >= threshold).byte()
             return ypred.flatten(), ytrue.flatten()

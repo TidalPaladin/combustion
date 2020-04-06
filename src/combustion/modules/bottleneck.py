@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from typing import Optional, Tuple, Union
+
 import torch.nn as nn
 from torch import Tensor
-from typing import Union, Tuple, Optional
 
 from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
 from .util import double, single, triple
@@ -346,7 +347,6 @@ class BottleneckFactorized2d(_BottleneckNd, metaclass=BottleneckMeta):
         https://arxiv.org/abs/1801.04381
     """
     pass
-
 
 
 __all__ = [

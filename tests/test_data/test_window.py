@@ -5,6 +5,7 @@ import pytest
 
 from combustion.data.window import DenseWindow, SparseWindow, Window
 
+
 DEPTH_DIM = 1
 
 

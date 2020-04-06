@@ -67,8 +67,6 @@ def load_data(args: Namespace, split: str) -> Dataset:
     return train, val
 
 
-
-
 def load_from_args(args: Namespace, split="train") -> Dataset:
     if split == "train":
         target_path = args.data_path
