@@ -8,11 +8,7 @@ from combustion.modules.factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1
 
 @pytest.mark.parametrize(
     "conv,rank",
-    [
-        pytest.param(Conv3d, 3, id="Conv3d"),
-        pytest.param(Conv2d, 2, id="Conv2d"),
-        pytest.param(Conv1d, 1, id="Conv1d"),
-    ],
+    [pytest.param(Conv3d, 3, id="Conv3d"), pytest.param(Conv2d, 2, id="Conv2d"), pytest.param(Conv1d, 1, id="Conv1d"),],
 )
 def test_conv(torch, conv, rank):
     shape = (8,) * rank
@@ -40,11 +36,7 @@ def test_transpose_conv(torch, conv, rank):
 
 @pytest.mark.parametrize(
     "conv,rank",
-    [
-        pytest.param(Conv3d, 3, id="Conv3d"),
-        pytest.param(Conv2d, 2, id="Conv2d"),
-        pytest.param(Conv1d, 1, id="Conv1d"),
-    ],
+    [pytest.param(Conv3d, 3, id="Conv3d"), pytest.param(Conv2d, 2, id="Conv2d"), pytest.param(Conv1d, 1, id="Conv1d"),],
 )
 def test_conv_pad(torch, conv, rank):
     shape = (8,) * rank
@@ -74,11 +66,7 @@ def test_transpose_conv_pad(torch, conv, rank):
 
 @pytest.mark.parametrize(
     "conv,rank",
-    [
-        pytest.param(Conv3d, 3, id="Conv3d"),
-        pytest.param(Conv2d, 2, id="Conv2d"),
-        pytest.param(Conv1d, 1, id="Conv1d"),
-    ],
+    [pytest.param(Conv3d, 3, id="Conv3d"), pytest.param(Conv2d, 2, id="Conv2d"), pytest.param(Conv1d, 1, id="Conv1d"),],
 )
 def test_conv_stride(torch, conv, rank):
     shape = (8,) * rank

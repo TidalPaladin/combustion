@@ -3,7 +3,7 @@
 
 import pytest
 
-from combustion.data.window import DenseWindow, SparseWindow, Window
+from combustion.data.window import DenseWindow, SparseWindow
 
 
 DEPTH_DIM = 1
@@ -79,31 +79,3 @@ def test_call(window_type, before, after, num, torch):
         assert x.shape == frame_shape
         assert y.shape == label_shape
     assert len(list(window(examples))) == num - before - after
-
-
-@pytest.mark.parametrize(
-    "window_type,size",
-    [
-        pytest.param(DenseWindow, 1, id="dense_1"),
-        pytest.param(DenseWindow, 3, id="dense_3"),
-        pytest.param(SparseWindow, 1, id="sparse_1"),
-        pytest.param(SparseWindow, 3, id="sparse_3"),
-    ],
-)
-def test_from_args(mocker, mock_args, window_type, size):
-    if window_type == DenseWindow:
-        mock_args.dense_window = size
-        mock_args.sparse_window = 0
-    else:
-        mock_args.sparse_window = size
-        mock_args.dense_window = 0
-    spy = mocker.spy(Window, "__init__")
-    window = Window.from_args(mock_args)
-    assert isinstance(window, window_type)
-
-
-def test_from_args_exception_if_no_window(mock_args):
-    mock_args.dense_window = 0
-    mock_args.sparse_window = 0
-    with pytest.raises(ValueError):
-        Window.from_args(mock_args)

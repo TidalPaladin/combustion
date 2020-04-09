@@ -24,7 +24,7 @@ def pytest_report_header(config):
         import torch
         import ignite
 
-        return "torch version: %s\nignite version: %s" % (torch.__version__, ignite.__version__)
+        return "torch version: %s\nignite version: %s" % (torch.__version__, ignite.__version__,)
     except ImportError:
         return ""
 

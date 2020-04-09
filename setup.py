@@ -36,11 +36,17 @@ extras = {}
 extras["sklearn"] = ["scikit-learn"]
 
 extras["testing"] = ["pytest", "pytest-mock", "pytest-cov", "pytest-xdist"]
-extras["docs"] = ["recommonmark", "sphinx", "sphinx-markdown-tables", "sphinx-rtd-theme"]
+extras["docs"] = [
+    "recommonmark",
+    "sphinx",
+    "sphinx-markdown-tables",
+    "sphinx-rtd-theme",
+]
 extras["quality"] = [
     "black",
     "isort",
     "flake8",
+    "pre-commit",
 ]
 
 extras["dev"] = extras["testing"] + extras["quality"] + ["scikit-learn", "torch"]
@@ -64,7 +70,9 @@ setup(
         # progress bars in model download and training scripts
         "tqdm >= 4.27",
         # high level training api
-        "pytorch-ignite",
+        "pytorch-lightning",
+        # hparams
+        "hydra-core",
         "torchvision",
         # visualizing models
         "torchviz",

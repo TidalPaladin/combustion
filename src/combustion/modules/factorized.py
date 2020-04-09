@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import math
-from argparse import Namespace
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Module, init
@@ -15,7 +13,14 @@ from ..util import double, one_diff_tuple, single, triple
 from .util import SpatialMeta
 
 
-__all__ = ["Conv3d", "ConvTranspose3d", "Conv2d", "ConvTranspose2d", "Conv1d", "ConvTranspose1d"]
+__all__ = [
+    "Conv3d",
+    "ConvTranspose3d",
+    "Conv2d",
+    "ConvTranspose2d",
+    "Conv1d",
+    "ConvTranspose1d",
+]
 
 
 class FactorizedMeta(SpatialMeta):
@@ -169,11 +174,13 @@ class _ConvNd(Module):
             )
         else:
             return self._conv(
-                input, self.pointwise, self.spatial, None, self.stride, padding, self.dilation, self.groups
+                input, self.pointwise, self.spatial, None, self.stride, padding, self.dilation, self.groups,
             )
 
 
-def conv1d(input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1, groups=1):
+def conv1d(
+    input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1, groups=1,
+):
     if not isinstance(spatial, Tensor):
         spatial = spatial[0]
     stride = single(stride)
@@ -184,7 +191,9 @@ def conv1d(input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1
     return _
 
 
-def conv2d(input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1, groups=1):
+def conv2d(
+    input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1, groups=1,
+):
     stride = double(stride)
     padding = double(padding)
     dilation = double(dilation)
@@ -197,7 +206,9 @@ def conv2d(input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1
     return _
 
 
-def conv3d(input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1, groups=1):
+def conv3d(
+    input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1, groups=1,
+):
     stride = triple(stride)
     padding = triple(padding)
     dilation = triple(dilation)
@@ -211,7 +222,7 @@ def conv3d(input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1
 
 
 def conv_transpose1d(
-    input, pointwise, spatial, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1
+    input, pointwise, spatial, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1,
 ):
     if not isinstance(spatial, Tensor):
         spatial = spatial[0]
@@ -225,7 +236,7 @@ def conv_transpose1d(
 
 
 def conv_transpose2d(
-    input, pointwise, spatial, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1
+    input, pointwise, spatial, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1,
 ):
     stride = double(stride)
     padding = double(padding)
@@ -242,7 +253,7 @@ def conv_transpose2d(
 
 
 def conv_transpose3d(
-    input, pointwise, spatial, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1
+    input, pointwise, spatial, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1,
 ):
     stride = triple(stride)
     padding = triple(padding)
@@ -311,7 +322,7 @@ class Conv3d(_ConvNd, metaclass=FactorizedMeta):
         padding_mode="zeros",
     ):
         super(Conv3d, self).__init__(
-            in_channels, out_channels, kernel_size, stride, padding, dilation, 0, groups, bias, padding_mode
+            in_channels, out_channels, kernel_size, stride, padding, dilation, 0, groups, bias, padding_mode,
         )
 
     def forward(self, input):
@@ -363,7 +374,7 @@ class Conv2d(_ConvNd, metaclass=FactorizedMeta):
         padding_mode="zeros",
     ):
         super(Conv2d, self).__init__(
-            in_channels, out_channels, kernel_size, stride, padding, dilation, 0, groups, bias, padding_mode
+            in_channels, out_channels, kernel_size, stride, padding, dilation, 0, groups, bias, padding_mode,
         )
 
     def forward(self, input):
@@ -415,7 +426,7 @@ class Conv1d(_ConvNd, metaclass=FactorizedMeta):
         padding_mode="zeros",
     ):
         super(Conv1d, self).__init__(
-            in_channels, out_channels, kernel_size, stride, padding, dilation, 0, groups, bias, padding_mode
+            in_channels, out_channels, kernel_size, stride, padding, dilation, 0, groups, bias, padding_mode,
         )
 
     def forward(self, input):

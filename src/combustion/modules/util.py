@@ -5,7 +5,7 @@ from typing import Tuple, Union
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..util import double, ntuple, single, triple
+from ..util import double, single, triple
 
 
 # type hints

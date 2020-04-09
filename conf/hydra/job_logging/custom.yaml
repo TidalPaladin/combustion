@@ -1,0 +1,7 @@
+hydra:
+  job_logging:
+    formatters:
+      simple:
+        format: '[%(levelname)s] - %(message)s'
+    root:
+      handlers: [console]

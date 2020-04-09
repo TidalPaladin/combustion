@@ -5,14 +5,13 @@ from inspect import signature
 
 import pytest
 
-from combustion.util.pytorch import input, output
+from combustion.util import input, output
 
 
 @pytest.fixture
 def func(mocker, torch):
     def f(arg1, arg2=None, *args, **kwargs):
         """foo bar baz"""
-        pass
 
     m = mocker.create_autospec(f, spec_set=True)
     return m
@@ -38,7 +37,7 @@ class TestInput:
         func.assert_called_once()
 
     @pytest.mark.parametrize(
-        "shape,names", [pytest.param((4,), ("A",), id="dim=1"), pytest.param((4, 5), ("A", "B"), id="dim=2"),]
+        "shape,names", [pytest.param((4,), ("A",), id="dim=1"), pytest.param((4, 5), ("A", "B"), id="dim=2"),],
     )
     def test_drop_names(self, func, shape, names, torch):
         tensor = torch.ones(*shape, names=names)
@@ -55,7 +54,7 @@ class TestInput:
             pytest.param((4, 5), (None, "B"), ("A", "B"), id="None,B->A,B"),
             pytest.param((4, 5), (None, None), ("A", "B"), id="None,None->A,B"),
             pytest.param(
-                (4, 5), (None, "C"), ("A", "B"), marks=pytest.mark.xfail(raises=ValueError), id="None,C->A,B"
+                (4, 5), (None, "C"), ("A", "B"), marks=pytest.mark.xfail(raises=ValueError), id="None,C->A,B",
             ),
         ],
     )
@@ -71,14 +70,14 @@ class TestInput:
         [
             pytest.param((4,), (4,), id="4,->4,"),
             pytest.param((None,), (4,), id="None,->4,"),
-            pytest.param((4,), (3,), marks=pytest.mark.xfail(raises=ValueError), id="4,->3,"),
+            pytest.param((4,), (3,), marks=pytest.mark.xfail(raises=ValueError), id="4,->3,",),
             pytest.param((4, 5), (4, 5), id="4,5->4,5"),
-            pytest.param((4, 5), (4, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->4,4"),
-            pytest.param((4, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->5,4"),
+            pytest.param((4, 5), (4, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->4,4",),
+            pytest.param((4, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->5,4",),
             pytest.param((None, 5), (4, 5), id="None,5->4,5"),
             pytest.param((None, None), (4, 4), id="None,None->4,4"),
-            pytest.param((None, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="None,5->None,4"),
-            pytest.param((4, None), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,None->5,4"),
+            pytest.param((None, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="None,5->None,4",),
+            pytest.param((4, None), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,None->5,4",),
         ],
     )
     def test_validates_shape(self, func, pre, post, torch):
@@ -105,7 +104,6 @@ class TestInput:
     def test_preserves_docstring(self, func):
         def f(arg1, arg2=None, *args, **kwargs):
             """foo bar baz"""
-            pass
 
         decorated = input("arg1", name=("A",))(f)
         assert decorated.__doc__
@@ -137,7 +135,6 @@ class TestInput:
     def test_kw_only_args(self, torch):
         def f(*, arg1, arg2=None, **kwargs):
             """foo bar baz"""
-            pass
 
         decorated = input("arg1", name=("A",))(f)
         decorated(arg1=torch.ones(10))
@@ -159,7 +156,7 @@ class TestOutput:
             pytest.param((4, 5), (None, "B"), ("A", "B"), id="None,B->A,B"),
             pytest.param((4, 5), (None, None), ("A", "B"), id="None,None->A,B"),
             pytest.param(
-                (4, 5), (None, "C"), ("A", "B"), marks=pytest.mark.xfail(raises=ValueError), id="None,C->A,B"
+                (4, 5), (None, "C"), ("A", "B"), marks=pytest.mark.xfail(raises=ValueError), id="None,C->A,B",
             ),
         ],
     )
@@ -178,14 +175,14 @@ class TestOutput:
         [
             pytest.param((4,), (4,), id="4,->4,"),
             pytest.param((None,), (4,), id="None,->4,"),
-            pytest.param((4,), (3,), marks=pytest.mark.xfail(raises=ValueError), id="4,->3,"),
+            pytest.param((4,), (3,), marks=pytest.mark.xfail(raises=ValueError), id="4,->3,",),
             pytest.param((4, 5), (4, 5), id="4,5->4,5"),
-            pytest.param((4, 5), (4, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->4,4"),
-            pytest.param((4, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->5,4"),
+            pytest.param((4, 5), (4, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->4,4",),
+            pytest.param((4, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->5,4",),
             pytest.param((None, 5), (4, 5), id="None,5->4,5"),
             pytest.param((None, None), (4, 4), id="None,None->4,4"),
-            pytest.param((None, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="None,5->None,4"),
-            pytest.param((4, None), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,None->5,4"),
+            pytest.param((None, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="None,5->None,4",),
+            pytest.param((4, None), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,None->5,4",),
         ],
     )
     def test_validates_shape(self, pre, post, torch):
@@ -229,7 +226,6 @@ class TestOutput:
     def test_preserves_docstring(self):
         def f(arg1, arg2=None, *args, **kwargs):
             """foo bar baz"""
-            pass
 
         decorated = output(name=("A",))(f)
         assert decorated.__doc__

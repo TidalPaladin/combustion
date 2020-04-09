@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from abc import ABC, abstractclassmethod
+from abc import ABC
 from collections import OrderedDict
-from itertools import islice
-from typing import Callable, Generator, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Callable, Iterable, Iterator, Optional, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -14,11 +13,11 @@ from combustion.util import Dim
 
 class Batch(ABC):
     r"""Abstract base class representing a batch of examples. Items are
-    passed to the batch constructor as keyword args. 
+    passed to the batch constructor as keyword args.
 
     Keyword args are processed as follows:
         * Tensor:  tensor is attached to the batch without modification
-        * List of Tensors: Tensors in the list are stacked along a new 
+        * List of Tensors: Tensors in the list are stacked along a new
         dimension with index 0
         * Tuple of Tensors: Same behavior as with list of tensors
 
@@ -52,15 +51,16 @@ class Batch(ABC):
                 raise ValueError(f"expected tensors of equal batch size: {len(v)} vs {batch_size}")
 
     def __iter__(self) -> Iterator[Tensor]:
-        """Iterates over batch tensors using order of keyword args when created"""
+        """Iterates over batch tensors using order of keyword args when
+        created."""
         return iter(self._tensors.values())
 
     def __getitem__(self, pos: int) -> Tuple[Tensor]:
-        """Slices the `pos`th example from the batch"""
+        """Slices the `pos`th example from the batch."""
         return tuple([x[pos] for x in self._tensors.values()])
 
     def __len__(self):
-        """Gets the number of examples in the batch"""
+        """Gets the number of examples in the batch."""
         return len(next(iter(self._tensors.values())))
 
     def __repr__(self):
@@ -77,10 +77,11 @@ class Batch(ABC):
         return s
 
     def __getattr__(self, attr: str) -> Union[Tensor, "Batch"]:
-        """
-        Checks if the requested attribute exists on torch.Tensor and the Tensor 
-        attribute is a callable. If so, the Tensor callable is invoked on all batch
-        tensors. This is an experimental shortcut that allows for operations like
+        """Checks if the requested attribute exists on torch.Tensor and the
+        Tensor attribute is a callable.
+
+        If so, the Tensor callable is invoked on all batch tensors. This
+        is an experimental shortcut that allows for operations like
         `batch.cuda()`
         """
         # try get tensor attribute first
@@ -109,10 +110,13 @@ class Batch(ABC):
 
     @classmethod
     def collate_fn(cls, examples: Iterable[Tensor]) -> "Batch":
-        r"""Collate function used to collect an iterable of examples into 
-        a batch. 
+        r"""Collate function used to collect an iterable of examples into
+        a batch.
 
         See https://pytorch.org/docs/stable/data.html#working-with-collate-fn
         for more details.
         """
         raise NotImplementedError("must implement collate_fn")
+
+
+__all__ = ["Batch"]

@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import copy
-from argparse import Namespace
 from typing import Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from .bottleneck import Bottleneck2d, Bottleneck3d, BottleneckFactorized2d, BottleneckFactorized3d
-from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
-from .util import double, single, triple
+from .factorized import Conv2d, Conv3d, ConvTranspose2d, ConvTranspose3d
+from .util import double, triple
 
 
 # type hints
@@ -89,14 +88,14 @@ class DownSample3d(_RepeatFinal):
                 )
         else:
             if factorized:
-                repeated = Conv3d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode)
+                repeated = Conv3d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode,)
             else:
-                repeated = nn.Conv3d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode)
+                repeated = nn.Conv3d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode,)
 
         if factorized:
-            final = Conv3d(in_channels, out_channels, kernel_size, stride, padding, 1, groups, bias, padding_mode)
+            final = Conv3d(in_channels, out_channels, kernel_size, stride, padding, 1, groups, bias, padding_mode,)
         else:
-            final = nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding, 1, groups, bias, padding_mode)
+            final = nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding, 1, groups, bias, padding_mode,)
 
         super(DownSample3d, self).__init__(repeated, final, repeats)
 
@@ -157,17 +156,17 @@ class UpSample3d(_RepeatFinal):
                 )
         else:
             if factorized:
-                repeated = Conv3d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode)
+                repeated = Conv3d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode,)
             else:
-                repeated = nn.Conv3d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode)
+                repeated = nn.Conv3d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode,)
 
         if factorized:
             final = ConvTranspose3d(
-                in_channels, out_channels, up_kernel_size, stride, padding, 0, groups, bias, 1, padding_mode
+                in_channels, out_channels, up_kernel_size, stride, padding, 0, groups, bias, 1, padding_mode,
             )
         else:
             final = nn.ConvTranspose3d(
-                in_channels, out_channels, up_kernel_size, stride, padding, 0, groups, bias, 1, padding_mode
+                in_channels, out_channels, up_kernel_size, stride, padding, 0, groups, bias, 1, padding_mode,
             )
 
         super(UpSample3d, self).__init__(repeated, final, repeats)
@@ -229,17 +228,17 @@ class UpSample2d(_RepeatFinal):
                 )
         else:
             if factorized:
-                repeated = Conv2d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode)
+                repeated = Conv2d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode,)
             else:
-                repeated = nn.Conv2d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode)
+                repeated = nn.Conv2d(in_channels, in_channels, kernel_size, 1, same_pad, 1, groups, bias, padding_mode,)
 
         if factorized:
             final = ConvTranspose2d(
-                in_channels, out_channels, up_kernel_size, stride, padding, 0, groups, bias, 1, padding_mode
+                in_channels, out_channels, up_kernel_size, stride, padding, 0, groups, bias, 1, padding_mode,
             )
         else:
             final = nn.ConvTranspose2d(
-                in_channels, out_channels, up_kernel_size, stride, padding, 0, groups, bias, 1, padding_mode
+                in_channels, out_channels, up_kernel_size, stride, padding, 0, groups, bias, 1, padding_mode,
             )
 
         super(UpSample2d, self).__init__(repeated, final, repeats)

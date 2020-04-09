@@ -1,0 +1,5 @@
+model:
+  class: __main__.MNISTModel
+  params:
+    in_features: 784
+    out_features: 10

@@ -68,7 +68,7 @@ def test_repr(data, frames, labels, batch_size, torch):
 
 def test_collate(data, frames, labels, batch_size, torch):
     with pytest.raises(NotImplementedError):
-        batch = MyBatch.collate_fn(data)
+        MyBatch.collate_fn(data)
 
 
 def test_getattr_func(frames, labels, batch_size, torch, mocker):
@@ -87,4 +87,4 @@ def test_apply(frames, labels, batch_size, torch, mocker):
 
 def test_exception_no_kwargs_given(data, frames, labels, batch_size, torch):
     with pytest.raises(ValueError):
-        batch = MyBatch()
+        MyBatch()
