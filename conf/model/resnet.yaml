@@ -1,5 +1,7 @@
 model:
+  cls: __main__.MNISTModel
   class: __main__.MNISTModel
   params:
     in_features: 784
     out_features: 10
+    batch_size: 32

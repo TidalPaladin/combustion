@@ -31,7 +31,7 @@ class MNISTModel(pl.LightningModule):
     def training_step(self, batch, batch_nb):
         # REQUIRED
         x, y = batch
-        y = torch.tensor([y], dtype=torch.long)
+        # y = torch.tensor([y], dtype=torch.long).type_as(y)
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
         tensorboard_logs = {"train_loss": loss}
@@ -52,7 +52,7 @@ class MNISTModel(pl.LightningModule):
     def test_step(self, batch, batch_nb):
         # OPTIONAL
         x, y = batch
-        y = torch.tensor([y], dtype=torch.long)
+        # y = torch.tensor([y], dtype=torch.long).type_as(y)
         y_hat = self(x)
         return {"test_loss": F.cross_entropy(y_hat, y)}
 
@@ -71,24 +71,16 @@ class MNISTModel(pl.LightningModule):
     def train_dataloader(self):
         # REQUIRED
         return DataLoader(
-            FakeData(
-                size=10000,
-                image_size=(1, 28, 28),
-                transform=transforms.ToTensor(),
-                target_transform=lambda x: torch.tensor([x], dtype=torch.long),
-            ),
+            FakeData(size=10000, image_size=(1, 28, 28), transform=transforms.ToTensor(),),
+            num_workers=4,
             batch_size=self._hparams.batch_size,
         )
 
     def val_dataloader(self):
         # OPTIONAL
         return DataLoader(
-            FakeData(
-                size=1000,
-                image_size=(1, 28, 28),
-                transform=transforms.ToTensor(),
-                target_transform=lambda x: torch.tensor([x], dtype=torch.long),
-            ),
+            FakeData(size=1000, image_size=(1, 28, 28), transform=transforms.ToTensor(),),
+            num_workers=4,
             batch_size=self._hparams.batch_size,
         )
 
@@ -96,8 +88,8 @@ class MNISTModel(pl.LightningModule):
         # OPTIONAL
         return DataLoader(
             FakeData(size=1000, image_size=(1, 28, 28), transform=transforms.ToTensor(),),
-            target_transform=lambda x: torch.tensor([x], dtype=torch.long),
             batch_size=self._hparams.batch_size,
+            num_workers=4,
         )
 
 

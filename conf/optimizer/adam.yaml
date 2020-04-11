@@ -1,5 +1,6 @@
 optimizer:
   name: adam
+  cls: torch.optim.Adam
   class: torch.optim.Adam
   params:
     lr: 0.002
