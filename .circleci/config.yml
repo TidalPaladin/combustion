@@ -32,7 +32,7 @@ jobs:
                 key: v1-dependencies-{{ checksum "setup.py" }}
             - run: make test
             - codecov/upload:
-              file: coverage.xml
+                file: coverage.xml
 
 
 workflow_filters: &workflow_filters
