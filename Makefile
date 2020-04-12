@@ -20,6 +20,7 @@ clean:
 	find $(CLEAN_DIRS) -path '*/__pycache__/*' -delete
 	find $(CLEAN_DIRS) -type d -name '__pycache__' -empty -delete
 	find $(CLEAN_DIRS) -name '*@neomake*' -type f -delete
+	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
 
 clean-venv:
 	rm -rf $(VENV)
