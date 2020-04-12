@@ -48,7 +48,8 @@ style:
 
 test: venv
 	$(PYTHON) -m pytest \
-		--cov=./src --cov-report=xml \
+		--cov=./src \
+		--cov-report=xml \
 		-n auto --dist=loadfile -s -v \
 		./tests/
 
