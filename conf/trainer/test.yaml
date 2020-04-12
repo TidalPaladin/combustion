@@ -5,4 +5,3 @@ trainer:
   params:
     max_epochs: 10
     fast_dev_run: true
-    #default_save_path: /path/to/outputs

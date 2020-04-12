@@ -2,6 +2,7 @@ model:
   cls: __main__.MNISTModel
   class: __main__.MNISTModel
   params:
-    in_features: 784
+    in_features: 1
     out_features: 10
+    kernel: 3
     batch_size: 32

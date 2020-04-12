@@ -23,10 +23,16 @@ class MNISTModel(pl.LightningModule):
         self.cfg = cfg
         self._hparams = DictConfig(hparams)
         self.hparams = hparams
-        self.l1 = torch.nn.Linear(self._hparams.in_features, self._hparams.out_features)
+
+        self.l1 = torch.nn.Conv2d(self._hparams.in_features, self._hparams.out_features, self._hparams.kernel)
+        self.l2 = torch.nn.AdaptiveAvgPool2d(1)
+        self.l3 = torch.nn.Linear(self._hparams.out_features, 10)
 
     def forward(self, x):
-        return torch.relu(self.l1(x.view(x.size(0), -1)))
+        _ = self.l1(x)
+        _ = self.l2(_).squeeze()
+        _ = self.l3(_)
+        return torch.relu(_)
 
     def training_step(self, batch, batch_nb):
         # REQUIRED
@@ -102,11 +108,11 @@ def main(cfg):
 
     # instantiate model (and optimizer) selected in yaml
     # see pytorch lightning docs: https://pytorch-lightning.rtfd.io/en/latest
-    model = hydra.utils.instantiate(cfg.model, cfg)
+    model: pl.LightningModule = hydra.utils.instantiate(cfg.model, cfg)
 
     # instantiate trainer with params as selected in yaml
     # handles tensorboard, checkpointing, etc
-    trainer = hydra.utils.instantiate(cfg.trainer)
+    trainer: pl.Trainer = hydra.utils.instantiate(cfg.trainer)
 
     # train
     log.info("Starting training")
