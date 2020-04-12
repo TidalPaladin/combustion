@@ -40,6 +40,7 @@ workflow_filters: &workflow_filters
         branches:
             only:
                 - master
+                - feat/circleci
 
 
 workflows:
