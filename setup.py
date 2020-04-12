@@ -68,22 +68,22 @@ setup(
         "matplotlib",
         "numpy",
         # progress bars in model download and training scripts
-        "tqdm >= 4.27",
+        # "tqdm >= 4.27",
         # high level training api
         "pytorch-lightning",
         # hparams
         "hydra-core",
         "torchvision",
         # visualizing models
-        "torchviz",
+        # "torchviz",
         "torch",
         "scipy",
         "pynvml",
         "kornia",
-        "sklearn",
+        # "sklearn",
         "h5py",
         "Pillow-SIMD",
-        "pytorch-model-summary",
+        # "pytorch-model-summary",
     ],
     extras_require=extras,
     python_requires=">=3.7.0",

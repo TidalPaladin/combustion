@@ -132,3 +132,6 @@ dmypy.json
 
 # training outputs
 outputs/
+
+coverage.xml
+.coverage

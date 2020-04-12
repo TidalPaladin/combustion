@@ -27,7 +27,7 @@ clean-venv:
 pre-commit: venv
 	pre-commit install
 
-quality: venv
+quality: 
 	black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
 	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
@@ -40,14 +40,17 @@ run: docker
 		combustion:latest \
 		-c "python src/project"
 
-style: venv
+style: 
 	autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
 	isort --recursive $(QUALITY_DIRS)
 	autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
 	black --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
 
 test: venv
-	$(PYTHON) -m pytest -n auto --dist=loadfile -s -v ./tests/
+	$(PYTHON) -m pytest \
+		--cov=./src --cov-report=xml \
+		-n auto --dist=loadfile -s -v \
+		./tests/
 
 test-%: venv
 	$(PYTHON) -m pytest -k $* -s -v ./tests/ 
