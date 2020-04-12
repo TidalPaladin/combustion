@@ -30,7 +30,7 @@ jobs:
                 paths:
                   - ~/.cache/pip
                 key: v1-dependencies-{{ checksum "setup.py" }}
-            - run: make test
+            - run: python -m pytest --cov=./src -n auto --dist=loadfile -s -v ./tests/
             - codecov/upload:
                 file: coverage.xml
 
