@@ -1,23 +1,35 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from combustion.util import input
-
 
 _EPSILON = 1e-5
 
 
-def focal_loss(input, target, gamma, pos_weight, label_smoothing, reduction="mean"):
+def focal_loss(
+    input: Tensor,
+    target: Tensor,
+    gamma: float,
+    pos_weight: Optional[float] = None,
+    label_smoothing: Optional[float] = None,
+    reduction: str = "mean",
+):
+    """Computes the Focal Loss between input and target. See FocalLoss for more details"""
 
     with torch.no_grad():
         target = target.clone().detach()
-        alpha = torch.empty_like(input).fill_(1 - pos_weight)
-        alpha[target == 1] = pos_weight
+
+        if pos_weight is not None:
+            alpha = torch.empty_like(input).fill_(1 - pos_weight)
+            alpha[target == 1] = pos_weight
+        else:
+            alpha = torch.ones_like(input)
         if label_smoothing:
             target.clamp_(label_smoothing, 1.0 - label_smoothing)
 
@@ -33,18 +45,29 @@ def focal_loss(input, target, gamma, pos_weight, label_smoothing, reduction="mea
     return loss
 
 
-def focal_loss_with_logits(input, target, gamma, pos_weight, label_smoothing, reduction="mean"):
+def focal_loss_with_logits(
+    input: Tensor,
+    target: Tensor,
+    gamma: float,
+    pos_weight: Optional[float] = None,
+    label_smoothing: Optional[float] = None,
+    reduction: str = "mean",
+):
+    """Computes the Focal Loss between input and target. See FocalLossWithLogits for more details"""
 
     with torch.no_grad():
         target = target.clone().detach()
 
-        # create alpha tensor with fill:
-        # pos_weight if target == 1 else 1 - pos_weight
-        alpha = torch.empty_like(input).fill_(1 - pos_weight)
-        alpha[target == 1] = pos_weight
+        if pos_weight is not None:
+            # create alpha tensor with fill:
+            # pos_weight if target == 1 else 1 - pos_weight
+            alpha = torch.empty_like(input).fill_(1 - pos_weight)
+            alpha[target == 1] = pos_weight
+        else:
+            alpha = torch.ones_like(input)
 
         # apply label smoothing, clamping true labels between x, 1-x
-        if label_smoothing:
+        if label_smoothing is not None:
             target.clamp_(label_smoothing, 1.0 - label_smoothing)
 
     # loss in paper can be expressed as
@@ -69,40 +92,21 @@ def focal_loss_with_logits(input, target, gamma, pos_weight, label_smoothing, re
 
 
 class _FocalLoss(nn.Module):
-    r"""Creates a criterion that measures the Binary Cross Entropy
-    between the target and the output:
-
-    The unreduced (i.e. with :attr:`reduction` set to ``'none'``) loss can be described as:
-
-    .. math::
-        \ell(x, y) = L = \{l_1,\dots,l_N\}^\top, \quad
-        l_n = - w_n \left[ y_n \cdot \log x_n + (1 - y_n) \cdot \log (1 - x_n) \right],
-
-    where :math:`N` is the batch size. If :attr:`reduction` is not ``'none'``
-    (default ``'mean'``), then
-
-    .. math::
-        \ell(x, y) = \begin{cases}
-            \operatorname{mean}(L), & \text{if reduction} = \text{'mean';}\\
-            \operatorname{sum}(L),  & \text{if reduction} = \text{'sum'.}
-        \end{cases}
-
-    This is used for measuring the error of a reconstruction in for example
-    an auto-encoder. Note that the targets :math:`y` should be numbers
-    between 0 and 1.
+    r"""Creates a criterion that measures the Focal Loss
+    between the target and the output. Focal loss is described
+    in the paper `Focal Loss For Dense Object Detection:`_ .
 
     Args:
         gamma : float
             The focusing parameter :math:`\gamma`. Must be non-negative.
 
-        alpha : float, optional
-            The coefficient :math:`\alpha` to use on the positive examples.
-            Must be non-negative.
+        pos_weight : float, optional
+            The positive weight coefficient :math:`\alpha` to use on
+            the positive examples. Must be non-negative.
 
         label_smoothing : float, optional
             Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
-            ground truth labels are squeezed toward 0.5, with larger values of
-            `label_smoothing` leading to label values closer to 0.5.
+            ground truth labels are clamped to :math:`[p, 1-p]`.
 
         reduction (string, optional): Specifies the reduction to apply to the output:
             ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
@@ -119,22 +123,23 @@ class _FocalLoss(nn.Module):
 
     Examples::
 
-        >>> m = nn.Sigmoid()
-        >>> loss = nn.BCELoss()
-        >>> input = torch.randn(3, requires_grad=True)
-        >>> target = torch.empty(3).random_(2)
-        >>> output = loss(m(input), target)
-        >>> output.backward()
+        >>> loss = FocalLoss(gamma=1.0, pos_weight=0.8)
+        >>> pred = torch.rand(10, 10, requires_grad=True)
+        >>> target = torch.rand(10, 10).round()
+        >>> output = loss(pred, target)
+
+    .. _Focal Loss For Dense Object Detection:
+        https://arxiv.org/abs/1708.02002
     """
 
     _loss = focal_loss
 
     def __init__(
-        self, gamma, alpha, label_smoothing, reduction: str = "mean",
+        self, gamma, pos_weight=None, label_smoothing=None, reduction: str = "mean",
     ):
         super(_FocalLoss, self).__init__()
         self.gamma = gamma
-        self.alpha = alpha
+        self.alpha = pos_weight
         self.label_smoothing = label_smoothing
         self.reduction = reduction
 
@@ -142,8 +147,6 @@ class _FocalLoss(nn.Module):
     def from_args(cls, args):
         return cls(args.focal_gamma, args.focal_alpha, args.focal_smoothing, args.reduction,)
 
-    @input("input", name=("N", "C", "H", "W"), drop_names=True)
-    @input("target", name=("N", "C", "H", "W"), drop_names=True)
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         """forward Calculate smoothed MSE loss between input and target.
         Expects inputs of shape NxCxHxW.
