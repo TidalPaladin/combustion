@@ -9,13 +9,27 @@ PYTHON=$(VENV)/bin/python3
 LINE_LEN=120
 DOC_LEN=120
 
+# docker image name
 DOCKER_IMG=combustion
 
+# python project name, should match src/PROJECT
+PROJECT=project
+
 docker: 
-	docker build --target release -t $(DOCKER_IMG):latest --file ./docker/Dockerfile ./
+	docker build \
+		--target release \
+		--build-arg PROJECT=$(PROJECT) \
+		-t $(DOCKER_IMG):latest \
+		--file ./docker/Dockerfile \
+		./
 
 docker-dev:
-	docker build --target dev -t $(DOCKER_IMG):dev --file ./docker/Dockerfile ./
+	docker build \
+		--target dev \
+		--build-arg PROJECT=$(PROJECT) \
+		-t $(DOCKER_IMG):dev \
+		--file ./docker/Dockerfile \
+		./
 
 clean: 
 	find $(CLEAN_DIRS) -path '*/__pycache__/*' -delete
