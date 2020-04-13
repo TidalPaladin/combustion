@@ -6,9 +6,10 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
+from combustion.util import double, triple
+
 from .bottleneck import Bottleneck2d, Bottleneck3d, BottleneckFactorized2d, BottleneckFactorized3d
 from .factorized import Conv2d, Conv3d, ConvTranspose2d, ConvTranspose3d
-from .util import double, triple
 
 
 # type hints

@@ -9,7 +9,8 @@ from torch import Tensor
 from torch.nn import Module, init
 from torch.nn.parameter import Parameter
 
-from ..util import double, one_diff_tuple, single, triple
+from combustion.util import double, one_diff_tuple, single, triple
+
 from .util import SpatialMeta
 
 

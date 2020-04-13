@@ -3,13 +3,7 @@
 
 import pytest
 
-from combustion.modules.bottleneck import (
-    Bottleneck1d,
-    Bottleneck2d,
-    Bottleneck3d,
-    BottleneckFactorized2d,
-    BottleneckFactorized3d,
-)
+from combustion.nn import Bottleneck1d, Bottleneck2d, Bottleneck3d, BottleneckFactorized2d, BottleneckFactorized3d
 
 
 @pytest.mark.parametrize(

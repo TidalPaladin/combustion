@@ -3,7 +3,7 @@
 
 import pytest
 
-from combustion.modules.factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
+from combustion.nn import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
 
 
 @pytest.mark.parametrize(
