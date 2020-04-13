@@ -33,9 +33,10 @@ quality:
 	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
 run: docker
-	mkdir -p ./outputs
+	mkdir -p ./outputs ./data ./conf
 	docker run --rm -it --name combustion \
 		--gpus all \
+		-v $(PWD)/data:/app/data \
 		-v $(PWD)/conf:/app/conf \
 		-v $(PWD)/outputs:/app/outputs \
 		combustion:latest \
