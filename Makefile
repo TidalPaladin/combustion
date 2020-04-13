@@ -9,12 +9,13 @@ PYTHON=$(VENV)/bin/python3
 LINE_LEN=120
 DOC_LEN=120
 
+DOCKER_IMG=combustion
 
 docker: 
-	docker build --target release -t combustion:latest --file ./docker/Dockerfile ./
+	docker build --target release -t $(DOCKER_IMG):latest --file ./docker/Dockerfile ./
 
 docker-dev:
-	docker build --target dev -t combustion:dev --file ./docker/Dockerfile ./
+	docker build --target dev -t $(DOCKER_IMG):dev --file ./docker/Dockerfile ./
 
 clean: 
 	find $(CLEAN_DIRS) -path '*/__pycache__/*' -delete
@@ -34,12 +35,12 @@ quality:
 
 run: docker
 	mkdir -p ./outputs ./data ./conf
-	docker run --rm -it --name combustion \
+	docker run --rm -it --name $(DOCKER_IMG) \
 		--gpus all \
 		-v $(PWD)/data:/app/data \
 		-v $(PWD)/conf:/app/conf \
 		-v $(PWD)/outputs:/app/outputs \
-		combustion:latest \
+		$(DOCKER_IMG):latest \
 		-c "python src/project"
 
 style: 
