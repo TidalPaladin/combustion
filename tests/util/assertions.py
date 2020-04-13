@@ -3,6 +3,7 @@
 
 import pytest
 import torch
+from torch.testing import assert_allclose
 
 
 def assert_has_gradient(module, recurse=True):
@@ -30,22 +31,24 @@ def assert_zero_grad(module, recurse=True):
 def assert_in_training_mode(module):
     __tracebackhide__ = True
     if not module.training:
-        pytest.fail()
+        pytest.fail("Module not in training mode")
 
 
 def assert_in_eval_mode(module):
     __tracebackhide__ = True
     if module.training:
-        pytest.fail()
+        pytest.fail("Module not in eval mode")
 
 
 def assert_tensors_close(x, y, *args, **kwargs):
     __tracebackhide__ = True
-    if not torch.allclose(x, y, *args, **kwargs):
-        try:
-            assert str(x) == str(y)
-        except AssertionError as e:
-            pytest.fail(str(e))
+    msg = None
+    try:
+        assert_allclose(x, y, *args, **kwargs)
+        return
+    except AssertionError as e:
+        msg = str(e)
+    pytest.fail(msg)
 
 
 def assert_is_int_tensor(x):
