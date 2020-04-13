@@ -7,7 +7,7 @@ from torch.nn import BCELoss, BCEWithLogitsLoss
 from torch.nn.functional import binary_cross_entropy, binary_cross_entropy_with_logits
 
 from combustion.nn import FocalLoss, FocalLossWithLogits, focal_loss, focal_loss_with_logits
-from tests.util.assertions import assert_tensors_close
+from combustion.testing import assert_tensors_close
 
 
 def test_compare_with_without_logits():
