@@ -59,6 +59,7 @@ class _BottleneckNd(nn.Module):
         groups: int = 1,
         bias: bool = False,
         padding_mode: str = "zeros",
+        checkpoint: bool = False,
     ):
         kernel_size = self._tuple(kernel_size)
         if padding is None:
