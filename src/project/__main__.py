@@ -22,10 +22,9 @@ log = logging.getLogger(__name__)
 class FakeModel(HydraMixin, pl.LightningModule):
     def __init__(self, cfg, **hparams):
         super(FakeModel, self).__init__()
-        self.cfg = cfg
+        self.config = cfg
         self._hparams = DictConfig(hparams)
         self.hparams = hparams
-        self.config = cfg
 
         self.l1 = torch.nn.Conv2d(self._hparams.in_features, self._hparams.out_features, self._hparams.kernel)
         self.l2 = torch.nn.AdaptiveAvgPool2d(1)
@@ -40,7 +39,6 @@ class FakeModel(HydraMixin, pl.LightningModule):
     def training_step(self, batch, batch_nb):
         # REQUIRED
         x, y = batch
-        # y = torch.tensor([y], dtype=torch.long).type_as(y)
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
         tensorboard_logs = {"train_loss": loss}
@@ -61,7 +59,6 @@ class FakeModel(HydraMixin, pl.LightningModule):
     def test_step(self, batch, batch_nb):
         # OPTIONAL
         x, y = batch
-        # y = torch.tensor([y], dtype=torch.long).type_as(y)
         y_hat = self(x)
         return {"test_loss": F.cross_entropy(y_hat, y)}
 
