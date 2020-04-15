@@ -60,7 +60,7 @@ run: docker
 		-v $(CONF_PATH):/app/conf \
 		-v $(OUTPUT_PATH):/app/outputs \
 		$(DOCKER_IMG):latest \
-		-c "python src/project dataset.path=/app/data"
+		-c "python src/$(PROJECT) dataset.path=/app/data"
 
 style: 
 	autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
