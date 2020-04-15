@@ -15,6 +15,10 @@ DOCKER_IMG=combustion
 # python project name, should match src/PROJECT
 PROJECT=project
 
+DATA_PATH=/mnt/iscsi/mb_synth/tissue/4x/synth/
+OUTPUT_PATH=$(PWD)/outputs
+CONF_PATH=$(PWD)/conf
+
 docker: 
 	docker build \
 		--target release \
@@ -52,9 +56,9 @@ run: docker
 	docker run --rm -it --name $(DOCKER_IMG) \
 		--gpus all \
 		--shm-size 8G \
-		-v $(PWD)/data:/app/data \
-		-v $(PWD)/conf:/app/conf \
-		-v $(PWD)/outputs:/app/outputs \
+		-v $(DATA_PATH):/app/data \
+		-v $(CONF_PATH):/app/conf \
+		-v $(OUTPUT_PATH):/app/outputs \
 		$(DOCKER_IMG):latest \
 		-c "python src/project dataset.path=/app/data"
 
