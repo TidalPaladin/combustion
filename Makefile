@@ -51,6 +51,7 @@ run: docker
 	mkdir -p ./outputs ./data ./conf
 	docker run --rm -it --name $(DOCKER_IMG) \
 		--gpus all \
+		--shm-size 8G \
 		-v $(PWD)/data:/app/data \
 		-v $(PWD)/conf:/app/conf \
 		-v $(PWD)/outputs:/app/outputs \
