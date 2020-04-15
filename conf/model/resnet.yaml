@@ -1,6 +1,6 @@
 model:
-  cls: __main__.MNISTModel
-  class: __main__.MNISTModel
+  cls: __main__.FakeModel
+  class: __main__.FakeModel
   params:
     in_features: 1
     out_features: 10

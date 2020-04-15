@@ -19,9 +19,9 @@ log = logging.getLogger(__name__)
 
 
 # define the model
-class MNISTModel(HydraMixin, pl.LightningModule):
+class FakeModel(HydraMixin, pl.LightningModule):
     def __init__(self, cfg, **hparams):
-        super(MNISTModel, self).__init__()
+        super(FakeModel, self).__init__()
         self.cfg = cfg
         self._hparams = DictConfig(hparams)
         self.hparams = hparams
