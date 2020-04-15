@@ -3,3 +3,4 @@ defaults:
   - model: resnet
   - optimizer: adam
   - trainer: local
+  - schedule: one_cycle

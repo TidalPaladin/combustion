@@ -1,0 +1,16 @@
+schedule:
+  interval: step
+  monitor: val_loss
+  frequency: 1
+  class: torch.optim.lr_scheduler.OneCycleLR
+  params:
+    max_lr: ${optimizer.params.lr}
+    epochs: ${trainer.params.max_epochs}
+    steps_per_epoch: 'none'
+    pct_start: 0.05
+    div_factor: 25.0
+    final_div_factor: 10000.0
+    anneal_strategy: cos
+    #cycle_momentum: True
+    #base_momentum: 0.85
+    #max_momentum: 0.95
