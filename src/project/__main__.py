@@ -12,17 +12,20 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import FakeData
 
+from combustion.lightning import HydraMixin
+
 
 log = logging.getLogger(__name__)
 
 
 # define the model
-class MNISTModel(pl.LightningModule):
+class MNISTModel(HydraMixin, pl.LightningModule):
     def __init__(self, cfg, **hparams):
         super(MNISTModel, self).__init__()
         self.cfg = cfg
         self._hparams = DictConfig(hparams)
         self.hparams = hparams
+        self.config = cfg
 
         self.l1 = torch.nn.Conv2d(self._hparams.in_features, self._hparams.out_features, self._hparams.kernel)
         self.l2 = torch.nn.AdaptiveAvgPool2d(1)
@@ -67,12 +70,6 @@ class MNISTModel(pl.LightningModule):
         avg_loss = torch.stack([x["test_loss"] for x in outputs]).mean()
         logs = {"test_loss": avg_loss}
         return {"avg_test_loss": avg_loss, "log": logs, "progress_bar": logs}
-
-    def configure_optimizers(self):
-        # REQUIRED
-        # can return multiple optimizers and learning_rate schedulers
-        # (LBFGS it is automatically supported, no need for closure function)
-        return hydra.utils.instantiate(self.cfg.optimizer, self.parameters())
 
     def train_dataloader(self):
         # REQUIRED
