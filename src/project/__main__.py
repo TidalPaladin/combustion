@@ -8,9 +8,6 @@ import pytorch_lightning as pl
 import torch
 from omegaconf import DictConfig
 from torch.nn import functional as F
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.datasets import FakeData
 
 from combustion.lightning import HydraMixin
 
@@ -67,30 +64,6 @@ class FakeModel(HydraMixin, pl.LightningModule):
         avg_loss = torch.stack([x["test_loss"] for x in outputs]).mean()
         logs = {"test_loss": avg_loss}
         return {"avg_test_loss": avg_loss, "log": logs, "progress_bar": logs}
-
-    def train_dataloader(self):
-        # REQUIRED
-        return DataLoader(
-            FakeData(size=10000, image_size=(1, 28, 28), transform=transforms.ToTensor(),),
-            num_workers=4,
-            batch_size=self._hparams.batch_size,
-        )
-
-    def val_dataloader(self):
-        # OPTIONAL
-        return DataLoader(
-            FakeData(size=1000, image_size=(1, 28, 28), transform=transforms.ToTensor(),),
-            num_workers=4,
-            batch_size=self._hparams.batch_size,
-        )
-
-    def test_dataloader(self):
-        # OPTIONAL
-        return DataLoader(
-            FakeData(size=1000, image_size=(1, 28, 28), transform=transforms.ToTensor(),),
-            batch_size=self._hparams.batch_size,
-            num_workers=4,
-        )
 
 
 # accepts options from the yaml structure in ./conf
