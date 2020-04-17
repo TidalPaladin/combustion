@@ -1,0 +1,26 @@
+dataset:
+  num_workers: 4
+
+  train:
+    cls: torchvision.datasets.FakeData
+    params:
+      size: 10000
+      image_size: [1, 128, 128]
+      transform:
+        cls: torchvision.transforms.ToTensor
+
+  validate:
+    cls: torchvision.datasets.FakeData
+    params:
+      size: 100
+      image_size: [1, 128, 128]
+      transform:
+        cls: torchvision.transforms.ToTensor
+
+  test:
+    cls: torchvision.datasets.FakeData
+    params:
+      size: 100
+      image_size: [1, 128, 128]
+      transform:
+        cls: torchvision.transforms.ToTensor

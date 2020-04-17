@@ -1,7 +1,6 @@
 # https://pytorch-lightning.readthedocs.io/en/stable/trainer.html#trainer-flags
 trainer:
   cls: pytorch_lightning.Trainer
-  class: pytorch_lightning.Trainer
   params:
     max_epochs: 10
     gpus: 1

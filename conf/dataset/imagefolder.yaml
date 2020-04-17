@@ -1,0 +1,35 @@
+dataset:
+
+  train:
+    cls: torchvision.datasets.ImageFolder
+    params:
+      transform: 
+        cls: torchvision.transforms.ToTensor
+
+      # Prefer relative paths here where possible. When running with docker, 
+      # path given here will be appended to the data mountpoint given in
+      # Makefile.config as DATA_PATH
+      #
+      # Image directory layout: root/class/imgxxx.png
+      root: path/to/data 
+
+  
+  validate:
+    cls: torchvision.datasets.ImageFolder
+    params:
+      transform: 
+        cls: torchvision.transforms.ToTensor
+      root: path/to/data 
+
+  # Or as a fractional split or subset from the training set
+  # validate: 
+  #  split: 0.5
+  #  size: 100
+
+  test:
+    cls: torchvision.datasets.ImageFolder
+    params:
+      transform: 
+        cls: torchvision.transforms.ToTensor
+      root: path/to/data 
+

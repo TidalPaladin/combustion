@@ -1,5 +1,5 @@
 defaults:
-  - dataset: cifar10
+  - dataset: fakedata
   - model: resnet
   - optimizer: adam
   - trainer: local
