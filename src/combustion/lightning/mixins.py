@@ -81,11 +81,7 @@ class HydraMixin(ABC):
         params = dict(config.get("params")) if "params" in config.keys() else {}
 
         def is_subclass(d):
-            if not isinstance(d, (dict, DictConfig)):
-                return False
-            if not any([k in d.keys() for k in ("class", "cls")]):
-                return False
-            return True
+            return isinstance(d, (dict, DictConfig)) and "cls" in d.keys()
 
         subclasses = {key: subconfig for key, subconfig in params.items() if is_subclass(subconfig)}
 

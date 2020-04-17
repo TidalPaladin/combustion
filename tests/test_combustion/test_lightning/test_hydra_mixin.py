@@ -32,23 +32,16 @@ def hydra():
 def cfg(torch):
     omegaconf = pytest.importorskip("omegaconf")
     cfg = {
-        "optimizer": {
-            "name": "adam",
-            "cls": "torch.optim.Adam",
-            "class": "torch.optim.Adam",
-            "params": {"lr": 0.002,},
-        },
+        "optimizer": {"name": "adam", "cls": "torch.optim.Adam", "params": {"lr": 0.002,},},
         "model": {
             "cls": Subclass.__module__ + ".Subclass",
-            "class": Subclass.__module__ + ".Subclass",
             "params": {"in_features": 10, "out_features": 10, "batch_size": 32},
-            "criterion": {"cls": "torch.nn.BCELoss", "class": "torch.nn.BCELoss"},
+            "criterion": {"cls": "torch.nn.BCELoss"},
         },
         "schedule": {
             "interval": "step",
             "monitor": "val_loss",
             "frequency": 1,
-            "class": "torch.optim.lr_scheduler.OneCycleLR",
             "cls": "torch.optim.lr_scheduler.OneCycleLR",
             "params": {
                 "max_lr": 0.002,
@@ -63,39 +56,27 @@ def cfg(torch):
         "dataset": {
             "num_workers": 4,
             "train": {
-                "class": "torchvision.datasets.FakeData",
                 "cls": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
                     "image_size": [1, 64, 64],
-                    "transform": {
-                        "class": "torchvision.transforms.ToTensor",
-                        "cls": "torchvision.transforms.ToTensor",
-                    },
+                    "transform": {"cls": "torchvision.transforms.ToTensor",},
                 },
             },
             "validate": {
-                "class": "torchvision.datasets.FakeData",
                 "cls": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
                     "image_size": [1, 64, 64],
-                    "transform": {
-                        "class": "torchvision.transforms.ToTensor",
-                        "cls": "torchvision.transforms.ToTensor",
-                    },
+                    "transform": {"cls": "torchvision.transforms.ToTensor",},
                 },
             },
             "test": {
-                "class": "torchvision.datasets.FakeData",
                 "cls": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
                     "image_size": [1, 64, 64],
-                    "transform": {
-                        "class": "torchvision.transforms.ToTensor",
-                        "cls": "torchvision.transforms.ToTensor",
-                    },
+                    "transform": {"cls": "torchvision.transforms.ToTensor",},
                 },
             },
         },
@@ -155,12 +136,15 @@ def test_get_lr(scheduled, cfg, hydra):
     assert model.get_lr() == cfg["optimizer"]["params"]["lr"]
 
 
-def test_recursive_instantiate(cfg):
+@pytest.mark.parametrize("params", [True, False])
+def test_recursive_instantiate(cfg, params):
     cfg["model"]["params"]["test"] = {
         "cls": "torch.nn.BCELoss",
-        "class": "torch.nn.BCELoss",
-        "params": {"reduction": "none"},
     }
+
+    if params:
+        cfg["model"]["params"]["test"]["params"] = {"reduction": "none"}
+
     model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
     assert isinstance(model.hparams["test"], torch.nn.BCELoss)
     assert model.hparams["foo"] == 2
@@ -168,7 +152,7 @@ def test_recursive_instantiate(cfg):
 
 
 def test_recursive_instantiate_preserves_cfg(cfg):
-    key = {"cls": "torch.nn.BCELoss", "class": "torch.nn.BCELoss", "params": {"reduction": "none"}}
+    key = {"cls": "torch.nn.BCELoss", "params": {"reduction": "none"}}
     cfg["model"]["params"]["test"] = key
     model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
     assert "test" in model.config["model"]["params"].keys()
