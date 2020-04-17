@@ -3,10 +3,11 @@
 
 from abc import ABC
 from copy import deepcopy
-from typing import Any, Union
+from typing import Any, Optional, Union
 
 from hydra.utils import instantiate
 from omegaconf import DictConfig
+from torch.utils.data import DataLoader, Dataset
 
 
 class HydraMixin(ABC):
@@ -40,6 +41,35 @@ class HydraMixin(ABC):
             return [optim], [schedule_dict]
 
         return optim
+
+    def prepare_data(self) -> None:
+        self.train_ds: Optional[Dataset] = self._prepare_data("train")
+        self.val_ds: Optional[Dataset] = self._prepare_data("validate")
+        self.test_ds: Optional[Dataset] = self._prepare_data("test")
+
+        num_workers = self.config.dataset.get("num_workers")
+        self.num_workers = num_workers if num_workers is not None else 1
+
+    def train_dataloader(self) -> Optional[DataLoader]:
+        return self._dataloader(self.train_ds)
+
+    def val_dataloader(self) -> Optional[DataLoader]:
+        return self._dataloader(self.val_ds)
+
+    def test_dataloader(self) -> Optional[DataLoader]:
+        return self._dataloader(self.test_ds)
+
+    def _prepare_data(self, subset: str) -> Optional[Dataset]:
+        if subset in self.config.dataset.keys():
+            return HydraMixin.instantiate(self.config.dataset[subset])
+        else:
+            return None
+
+    def _dataloader(self, dataset: Optional[Dataset]) -> Optional[DataLoader]:
+        if dataset is not None:
+            return DataLoader(dataset, num_workers=self.num_workers, batch_size=self.hparams["batch_size"],)
+        else:
+            return None
 
     @staticmethod
     def instantiate(config: Union[DictConfig, dict], *args, **kwargs) -> Any:

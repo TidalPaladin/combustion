@@ -21,9 +21,6 @@ class Subclass(HydraMixin, pl.LightningModule):
     def forward(self, x):
         return x
 
-    def train_dataloader(self):
-        return [1, 2, 3]
-
 
 @pytest.fixture
 def hydra():
@@ -63,6 +60,45 @@ def cfg(torch):
                 "anneal_strategy": "cos",
             },
         },
+        "dataset": {
+            "num_workers": 4,
+            "train": {
+                "class": "torchvision.datasets.FakeData",
+                "cls": "torchvision.datasets.FakeData",
+                "params": {
+                    "size": 100,
+                    "image_size": [1, 64, 64],
+                    "transform": {
+                        "class": "torchvision.transforms.ToTensor",
+                        "cls": "torchvision.transforms.ToTensor",
+                    },
+                },
+            },
+            "validate": {
+                "class": "torchvision.datasets.FakeData",
+                "cls": "torchvision.datasets.FakeData",
+                "params": {
+                    "size": 100,
+                    "image_size": [1, 64, 64],
+                    "transform": {
+                        "class": "torchvision.transforms.ToTensor",
+                        "cls": "torchvision.transforms.ToTensor",
+                    },
+                },
+            },
+            "test": {
+                "class": "torchvision.datasets.FakeData",
+                "cls": "torchvision.datasets.FakeData",
+                "params": {
+                    "size": 100,
+                    "image_size": [1, 64, 64],
+                    "transform": {
+                        "class": "torchvision.transforms.ToTensor",
+                        "cls": "torchvision.transforms.ToTensor",
+                    },
+                },
+            },
+        },
     }
     return omegaconf.DictConfig(cfg)
 
@@ -96,6 +132,7 @@ def test_configure_unscheduled_optimizer(torch, cfg, hydra, scheduled):
     if not scheduled:
         del cfg["schedule"]
     model = Subclass(cfg, **hparams)
+    model.prepare_data()
 
     if not scheduled:
         optim = model.configure_optimizers()
@@ -113,6 +150,7 @@ def test_get_lr(scheduled, cfg, hydra):
         del cfg["schedule"]
 
     model = hydra.utils.instantiate(cfg.model, cfg)
+    model.prepare_data()
     model.configure_optimizers()
     assert model.get_lr() == cfg["optimizer"]["params"]["lr"]
 
@@ -135,3 +173,68 @@ def test_recursive_instantiate_preserves_cfg(cfg):
     model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
     assert "test" in model.config["model"]["params"].keys()
     assert model.config["model"]["params"]["test"] == key
+
+
+@pytest.mark.parametrize("check", ["train_ds", "val_ds", "test_ds"])
+def test_prepare_data(cfg, check):
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+    assert hasattr(model, check)
+    assert isinstance(getattr(model, check), torch.utils.data.Dataset)
+
+
+@pytest.mark.parametrize(
+    "missing, present",
+    [
+        pytest.param(["validate", "test"], ["train"]),
+        pytest.param(["test"], ["train", "validate"]),
+        pytest.param(["validate", "train"], ["test"]),
+    ],
+)
+def test_prepare_data_missing_items(cfg, missing, present):
+    for k in missing:
+        del cfg.dataset[k]
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_train_dataloader(cfg, present):
+    if not present:
+        del cfg.dataset["train"]
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+    dataloader = model.train_dataloader()
+
+    if present:
+        assert isinstance(dataloader, torch.utils.data.DataLoader)
+    else:
+        assert dataloader is None
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_val_dataloader(cfg, present):
+    if not present:
+        del cfg.dataset["validate"]
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+    dataloader = model.val_dataloader()
+
+    if present:
+        assert isinstance(dataloader, torch.utils.data.DataLoader)
+    else:
+        assert dataloader is None
+
+
+@pytest.mark.parametrize("present", [True, False])
+def test_test_dataloader(cfg, present):
+    if not present:
+        del cfg.dataset["test"]
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+    dataloader = model.test_dataloader()
+
+    if present:
+        assert isinstance(dataloader, torch.utils.data.DataLoader)
+    else:
+        assert dataloader is None
