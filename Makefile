@@ -9,15 +9,11 @@ PYTHON=$(VENV)/bin/python3
 LINE_LEN=120
 DOC_LEN=120
 
-# docker image name
-DOCKER_IMG=combustion
-
-# python project name, should match src/PROJECT
-PROJECT=project
-
-DATA_PATH=/mnt/iscsi/mb_synth/tissue/4x/synth/
-OUTPUT_PATH=$(shell pwd)/outputs
-CONF_PATH=$(shell pwd)/conf
+CONFIG_FILE := Makefile.config
+ifeq ($(wildcard $(CONFIG_FILE)),)
+$(error $(CONFIG_FILE) not found. See $(CONFIG_FILE).example.)
+endif
+include $(CONFIG_FILE)
 
 docker: 
 	docker build \
