@@ -56,7 +56,7 @@ run: docker
 		-v $(CONF_PATH):/app/conf \
 		-v $(OUTPUT_PATH):/app/outputs \
 		$(DOCKER_IMG):latest \
-		-c "python src/$(PROJECT) dataset.path=/app/data"
+		-c "python src/$(PROJECT)"
 
 style: 
 	autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
@@ -83,4 +83,5 @@ $(VENV)/bin/activate: setup.py src/combustion
 	test -d $(VENV) || virtualenv $(VENV)
 	$(PYTHON) -m pip install -U pip
 	$(PYTHON) -m pip install -e .[dev]
+	$(PYTHON) -m pip install --pre -U git+https://github.com/facebookresearch/hydra.git
 	touch $(VENV)/bin/activate

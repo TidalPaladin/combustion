@@ -16,6 +16,7 @@ COPY src/combustion /app/src/combustion
 COPY setup.py /app
 WORKDIR /app
 RUN pip install -e .
+RUN pip install -U git+https://github.com/facebookresearch/hydra.git
 
 
 # Release version
