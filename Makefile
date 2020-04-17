@@ -16,8 +16,8 @@ DOCKER_IMG=combustion
 PROJECT=project
 
 DATA_PATH=/mnt/iscsi/mb_synth/tissue/4x/synth/
-OUTPUT_PATH=$(PWD)/outputs
-CONF_PATH=$(PWD)/conf
+OUTPUT_PATH=$(shell pwd)/outputs
+CONF_PATH=$(shell pwd)/conf
 
 docker: 
 	docker build \
