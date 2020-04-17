@@ -115,3 +115,23 @@ def test_get_lr(scheduled, cfg, hydra):
     model = hydra.utils.instantiate(cfg.model, cfg)
     model.configure_optimizers()
     assert model.get_lr() == cfg["optimizer"]["params"]["lr"]
+
+
+def test_recursive_instantiate(cfg):
+    cfg["model"]["params"]["test"] = {
+        "cls": "torch.nn.BCELoss",
+        "class": "torch.nn.BCELoss",
+        "params": {"reduction": "none"},
+    }
+    model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
+    assert isinstance(model.hparams["test"], torch.nn.BCELoss)
+    assert model.hparams["foo"] == 2
+    assert model.config == cfg
+
+
+def test_recursive_instantiate_preserves_cfg(cfg):
+    key = {"cls": "torch.nn.BCELoss", "class": "torch.nn.BCELoss", "params": {"reduction": "none"}}
+    cfg["model"]["params"]["test"] = key
+    model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
+    assert "test" in model.config["model"]["params"].keys()
+    assert model.config["model"]["params"]["test"] == key
