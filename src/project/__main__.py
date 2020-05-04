@@ -39,7 +39,11 @@ class FakeModel(HydraMixin, pl.LightningModule):
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
         tensorboard_logs = {"train_loss": loss}
-        return {"loss": loss, "log": tensorboard_logs}
+
+        # sample progress bar override with lr logging
+        bar = {"lr": self.get_lr()}
+
+        return {"loss": loss, "log": tensorboard_logs, "progress_bar": bar}
 
     def validation_step(self, batch, batch_nb):
         # OPTIONAL
