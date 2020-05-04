@@ -20,7 +20,7 @@ class HydraMixin(ABC):
             return self.trainer.optimizer.state_dict()["param_groups"][param_group]["lr"]
         else:
             scheduler = self.trainer.lr_schedulers[pos]["scheduler"]
-            return scheduler.get_lr()[param_group]
+            return scheduler.get_last_lr()[param_group]
 
     def configure_optimizers(self):
         if not hasattr(self, "config"):
