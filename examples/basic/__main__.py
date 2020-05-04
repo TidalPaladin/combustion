@@ -72,7 +72,7 @@ class FakeModel(HydraMixin, pl.LightningModule):
 
 # accepts options from the yaml structure in ./conf
 # see hydra docs: https://hydra.cc/docs/intro
-@hydra.main(config_path="../../conf/config.yaml")
+@hydra.main(config_path="./conf/config.yaml")
 def main(cfg):
     log.info("Initializing")
     log.info("Configuration: \n%s", cfg.pretty())

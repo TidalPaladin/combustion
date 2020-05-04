@@ -9,25 +9,18 @@ PYTHON=$(VENV)/bin/python3
 LINE_LEN=120
 DOC_LEN=120
 
-CONFIG_FILE := Makefile.config
-ifeq ($(wildcard $(CONFIG_FILE)),)
-$(error $(CONFIG_FILE) not found. See $(CONFIG_FILE).example.)
-endif
-include $(CONFIG_FILE)
 
 docker: 
 	docker build \
 		--target release \
-		--build-arg PROJECT=$(PROJECT) \
-		-t $(DOCKER_IMG):latest \
+		-t combustion:latest \
 		--file ./docker/Dockerfile \
 		./
 
 docker-dev:
 	docker build \
 		--target dev \
-		--build-arg PROJECT=$(PROJECT) \
-		-t $(DOCKER_IMG):dev \
+		-t combustion:latest-dev \
 		--file ./docker/Dockerfile \
 		./
 
@@ -47,16 +40,20 @@ quality:
 	black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
 	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
+DATA_PATH=$(shell pwd)/examples/basic/data
+CONF_PATH=$(shell pwd)/examples/basic/conf
+OUTPUT_PATH=$(shell pwd)/examples/basic/outputs
+
 run: docker
 	mkdir -p ./outputs ./data ./conf
-	docker run --rm -it --name $(DOCKER_IMG) \
+	docker run --rm -it --name combustion \
 		--gpus all \
 		--shm-size 8G \
 		-v $(DATA_PATH):/app/data \
 		-v $(CONF_PATH):/app/conf \
 		-v $(OUTPUT_PATH):/app/outputs \
-		$(DOCKER_IMG):latest \
-		-c "python src/$(PROJECT)"
+		combustion:latest \
+		-c "python examples/basic"
 
 style: 
 	autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)

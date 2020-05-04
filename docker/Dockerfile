@@ -19,13 +19,11 @@ COPY setup.py /app
 WORKDIR /app
 RUN pip install -e .
 RUN pip install -U git+https://github.com/facebookresearch/hydra.git
+COPY ./examples/basic /app/examples/basic
 
 
 # Release version
 FROM base as release
-ARG PROJECT
-COPY src/$PROJECT /app/src/$PROJECT
-
 USER 1000
 ENTRYPOINT ["bash"]
 
@@ -33,8 +31,6 @@ ENTRYPOINT ["bash"]
 FROM base as dev
 RUN pip install -e .[dev]
 
-ARG PROJECT
-COPY src/$PROJECT /app/src/$PROJECT
 COPY ./tests /app/tests
 
 USER 1000
