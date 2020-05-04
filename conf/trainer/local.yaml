@@ -2,7 +2,7 @@
 trainer:
   cls: pytorch_lightning.Trainer
   params:
-    max_epochs: 10
+    max_epochs: 2
     gpus: 1
     amp_level: O1
     precision: 16

@@ -2,5 +2,5 @@
 trainer:
   cls: pytorch_lightning.Trainer
   params:
-    max_epochs: 10
+    max_epochs: 2
     fast_dev_run: true
