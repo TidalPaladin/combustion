@@ -1,8 +1,10 @@
 # vim: set filetype=dockerfile :
 
 # Base image with Apex
-FROM pytorch/pytorch:1.4-cuda10.1-cudnn7-devel as base
+FROM pytorch/pytorch:1.5-cuda10.1-cudnn7-devel as base
 MAINTAINER tidalpaladin
+
+RUN apt-get update && apt-get install -y git
 
 # install nvidia apex
 ADD ./docker/common/install_apex.sh install_apex.sh

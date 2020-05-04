@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import Any, Optional, Union
 
 from hydra.utils import instantiate
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader, Dataset
 
 
@@ -78,6 +78,8 @@ class HydraMixin(ABC):
         """
         # deepcopy so we can modify config
         config = deepcopy(config)
+        if isinstance(config, DictConfig):
+            OmegaConf.set_struct(config, False)
         params = dict(config.get("params")) if "params" in config.keys() else {}
 
         def is_subclass(d):
