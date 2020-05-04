@@ -14,9 +14,6 @@ jobs:
         parallelism: 1
         steps:
             - checkout
-            - run:
-                name: Setup Make
-                command: cp Makefile.config.example Makefile.config 
             - run: 
                 name: Install dependencies
                 command: sudo pip install black flake8
@@ -32,9 +29,6 @@ jobs:
         parallelism: 1
         steps:
             - checkout
-            - run:
-                name: Setup Make
-                command: cp Makefile.config.example Makefile.config 
             - run: 
                 name: Install dependencies
                 command: make venv
