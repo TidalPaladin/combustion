@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import warnings
 from abc import ABC
 from copy import deepcopy
 from typing import Any, Optional, Union
@@ -30,8 +31,18 @@ class HydraMixin(ABC):
         lr = self.config.optimizer["params"]["lr"]
         optim = instantiate(self.config.optimizer, self.parameters())
 
+        # scheduler setup
         schedule = self.config.get("schedule")
         if schedule is not None:
+            # interval/frequency keys required or schedule wont run
+            for required_key in ["interval", "frequency"]:
+                if required_key not in schedule.keys():
+                    raise MisconfigurationException(f"{required_key} key is required for hydra lr scheduler")
+
+            # monitor key is only required for schedules that watch loss
+            if "monitor" not in schedule.keys():
+                warnings.warn("'monitor' missing from lr schedule config")
+
             steps_per_epoch = len(self.train_dataloader())
             schedule_dict = {
                 "interval": schedule.get("interval", "epoch"),
@@ -39,9 +50,11 @@ class HydraMixin(ABC):
                 "frequency": schedule.get("frequency", 1),
                 "scheduler": instantiate(schedule, optim, max_lr=lr, steps_per_epoch=steps_per_epoch),
             }
-            return [optim], [schedule_dict]
+            result = [optim], [schedule_dict]
+        else:
+            result = optim
 
-        return optim
+        return result
 
     def prepare_data(self) -> None:
         dataset_cfg = self.config.dataset

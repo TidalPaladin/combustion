@@ -108,7 +108,7 @@ def test_instantiate_with_hydra(cfg, hydra):
 
 
 @pytest.mark.parametrize("scheduled", [True, False])
-def test_configure_unscheduled_optimizer(torch, cfg, hydra, scheduled):
+def test_configure_optimizer(torch, cfg, hydra, scheduled):
     hparams = cfg["model"]["params"]
     if not scheduled:
         del cfg["schedule"]
@@ -123,6 +123,27 @@ def test_configure_unscheduled_optimizer(torch, cfg, hydra, scheduled):
         assert isinstance(optims[0], torch.optim.Adam)
         assert isinstance(schedulers[0], dict)
         assert isinstance(schedulers[0]["scheduler"], torch.optim.lr_scheduler.OneCycleLR)
+
+
+@pytest.mark.parametrize("missing", ["interval", "frequency"])
+def test_configure_optimizer_missing_keys(torch, cfg, hydra, missing):
+    hparams = cfg["model"]["params"]
+    del cfg["schedule"][missing]
+    model = Subclass(cfg, **hparams)
+    model.prepare_data()
+
+    with pytest.raises(pl.utilities.exceptions.MisconfigurationException):
+        optims, schedulers = model.configure_optimizers()
+
+
+def test_configure_optimizer_warn_no_monitor_key(torch, cfg, hydra):
+    hparams = cfg["model"]["params"]
+    del cfg["schedule"]["monitor"]
+    model = Subclass(cfg, **hparams)
+    model.prepare_data()
+
+    with pytest.warns(UserWarning):
+        optims, schedulers = model.configure_optimizers()
 
 
 @pytest.mark.parametrize("scheduled", [True, False])
