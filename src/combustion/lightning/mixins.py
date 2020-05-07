@@ -45,15 +45,18 @@ class HydraMixin(ABC):
 
     def prepare_data(self) -> None:
         dataset_cfg = self.config.dataset
-        if "train" not in dataset_cfg:
-            raise MisconfigurationException("Missing 'train' dataset configuration")
-        train_ds: Dataset = HydraMixin.instantiate(dataset_cfg["train"])
+        train_ds: Optional[Dataset] = (
+            HydraMixin.instantiate(dataset_cfg["train"]) if "train" in dataset_cfg.keys() else None
+        )
 
         # determine sizes validation/test sets if specified as a fraction of training set
-        splits = {"train": len(train_ds), "validate": None, "test": None}
+        splits = {"train": len(train_ds) if train_ds is not None else None, "validate": None, "test": None}
         for split in splits.keys():
             if not (split in dataset_cfg.keys() and isinstance(dataset_cfg[split], (int, float))):
                 continue
+            if train_ds is None:
+                raise MisconfigurationException("train dataset is required to perform splitting")
+
             split_value = dataset_cfg[split]
 
             # for ints, assume value is size of the subset
