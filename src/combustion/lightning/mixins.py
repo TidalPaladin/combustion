@@ -7,7 +7,8 @@ from typing import Any, Optional, Union
 
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
-from torch.utils.data import DataLoader, Dataset
+from pytorch_lightning.utilities.exceptions import MisconfigurationException
+from torch.utils.data import DataLoader, Dataset, random_split
 
 
 class HydraMixin(ABC):
@@ -43,9 +44,45 @@ class HydraMixin(ABC):
         return optim
 
     def prepare_data(self) -> None:
-        self.train_ds: Optional[Dataset] = self._prepare_data("train")
-        self.val_ds: Optional[Dataset] = self._prepare_data("validate")
-        self.test_ds: Optional[Dataset] = self._prepare_data("test")
+        dataset_cfg = self.config.dataset
+        if "train" not in dataset_cfg:
+            raise MisconfigurationException("Missing 'train' dataset configuration")
+        train_ds: Dataset = HydraMixin.instantiate(dataset_cfg["train"])
+
+        # determine sizes validation/test sets if specified as a fraction of training set
+        splits = {"train": len(train_ds), "validate": None, "test": None}
+        for split in splits.keys():
+            if not (split in dataset_cfg.keys() and isinstance(dataset_cfg[split], (int, float))):
+                continue
+            split_value = dataset_cfg[split]
+
+            # for ints, assume value is size of the subset
+            # for floats, assume value is a percentage of full dataset
+            if isinstance(split_value, float):
+                split_value = round(len(train_ds) * split_value)
+
+            splits[split] = split_value
+            splits["train"] -= split_value
+
+        # create datasets
+        if splits["validate"] is not None and splits["test"] is not None:
+            lengths = (splits["train"], splits["validate"], splits["test"])
+            train_ds, val_ds, test_ds = random_split(train_ds, lengths)
+        elif splits["validate"] is not None:
+            lengths = (splits["train"], splits["validate"])
+            train_ds, val_ds = random_split(train_ds, lengths)
+            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+        elif splits["test"] is not None:
+            lengths = (splits["train"], splits["test"])
+            train_ds, test_ds = random_split(train_ds, lengths)
+            val_ds = HydraMixin.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
+        else:
+            val_ds = HydraMixin.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
+            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+
+        self.train_ds: Dataset = train_ds
+        self.val_ds: Optional[Dataset] = val_ds
+        self.test_ds: Optional[Dataset] = test_ds
 
         num_workers = self.config.dataset.get("num_workers")
         self.num_workers = num_workers if num_workers is not None else 1
@@ -58,12 +95,6 @@ class HydraMixin(ABC):
 
     def test_dataloader(self) -> Optional[DataLoader]:
         return self._dataloader(self.test_ds)
-
-    def _prepare_data(self, subset: str) -> Optional[Dataset]:
-        if subset in self.config.dataset.keys():
-            return HydraMixin.instantiate(self.config.dataset[subset])
-        else:
-            return None
 
     def _dataloader(self, dataset: Optional[Dataset]) -> Optional[DataLoader]:
         if dataset is not None:
