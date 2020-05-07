@@ -70,7 +70,7 @@ setup(
         # progress bars in model download and training scripts
         # "tqdm >= 4.27",
         # high level training api
-        "pytorch-lightning",
+        "pytorch-lightning>=0.7.5",
         # hparams
         "hydra-core",
         "torchvision",
