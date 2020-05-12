@@ -64,3 +64,8 @@ def test_input_image_unchanged(img, label, bbox):
 
     visualize_bbox(img, bbox, label)
     assert img.shape == original_img.shape and torch.allclose(torch.as_tensor(img), torch.as_tensor(original_img))
+
+
+def test_result_channels_first(img, label, bbox):
+    result = visualize_bbox(img, bbox, label)
+    assert result.shape[-2:] == (32, 32)

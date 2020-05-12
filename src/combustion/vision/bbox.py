@@ -74,8 +74,13 @@ def visualize_bbox(
             lineType=cv2.LINE_AA,
         )
 
+    # restore original data type with channels first ordering
+    channel, height, width = -1, 0, 1
     if original_img_type == Tensor:
         img = torch.from_numpy(img)
+        img = img.permute(channel, height, width)
+    else:
+        img = img.transpose(channel, height, width)
 
     return img
 
