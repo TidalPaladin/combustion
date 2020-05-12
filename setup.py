@@ -80,6 +80,7 @@ setup(
         "scipy",
         "pynvml",
         "kornia",
+        "opencv-python",
         # "sklearn",
         "h5py",
         "Pillow-SIMD",
