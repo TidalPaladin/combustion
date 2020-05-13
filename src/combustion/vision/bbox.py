@@ -25,6 +25,7 @@ def visualize_bbox(
     class_names: Optional[Dict[int, str]] = None,
     box_color: Tuple[int, int, int] = (255, 0, 0),
     text_color: Tuple[int, int, int] = (255, 255, 255),
+    label_alpha: float = 0.4,
     thickness: int = 2,
 ) -> Union[Tensor, ndarray]:
     r"""Adds bounding box visualization to an input array
@@ -63,7 +64,9 @@ def visualize_bbox(
 
         # tag bounding box with class name / integer id
         ((text_width, text_height), _) = cv2.getTextSize(class_name, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)
-        cv2.rectangle(img, (x_min, y_min - int(1.3 * text_height)), (x_min + text_width, y_min), box_color, -1)
+        overlay = img.copy()
+        cv2.rectangle(overlay, (x_min, y_min - int(1.3 * text_height)), (x_min + text_width, y_min), box_color, -1)
+        img = cv2.addWeighted(overlay, label_alpha, img, 1 - label_alpha, 0)
         cv2.putText(
             img,
             class_name,
