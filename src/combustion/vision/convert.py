@@ -34,7 +34,7 @@ def to_8bit(img: Union[Tensor, ndarray], per_channel: bool = True) -> Tensor:
 
     # map image to range 0-255
     original_shape = img.shape
-    img = img.view(img.shape[0], -1)
+    img = img.view(*img.shape[:-2], -1)
     img = (img + minimum.abs()) / (delta) * 255
     img = img.view(*original_shape).byte()
 
