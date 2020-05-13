@@ -57,7 +57,7 @@ def visualize_bbox(
         )
 
         if class_names is not None:
-            class_name = class_names[cls]
+            class_name = class_names[cls.item()]
         else:
             class_name = f"Class {cls}"
 
