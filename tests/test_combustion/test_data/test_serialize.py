@@ -6,10 +6,11 @@ import os
 from pathlib import Path
 
 import pytest
+import torch
 from torch.utils.data import Dataset, IterableDataset
 
 # from combustion.data import AbstractDataset
-from combustion.data import SerializeMixin
+from combustion.data import HDF5Dataset, SerializeMixin
 
 
 def check_file_exists(filepath):
@@ -71,7 +72,7 @@ class TestSerialize:
     def test_load(self, h5py, torch, tmp_path, dataset, input_file, data):
         path = os.path.join(tmp_path, "foo.pth")
         new_dataset = dataset.__class__.load(path)
-        assert isinstance(new_dataset, dataset.__class__)
+        assert isinstance(new_dataset, HDF5Dataset)
         for e1, e2 in zip(data, new_dataset):
             for t1, t2 in zip(e1, e2):
                 assert torch.allclose(t1, t2)
@@ -123,3 +124,27 @@ class TestSerialize:
             path = pattern.format(shard=shard, num_shards=num_shards)
             with h5py.File(path, "r") as f:
                 assert "shard_index" in f.attrs.keys()
+
+    @pytest.mark.parametrize("transform", [lambda x: torch.ones(2, 2), None])
+    @pytest.mark.parametrize("target_transform", [lambda x: torch.zeros(2, 2), None])
+    def test_apply_transforms_to_loaded_data(self, h5py, tmp_path, dataset, transform, target_transform):
+        path = os.path.join(tmp_path, "foo.pth")
+        dataset.save(path)
+        new_dataset = dataset.__class__.load(path, transform=transform, target_transform=target_transform)
+        example = next(iter(new_dataset))
+
+        if transform is not None:
+            assert torch.allclose(example[0], transform(None))
+        if target_transform is not None:
+            assert torch.allclose(example[1], target_transform(None))
+
+    def test_repr(self, h5py, torch, tmp_path, dataset, input_file, data):
+        path = os.path.join(tmp_path, "foo.pth")
+        ds1 = dataset.__class__.load(path)
+        repr(ds1)
+
+        def xform(x):
+            return 10
+
+        ds2 = dataset.__class__.load(path, transform=xform, target_transform=xform)
+        print(repr(ds2))

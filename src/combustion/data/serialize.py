@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from __future__ import annotations
 
 import itertools
 import os
-from typing import Optional
+import warnings
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -12,9 +14,7 @@ from torch import Tensor
 try:
     import h5py
 except ImportError:
-    import warnings
-
-    warnings.warn("Serialization requires h5py, please install it with" " pip install h5py")
+    warnings.warn('Serialization requires h5py, please install it with "pip install h5py"')
     h5py = None
 
 
@@ -85,69 +85,26 @@ class SerializeMixin:
         self._finalize_master(path, files)
         return path
 
-    @classmethod
-    def load(cls, path):
+    @staticmethod
+    def load(
+        path: str,
+        transform: Optional[Callable[[Tensor], Any]] = None,
+        target_transform: Optional[Callable[[Tensor], Any]] = None,
+    ) -> SerializeMixin:
         r"""Loads the contents of a dataset previously saved with `save()`.
 
-        Loading is performed as follows:
-            1.  The given HDF5 file is imported. For a sharded dataset this is the master file.
-            2.  A dataset instance is created to hold the incoming data.
-                The `__iter__`, `__len__`, and `__getitem__` methods of the instance are patched
-                to return Tensors or tuples of Tensors in an identical format and order as they were
-                read during the `save()` call.
-            3.  Attributes from the dataset that were saved during the `save()` call are reattached to the
-                newly created instance.
-
         .. note::
-            It is necessary to perform loading using patched methods, as the original data source has
-            been replaced by HDF5 files.
-
-        .. note::
-            De-serialization requires the h5py library. See http://docs.h5py.org/en/stable/index.html
+            Loading requires the h5py library. See http://docs.h5py.org/en/stable/index.html
             for more details.
 
-        .. note::
-            Any dataset using this method must provide a keyword argument only constructor.
-
         Args:
-            path (str): The filepath to save to. Ex `foo/bar.h5`
-            num_shards (optional, int): If given, `num_shards` files will be created, each
-                containing `1 / num_shards` of the dataset. Exclusive with `shard_size`.
-                Must be a positive int.
-            shard_size (optional, int): If given, multiple files will be created such that
-                each file contains `shard_size` examples. Exclusive with `num_shards`.
-                Must be a positive int.
+            path (str): The filepath to load from. See `HDF5Dataset.load()` for more details
+            transform (callable): A tranform to be applied to the data tensor
+                See `HDF5Dataset` for more details
+            target_transform (callable): A tranform to be applied to the label tensor
+                See `HDF5Dataset` for more details
         """
-        f = h5py.File(path, "r")
-        keys = f.keys()
-
-        # TODO instead of patching, maybe make HDF5Dataset class and return that?
-        # can also provide abstract classmethod to map h5py.File to new dataset instance
-
-        def patched_iter(self):
-            examples = zip([f[k] for k in keys])
-            for data in examples:
-                tensors = [torch.as_tensor(x) for x in data]
-                yield tuple(tensors) if len(tensors) > 1 else tensors
-
-        def patched_getitem(self, pos):
-            tensors = [torch.as_tensor(f[k][pos]) for k in keys]
-            return tuple(tensors) if len(tensors) > 1 else tensors
-
-        def patched_len(self, pos):
-            return len(f[next(iter(keys))])
-
-        # patch dataset methods to return data from hdf5 files
-        dataset = cls()
-        setattr(dataset, "__iter__", patched_iter)
-        setattr(dataset, "__getitem__", patched_getitem)
-        setattr(dataset, "__len__", patched_len)
-
-        # set attributes
-        for key, value in f.attrs.items():
-            setattr(dataset, key, value)
-
-        return dataset
+        return HDF5Dataset(path, transform, target_transform)
 
     @staticmethod
     def _write_shard(path, source, shard_size, shard_index=None):
@@ -191,4 +148,82 @@ class SerializeMixin:
         return path
 
 
-__all__ = ["SerializeMixin"]
+class HDF5Dataset(SerializeMixin):
+    r"""Dataset used to read from HDF5 files.
+
+    .. note::
+        Requires the h5py library. See http://docs.h5py.org/en/stable/index.html
+        for more details.
+
+    .. note::
+        This class is intended for use with HDF5 files produced by SerializeMixin.save().
+        It may work with other HDF5 files, but this has not been verified yet.
+
+    Args:
+        path (str): The filepath to load from. When loading a sharded dataset, `path` should
+            point to the virtual dataset master file. Ex `foo/bar.h5`
+        transform (optional, callable): Transform to be applied to data tensors.
+        target_transform (optional, callable): Transform to be applied to label tensors. If
+            given, the loaded dataset must produce
+    """
+
+    def __init__(
+        self,
+        path: str,
+        transform: Optional[Callable[[Tensor], Any]] = None,
+        target_transform: Optional[Callable[[Tensor], Any]] = None,
+    ):
+
+        # ensure private vars to avoid conflicts when loading keys from dataset
+        self._hdf5_file = h5py.File(path, "r")
+        self._keys = self._hdf5_file.keys()
+        self._transform = transform
+        self._target_transform = target_transform
+
+        # set attributes that were attached to serialized dataset
+        for key, value in self._hdf5_file.attrs.items():
+            setattr(self, key, value)
+
+    def __repr__(self):
+        rep = f"HDF5Dataset({self._hdf5_file}, keys={list(self._keys)}, len={len(self)}"
+        if self._transform is not None:
+            rep += f", transform={self._transform}"
+        if self._target_transform is not None:
+            rep += f", transform={self._target_transform}"
+        rep += ")"
+        return rep
+
+    def __getitem__(self, pos: int) -> Union[Tensor, Tuple[Tensor, ...]]:
+        tensors = [torch.from_numpy(self._hdf5_file[k][pos]) for k in self._keys]
+        return self.__postprocess(tensors)
+
+    def __len__(self):
+        return len(self._hdf5_file[next(iter(self._keys))])
+
+    def __postprocess(self, tensors: List[Tensor]) -> Union[Tensor, Tuple[Tensor, ...]]:
+        if len(tensors) < 0:
+            raise RuntimeError("Loaded dataset returned no tensors")
+
+        # require two or more tensors when target transform given
+        if self._target_transform is not None and len(tensors) < 2:
+            raise RuntimeError(
+                "Expected loaded dataset to return 2 tensors" f"when target_transform is given, found {len(tensors)}"
+            )
+
+        # warn if more than 2 tensors - result will be
+        #    (transform(t1), target_transform(t2), t3, ...)
+        if (self._transform is not None or self._target_transform is not None) and len(tensors) > 2:
+            warnings.warn(
+                f"Loaded dataset returned {len(tensors)} tensors when transform/target_transform "
+                "given. Only tensors 1 and 2 will have a transform applied."
+            )
+
+        if self._transform is not None:
+            tensors[0] = self._transform(tensors[0])
+        if self._target_transform is not None:
+            tensors[1] = self._target_transform(tensors[1])
+
+        return tuple(tensors) if len(tensors) > 1 else tensors[0]
+
+
+__all__ = ["SerializeMixin", "HDF5Dataset"]
