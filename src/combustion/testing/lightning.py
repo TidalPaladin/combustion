@@ -198,6 +198,7 @@ class LightningModuleTest:
         outputs = [model.validation_step(batch, 0) for batch in dl]
         result = model.validation_epoch_end(outputs)
         assert isinstance(result, dict)
+        return outputs, result
 
     @pytest.mark.usefixtures("prepare_data")
     def test_test_step(self, model: pl.LightningModule):
@@ -231,3 +232,4 @@ class LightningModuleTest:
         outputs = [model.test_step(batch, 0) for batch in dl]
         result = model.test_epoch_end(outputs)
         assert isinstance(result, dict)
+        return outputs, result
