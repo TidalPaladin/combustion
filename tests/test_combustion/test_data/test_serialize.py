@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import builtins
 import math
 import os
 from pathlib import Path
@@ -148,3 +149,14 @@ class TestSerialize:
 
         ds2 = dataset.__class__.load(path, transform=xform, target_transform=xform)
         print(repr(ds2))
+
+    @pytest.mark.parametrize("verbose", [True, False])
+    def test_verbose(self, h5py, tmp_path, dataset, mocker, verbose):
+        path = os.path.join(tmp_path, "foo.pth")
+        spy = mocker.spy(builtins, "print")
+        dataset.save(path, verbose=verbose)
+
+        if verbose:
+            spy.assert_called()
+        else:
+            spy.assert_not_called()
