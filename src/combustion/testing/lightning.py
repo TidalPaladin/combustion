@@ -35,6 +35,48 @@ def assert_valid_loss(x):
 
 
 class LightningModuleTest:
+    r"""Base class to automate testing of LightningModules with Pytest.
+
+    The following fixtures should be implemented in the subclass:
+
+        * A `model` fixture which should create and return an instance
+        of the model to be tested.
+
+        * A `data` fixture that will be used to test `model.forward()`.
+        It should return an input that will be passed to the `forward()` call of
+        the model being tested.
+
+    Simple tests are provided for the following lifecycle hooks:
+        * `configure_optimizers`
+        * `prepare_data` (optional)
+        * `train_dataloader`
+        * `val_dataloader` (optional)
+        * `test_dataloader` (optional)
+        * `training_step`
+        * `validation_step` (optional)
+        * `test_step` (optional)
+        * `validation_epoch_end` (optional)
+        * `test_epoch_end` (optional)
+
+    If the model under test does not implement an optional method, the test will be
+    skipped.
+
+    The following mock attributes will be attached to your model as `PropertyMock`
+        * `logger`
+        * `trainer`
+
+    Example Usage::
+        >>> # minimal example
+        >>> class TestModel(LightningModuleTest):
+        >>>     @pytest.fixture
+        >>>     def model():
+        >>>         return ... # return your model here
+        >>>
+        >>>     @pytest.fixture
+        >>>     def data():
+        >>>         return torch.rand(2, 1, 10, 10) # will be passed to model.forward()
+    """
+
     @pytest.fixture
     def model(self):
         raise pytest.UsageError("Must implement model fixture for LightningModuleTest")
