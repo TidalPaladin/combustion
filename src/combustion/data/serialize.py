@@ -152,7 +152,10 @@ class SerializeMixin:
         with h5py.File(path, "a") as f:
             for key, value in vars(self).items():
                 if not isinstance(value, Tensor):
-                    f.attrs[key] = value
+                    try:
+                        f.attrs[key] = value
+                    except TypeError:
+                        pass
 
         return path
 
@@ -207,7 +210,9 @@ class HDF5Dataset(SerializeMixin):
         return self.__postprocess(tensors)
 
     def __len__(self):
-        return len(self._hdf5_file[next(iter(self._keys))])
+        lengths = [len(self._hdf5_file[k]) for k in self._keys]
+        assert len(set(lengths)) == 1, "all lengths equal"
+        return lengths[0]
 
     def __postprocess(self, tensors: List[Tensor]) -> Union[Tensor, Tuple[Tensor, ...]]:
         if len(tensors) < 0:

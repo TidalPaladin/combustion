@@ -160,3 +160,21 @@ class TestSerialize:
             spy.assert_called()
         else:
             spy.assert_not_called()
+
+    def test_multiple_loops(self, h5py, tmp_path, dataset):
+        os.path.join(tmp_path, "foo_{shard}.pth")
+        path = os.path.join(tmp_path, "foo.pth")
+        dataset.save(path)
+
+        for example in dataset:
+            pass
+
+        for example in dataset:
+            pass
+
+    def test_length(self, h5py, tmp_path, dataset):
+        os.path.join(tmp_path, "foo_{shard}.pth")
+        path = os.path.join(tmp_path, "foo.pth")
+        dataset.save(path)
+        ds = dataset.__class__.load(path)
+        assert len(ds) == 10
