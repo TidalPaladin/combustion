@@ -95,7 +95,7 @@ class TestFunctionalFocalLossWithLogits(TestFunctionalFocalLoss):
         gamma_term = (1 - p) ** gamma
         true_loss = (pos_weight if pos_weight is not None else 1.0) * gamma_term * bce
         loss = fn(x, y, gamma=gamma, pos_weight=pos_weight)
-        assert true_loss.item() == loss.item()
+        assert torch.allclose(true_loss, loss)
 
 
 class TestFocalLoss:
@@ -130,7 +130,7 @@ class TestFocalLoss:
         gamma_term = (1 - x) ** gamma
         true_loss = (pos_weight if pos_weight is not None else 1.0) * gamma_term * bce
         loss = cls(gamma=gamma, pos_weight=pos_weight)(x, y)
-        assert true_loss.item() == loss.item()
+        assert torch.allclose(true_loss, loss)
 
     def test_is_differentiable(self, cls, true_cls):
         x = torch.rand(10, 10, requires_grad=True)
@@ -174,4 +174,4 @@ class TestFocalLossWithLogits(TestFocalLoss):
         gamma_term = (1 - p) ** gamma
         true_loss = (pos_weight if pos_weight is not None else 1.0) * gamma_term * bce
         loss = cls(gamma=gamma, pos_weight=pos_weight)(x, y)
-        assert true_loss.item() == loss.item()
+        assert torch.allclose(true_loss, loss)
