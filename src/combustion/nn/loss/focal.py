@@ -19,6 +19,7 @@ def focal_loss(
     pos_weight: Optional[float] = None,
     label_smoothing: Optional[float] = None,
     reduction: str = "mean",
+    normalize: bool = False,
 ):
     """Computes the Focal Loss between input and target. See FocalLoss for more details"""
 
@@ -52,23 +53,15 @@ def focal_loss_with_logits(
     pos_weight: Optional[float] = None,
     label_smoothing: Optional[float] = None,
     reduction: str = "mean",
+    normalize: bool = False,
 ):
     """Computes the Focal Loss between input and target. See FocalLossWithLogits for more details"""
 
-    with torch.no_grad():
-        target = target.clone().detach()
+    positive_indices = target == 1
 
-        if pos_weight is not None:
-            # create alpha tensor with fill:
-            # pos_weight if target == 1 else 1 - pos_weight
-            alpha = torch.empty_like(input).fill_(1 - pos_weight)
-            alpha[target == 1] = pos_weight
-        else:
-            alpha = torch.ones_like(input)
-
-        # apply label smoothing, clamping true labels between x, 1-x
-        if label_smoothing is not None:
-            target.clamp_(label_smoothing, 1.0 - label_smoothing)
+    # apply label smoothing, clamping true labels between x, 1-x
+    if label_smoothing is not None:
+        target = target.clamp(label_smoothing, 1.0 - label_smoothing)
 
     # loss in paper can be expressed as
     # alpha * (1 - pt) ** gamma * (BCE loss)
@@ -76,13 +69,26 @@ def focal_loss_with_logits(
 
     # calculate p, pt, and vanilla BCELoss
     # NOTE BCE loss gets logits input, NOT p=sigmoid(input) calulated below
-    p = torch.sigmoid(input)
-    pt = torch.where(target == 1, p, 1 - p)
     ce_loss = F.binary_cross_entropy_with_logits(input, target, reduction="none")
-    focal_term = torch.pow(1 - pt, gamma)
 
-    # combine vanilla BCE, focal term
-    loss = alpha * focal_term * ce_loss
+    # Therefore one unified form for positive (z = 1) and negative (z = 0)
+    # samples is:
+    #      (1 - p_t)^r = exp(-r * z * x - r * log(1 + exp(-x))).
+    neg_logits = input.neg()
+
+    if gamma != 0:
+        focal_term = torch.exp(gamma * (target * neg_logits - neg_logits.exp().log1p()))
+        loss = focal_term * ce_loss
+    else:
+        loss = ce_loss
+
+    if pos_weight is not None:
+        loss = torch.where(positive_indices, pos_weight * loss, (1.0 - pos_weight) * loss)
+
+    # normalize
+    if normalize:
+        num_positive_examples = (target == 1).sum().clamp_(min=-1)
+        loss.div_(num_positive_examples)
 
     if reduction == "mean":
         loss = loss.mean()
@@ -134,14 +140,13 @@ class _FocalLoss(nn.Module):
 
     _loss = focal_loss
 
-    def __init__(
-        self, gamma, pos_weight=None, label_smoothing=None, reduction: str = "mean",
-    ):
+    def __init__(self, gamma, pos_weight=None, label_smoothing=None, reduction: str = "mean", normalize: bool = False):
         super(_FocalLoss, self).__init__()
         self.gamma = gamma
         self.alpha = pos_weight
         self.label_smoothing = label_smoothing
         self.reduction = reduction
+        self.normalize = normalize
 
     @classmethod
     def from_args(cls, args):
@@ -154,7 +159,9 @@ class _FocalLoss(nn.Module):
         :param input: The predicted outputs :type input: Tensor :param
         target: The target outputs :type target: Tensor :rtype: Tensor
         """
-        loss = self.__class__._loss(input, target, self.gamma, self.alpha, self.label_smoothing, self.reduction,)
+        loss = self.__class__._loss(
+            input, target, self.gamma, self.alpha, self.label_smoothing, self.reduction, self.normalize
+        )
         return loss
 
 
