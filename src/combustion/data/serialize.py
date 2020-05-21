@@ -22,7 +22,9 @@ class SerializeMixin:
     """Mixin to enable serialization a map or iterable style dataset to disk in
     HDF5 file format."""
 
-    def save(self, path: str, num_shards: Optional[int] = None, shard_size: Optional[int] = None,) -> None:
+    def save(
+        self, path: str, num_shards: Optional[int] = None, shard_size: Optional[int] = None, verbose: bool = True
+    ) -> None:
         r"""Saves the contents of the dataset to one or more HDF5 files.
 
         Serialization is performed as follows:
@@ -48,6 +50,7 @@ class SerializeMixin:
             shard_size (optional, int): If given, multiple files will be created such that
                 each file contains `shard_size` examples. Exclusive with `num_shards`.
                 Must be a positive int.
+            verbose (bool): If False, do not print progress updates during saving.
         """
         if num_shards is not None and shard_size is not None:
             raise ValueError("num_shards is incompatible with shard_size, please use one or the other")
@@ -72,14 +75,14 @@ class SerializeMixin:
         # write shards
         files = set()
         if num_shards == 1:
-            f = SerializeMixin._write_shard(path, iter(self), shard_size)
+            f = SerializeMixin._write_shard(path, iter(self), shard_size, verbose=verbose)
             files.add(f)
         else:
             # slice self iterator for multi-sharding
             slices = [(x * shard_size, (x + 1) * shard_size) for x in range(num_shards)]
             for shard_index, (low, high) in enumerate(slices, start=1):
                 data = itertools.islice(iter(self), low, high)
-                f = SerializeMixin._write_shard(path, data, shard_size, shard_index)
+                f = SerializeMixin._write_shard(path, data, shard_size, shard_index, verbose=verbose)
                 files.add(f)
 
         self._finalize_master(path, files)
@@ -107,10 +110,13 @@ class SerializeMixin:
         return HDF5Dataset(path, transform, target_transform)
 
     @staticmethod
-    def _write_shard(path, source, shard_size, shard_index=None):
+    def _write_shard(path, source, shard_size, shard_index=None, verbose=True):
         if shard_index is not None:
             path, ext = os.path.splitext(path)
             path = path + f"_{shard_index}" + ext
+
+        if verbose:
+            print(f"Writing file {path}", end="", flush=True)
 
         with h5py.File(path, "w") as f:
             for example_index, example in enumerate(source):
@@ -120,6 +126,9 @@ class SerializeMixin:
                     if key not in f.keys():
                         f.create_dataset(key, (shard_size, *tensor.shape))
                     f[key][example_index, ...] = tensor
+
+                if verbose:
+                    print(".", end="", flush=True)
 
             if shard_index is not None:
                 f.attrs["shard_index"] = int(shard_index)
@@ -143,7 +152,10 @@ class SerializeMixin:
         with h5py.File(path, "a") as f:
             for key, value in vars(self).items():
                 if not isinstance(value, Tensor):
-                    f.attrs[key] = value
+                    try:
+                        f.attrs[key] = value
+                    except TypeError:
+                        pass
 
         return path
 
@@ -198,7 +210,9 @@ class HDF5Dataset(SerializeMixin):
         return self.__postprocess(tensors)
 
     def __len__(self):
-        return len(self._hdf5_file[next(iter(self._keys))])
+        lengths = [len(self._hdf5_file[k]) for k in self._keys]
+        assert len(set(lengths)) == 1, "all lengths equal"
+        return lengths[0]
 
     def __postprocess(self, tensors: List[Tensor]) -> Union[Tensor, Tuple[Tensor, ...]]:
         if len(tensors) < 0:

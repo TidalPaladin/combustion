@@ -243,3 +243,30 @@ def test_test_dataloader(cfg, present):
         assert isinstance(dataloader, torch.utils.data.DataLoader)
     else:
         assert dataloader is None
+
+
+@pytest.mark.parametrize("subset", ["test", "validate"])
+@pytest.mark.parametrize("split", [True, False])
+def test_dataloader_from_subset(cfg, subset, split):
+    if subset == "test":
+        if split:
+            cfg.dataset["test"] = 10
+        del cfg.dataset["validate"]
+    else:
+        if split:
+            cfg.dataset["validate"] = 10
+        del cfg.dataset["test"]
+
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+
+    if subset == "test":
+        dataloader = model.test_dataloader()
+    else:
+        dataloader = model.val_dataloader()
+    train_dl = model.train_dataloader()
+
+    # TODO should check shuffle=False, but this is hidden in dataloader.sampler
+    assert isinstance(dataloader, torch.utils.data.DataLoader)
+    for key in ["pin_memory", "batch_size", "num_workers", "drop_last"]:
+        assert getattr(dataloader, key) == getattr(train_dl, key)
