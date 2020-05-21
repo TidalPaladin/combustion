@@ -86,3 +86,10 @@ def test_input_image_unchanged(img, label, bbox):
 def test_result_channels_first(img, label, bbox):
     result = visualize_bbox(img, bbox, label)
     assert result.shape[-2:] == (32, 32)
+
+
+def test_class_names(img, label, bbox):
+    class_names = {1: "foo", 2: "bar"}
+    no_names = visualize_bbox(img, bbox, label)
+    names = visualize_bbox(img, bbox, label, class_names=class_names)
+    assert names.shape == no_names.shape and not torch.allclose(torch.as_tensor(names), torch.as_tensor(no_names))

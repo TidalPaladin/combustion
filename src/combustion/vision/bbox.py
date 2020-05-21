@@ -26,6 +26,7 @@ def visualize_bbox(
     class_names: Optional[Dict[int, str]] = None,
     box_color: Tuple[int, int, int] = (255, 0, 0),
     text_color: Tuple[int, int, int] = (255, 255, 255),
+    label_alpha: float = 0.4,
     thickness: int = 2,
 ) -> Union[Tensor, ndarray]:
     r"""Adds bounding box visualization to an input array

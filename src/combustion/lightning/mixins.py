@@ -100,21 +100,40 @@ class HydraMixin(ABC):
         self.val_ds: Optional[Dataset] = val_ds
         self.test_ds: Optional[Dataset] = test_ds
 
-        num_workers = self.config.dataset.get("num_workers")
-        self.num_workers = num_workers if num_workers is not None else 1
-
     def train_dataloader(self) -> Optional[DataLoader]:
-        return self._dataloader(self.train_ds)
+        return self._dataloader(self.train_ds, "train")
 
     def val_dataloader(self) -> Optional[DataLoader]:
-        return self._dataloader(self.val_ds)
+        return self._dataloader(self.val_ds, "validate")
 
     def test_dataloader(self) -> Optional[DataLoader]:
-        return self._dataloader(self.test_ds)
+        return self._dataloader(self.test_ds, "test")
 
-    def _dataloader(self, dataset: Optional[Dataset]) -> Optional[DataLoader]:
+    def _dataloader(self, dataset: Optional[Dataset], split: str) -> Optional[DataLoader]:
         if dataset is not None:
-            return DataLoader(dataset, num_workers=self.num_workers, batch_size=self.hparams["batch_size"],)
+            # try loading keys from dataset config
+            assert split in self.config.dataset, f"split {split} missing from dataset config"
+            if isinstance(self.config.dataset[split], (DictConfig, dict)):
+                dataset_config = dict(self.config.dataset[split])
+
+            # fallback to using training config, but force shuffle=False for test/val
+            else:
+                dataset_config = dict(self.config.dataset["train"])
+                dataset_config["shuffle"] = False
+
+            num_workers = dataset_config.get("num_workers", 1)
+            pin_memory = dataset_config.get("pin_memory", False)
+            drop_last = dataset_config.get("drop_last", False)
+            shuffle = dataset_config.get("shuffle", False)
+
+            return DataLoader(
+                dataset,
+                num_workers=num_workers,
+                batch_size=self.hparams["batch_size"],
+                shuffle=shuffle,
+                pin_memory=pin_memory,
+                drop_last=drop_last,
+            )
         else:
             return None
 
