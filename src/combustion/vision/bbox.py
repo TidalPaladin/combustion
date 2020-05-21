@@ -20,8 +20,9 @@ TEXT_COLOR = (255, 255, 255)
 
 def visualize_bbox(
     img: Union[Tensor, ndarray],
-    bbox: Union[Tensor, ndarray],
-    label: Union[Tensor, ndarray],
+    bbox: Optional[Union[Tensor, ndarray]] = None,
+    label: Optional[Union[Tensor, ndarray]] = None,
+    scores: Optional[Union[Tensor, ndarray]] = None,
     class_names: Optional[Dict[int, str]] = None,
     box_color: Tuple[int, int, int] = (255, 0, 0),
     text_color: Tuple[int, int, int] = (255, 255, 255),
@@ -32,8 +33,9 @@ def visualize_bbox(
     original_img_type = type(img)
 
     img: Tensor = _check_input(img, "img", (2, 3))
-    bbox: Tensor = _check_input(bbox, "bbox", 2, (None, 4))
-    label: Tensor = _check_input(label, "label", 2, (None, 1))
+    bbox: Optional[Tensor] = _check_input(bbox, "bbox", 2, (None, 4))
+    label: Optional[Tensor] = _check_input(label, "label", 2, (None, 1))
+    scores: Optional[Tensor] = _check_input(scores, "scores", 2, (None, 1))
 
     # permute to channels last
     if img.ndim == 3:
@@ -41,38 +43,43 @@ def visualize_bbox(
     else:
         img = img.unsqueeze(-1)
 
-    img, bbox, label = [x.cpu().numpy() for x in (img, bbox, label)]
+    img, bbox, label = [x.cpu().numpy() if x is not None else None for x in (img, bbox, label)]
 
     # convert grayscale input to color for bounding boxes
     if img.shape[-1] < 3:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
-    # add bbox and class label for each box
-    for coords, cls in zip(bbox, label):
-        x_min, y_min, x_max, y_max = [int(c) for c in coords]
+    if bbox is not None:
+        for i, coords in enumerate(bbox):
+            x_min, y_min, x_max, y_max = [int(c) for c in coords]
 
-        # bounding box
-        cv2.rectangle(
-            img, (x_min, y_min), (x_max, y_max), box_color, thickness,
-        )
+            # bounding box
+            cv2.rectangle(
+                img, (x_min, y_min), (x_max, y_max), box_color, thickness,
+            )
 
-        if class_names is not None:
-            class_name = class_names[cls]
-        else:
-            class_name = f"Class {cls}"
+            if label is not None:
+                cls = label[i].item()
+                if class_names is not None:
+                    class_name = class_names[cls]
+                else:
+                    class_name = f"Class {cls}"
 
-        # tag bounding box with class name / integer id
-        ((text_width, text_height), _) = cv2.getTextSize(class_name, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)
-        cv2.rectangle(img, (x_min, y_min - int(1.3 * text_height)), (x_min + text_width, y_min), box_color, -1)
-        cv2.putText(
-            img,
-            class_name,
-            (x_min, y_min - int(0.3 * text_height)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.35,
-            text_color,
-            lineType=cv2.LINE_AA,
-        )
+                if scores is not None:
+                    class_name += f" - {scores[i]}"
+
+                # tag bounding box with class name / integer id
+                ((text_width, text_height), _) = cv2.getTextSize(class_name, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)
+                cv2.rectangle(img, (x_min, y_min - int(1.3 * text_height)), (x_min + text_width, y_min), box_color, -1)
+                cv2.putText(
+                    img,
+                    class_name,
+                    (x_min, y_min - int(0.3 * text_height)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.35,
+                    text_color,
+                    lineType=cv2.LINE_AA,
+                )
 
     # restore original data type with channels first ordering
     channel, height, width = -1, 0, 1
@@ -86,6 +93,11 @@ def visualize_bbox(
 
 
 def _check_input(x, name, ndim=None, shape=None):
+    if name != "img" and x is None:
+        return None
+    elif x is None:
+        raise ValueError(f"img cannot be None")
+
     if not isinstance(x, (Tensor, ndarray)):
         raise TypeError(f"Expected Tensor or np.ndarray for {name}, found {type(x)}")
 
