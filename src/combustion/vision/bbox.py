@@ -67,7 +67,7 @@ def visualize_bbox(
                     class_name = f"Class {cls}"
 
                 if scores is not None:
-                    class_name += f" - {scores[i]}"
+                    class_name += f" - {scores[i].item():0.3f}"
 
                 # tag bounding box with class name / integer id
                 ((text_width, text_height), _) = cv2.getTextSize(class_name, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)
