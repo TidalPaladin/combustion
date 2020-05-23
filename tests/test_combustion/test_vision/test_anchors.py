@@ -4,6 +4,7 @@
 import pytest
 import torch
 
+from combustion.testing import cuda_or_skip
 from combustion.vision.anchors import AnchorBoxTransform, Anchors, ClipBoxes
 
 
@@ -20,9 +21,26 @@ def levels(request):
     return request.param
 
 
-def test_num_anchors_generated(image, levels):
+def test_generate_anchors(image, levels):
     layer = Anchors(levels)
     len(layer.ratios) * len(layer.scales)
+    anchors = layer(image)
+    assert anchors.shape[-1] == 4
+
+
+def test_num_anchors_genreated():
+    levels = [
+        0,
+    ]
+    image = torch.rand(1, 3, 4, 4)
+    sizes = [
+        2,
+    ]
+    strides = [
+        1,
+    ]
+
+    layer = Anchors(levels, sizes=sizes, strides=strides)
     anchors = layer(image)
     assert anchors.shape[-1] == 4
 
@@ -58,3 +76,24 @@ def test_anchor_box_transform(image, log_length, mean, std):
     layer = AnchorBoxTransform(mean=mean, std=std, log_length=log_length)
     output = layer(boxes, deltas)
     assert torch.allclose(boxes, output)
+
+
+@cuda_or_skip
+def test_memory(levels):
+    image = torch.rand(1, 3, 64, 64)
+    layer = Anchors(levels)
+    image = image.cuda()
+    len(layer.ratios) * len(layer.scales)
+
+    torch.cuda.reset_peak_memory_stats()
+    memory_before = torch.cuda.max_memory_allocated()
+    anchors = layer(image)
+    memory_after = torch.cuda.max_memory_allocated()
+    memory_delta = memory_after - memory_before
+
+    num_anchors = 9
+    bytes_per_float = 4
+    coords_per_box = 4
+    num_levels = len(levels)
+
+    assert memory_delta <= anchors.numel() * num_anchors * bytes_per_float * coords_per_box * num_levels * 4
