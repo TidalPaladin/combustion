@@ -7,6 +7,8 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader
 
+from .utils import cuda_or_skip
+
 
 def check_overriden(model, method):
     try:
@@ -141,15 +143,34 @@ class LightningModuleTest:
         check_dataloader(dl)
         return dl
 
+    @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
-    def test_forward(self, model: pl.LightningModule, data: torch.Tensor):
+    @pytest.mark.parametrize("training", [True, False])
+    def test_forward(self, model: pl.LightningModule, data: torch.Tensor, training: bool):
+        if torch.cuda.is_available():
+            model = model.cuda()
+            data = data.cuda()
+
+        if training:
+            model.train()
+        else:
+            model.eval()
+
         _ = model(data)
         assert _ is not None
 
+    @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_training_step(self, model: pl.LightningModule):
         dl = model.train_dataloader()
         batch = next(iter(dl))
+
+        if torch.cuda.is_available():
+            batch = [x.cuda() for x in batch]
+            model = model.cuda()
+
+        model.train()
+
         # TODO this can't handle multiple optimizers
         output = model.training_step(batch, 0)
         assert isinstance(output, dict)
@@ -165,6 +186,7 @@ class LightningModuleTest:
 
         return batch, output
 
+    @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_validation_step(self, model: pl.LightningModule):
         check_overriden(model, "val_dataloader")
@@ -173,6 +195,12 @@ class LightningModuleTest:
         dl = model.val_dataloader()
         # TODO this can't handle multiple optimizers
         batch = next(iter(dl))
+
+        if torch.cuda.is_available():
+            batch = [x.cuda() for x in batch]
+            model = model.cuda()
+
+        model.eval()
         output = model.validation_step(batch, 0)
 
         assert isinstance(output, dict)
@@ -189,17 +217,27 @@ class LightningModuleTest:
 
         return batch, output
 
+    @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_validation_epoch_end(self, model: pl.LightningModule):
         check_overriden(model, "val_dataloader")
         check_overriden(model, "validation_step")
         check_overriden(model, "validation_epoch_end")
         dl = model.val_dataloader()
-        outputs = [model.validation_step(batch, 0) for batch in dl]
+
+        if torch.cuda.is_available():
+            model = model.cuda()
+            model.eval()
+            outputs = [model.validation_step([x.cuda() for x in batch], 0) for batch in dl]
+        else:
+            model.eval()
+            outputs = [model.validation_step(batch, 0) for batch in dl]
+
         result = model.validation_epoch_end(outputs)
         assert isinstance(result, dict)
         return outputs, result
 
+    @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_test_step(self, model: pl.LightningModule):
         check_overriden(model, "test_dataloader")
@@ -207,7 +245,13 @@ class LightningModuleTest:
 
         dl = model.test_dataloader()
         batch = next(iter(dl))
+
+        if torch.cuda.is_available():
+            batch = [x.cuda() for x in batch]
+            model = model.cuda()
+
         # TODO this can't handle multiple optimizers
+        model.eval()
         output = model.test_step(batch, 0)
 
         assert isinstance(output, dict)
@@ -223,13 +267,22 @@ class LightningModuleTest:
             assert isinstance(output["progress_bar"], dict)
         return batch, output
 
+    @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_test_epoch_end(self, model: pl.LightningModule):
         check_overriden(model, "test_dataloader")
         check_overriden(model, "test_step")
         check_overriden(model, "test_epoch_end")
         dl = model.test_dataloader()
-        outputs = [model.test_step(batch, 0) for batch in dl]
+
+        if torch.cuda.is_available():
+            model = model.cuda()
+            model.eval()
+            outputs = [model.test_step([x.cuda() for x in batch], 0) for batch in dl]
+        else:
+            model.eval()
+            outputs = [model.test_step(batch, 0) for batch in dl]
+
         result = model.test_epoch_end(outputs)
         assert isinstance(result, dict)
         return outputs, result
