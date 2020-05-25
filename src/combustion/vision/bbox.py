@@ -97,7 +97,7 @@ def _check_input(x, name, ndim=None, shape=None):
     if name != "img" and x is None:
         return None
     elif x is None:
-        raise ValueError(f"img cannot be None")
+        raise ValueError("img cannot be None")
 
     if not isinstance(x, (Tensor, ndarray)):
         raise TypeError(f"Expected Tensor or np.ndarray for {name}, found {type(x)}")
