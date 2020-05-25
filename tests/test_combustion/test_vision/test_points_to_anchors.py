@@ -5,6 +5,7 @@ import pytest
 import torch
 from torch.distributions import Binomial
 
+from combustion.testing import cuda_or_skip
 from combustion.vision import PointsToAnchors
 
 
@@ -101,6 +102,7 @@ def test_points_to_anchors(points, upsample, one_hot_indices, max_rois, num_clas
     assert (reg[..., 1] <= reg[..., 3]).all()
 
 
+@cuda_or_skip
 def test_cuda(batch_size):
     layer = PointsToAnchors(2, 10, 0.0)
     if batch_size is not None:
