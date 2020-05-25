@@ -4,6 +4,7 @@
 from typing import Optional, Tuple
 
 import torch
+from kornia.feature import non_maxima_suppression2d
 from torch import Tensor
 
 
@@ -161,3 +162,107 @@ class AnchorsToPoints:
         divisor = sigma.pow(2).mul_(2).view(num_rois, 1, 1).expand_as(square_diff_x)
         maps = (square_diff_x + square_diff_y).div_(divisor).neg_().exp()
         return maps
+
+
+class PointsToAnchors:
+    r"""Transform that converts CenterNet style labels to anchor boxes and class labels
+    (i.e. reverses the transform performed by `AnchorsToPoints`) as described in the
+    paper `Objects as Points:`_ . Anchor boxes are identified in the input as points
+    that are greater than their 8 neighbors. The maximum number of boxes returned is
+    parameterized, and selection is performed based on classification score. A threshold
+    is can also be set such that scores below this threshold will not contribute to the
+    output.
+
+    Args:
+        upsample (int):
+            An integer factor by which the points will be upsampled to produce box coordinates.
+
+        max_roi (int):
+            The maximum number of boxes to include in the final output. Only the top `max_roi` scoring
+            points will be converted into anchor boxes.
+
+        threshold (float, optional):
+            If given, discard boxes with classification scores less than or equal to `threshold`.
+            Default 0.0
+
+    Shape:
+        - Points: :math:`(*, C + 4, H, W)` where :math:`C` is the number of classes, and :math:`H, W`
+          are the height and width of the heatmap.
+        - Output: :math:`(*, N, 5)` where :math:`*` means an optional batch dimension
+          and :math:`N` is the number of output anchor boxes. Indices `0-3` of the output give
+          the box coordinates :math:`(x1, y1, x2, y2)`, and index `4` gives the class label.
+
+    .. _Objects as Points:
+        https://arxiv.org/abs/1904.07850
+    """
+
+    def __init__(
+        self, upsample: int, max_roi: int, threshold: float = 0.0,
+    ):
+        self.max_roi = int(max_roi)
+        self.upsample = int(upsample)
+        self.threshold = float(threshold)
+
+    def __repr__(self):
+        s = f"PointsToAnchors(upsample={self.upsample}"
+        s += f", max_roi={self.max_roi}"
+        if self.threshold > 0:
+            s += f", threshold={self.threshold}"
+        s += ")"
+        return s
+
+    def __call__(self, points: Tensor) -> Tensor:
+        # batched recursion
+        if points.ndim > 3:
+            return self._batched_recurse(points)
+
+        classes, regressions = points[:-4, :, :], points[-4:, :, :]
+        classes.shape[-3]
+        height, width = classes.shape[-2:]
+
+        # identify maxima as points greater than their 8 neighbors
+        classes = non_maxima_suppression2d(classes.unsqueeze(0), kernel_size=(3,) * 2)
+
+        # extract class / center x / center y indices of top k scores over heatmap
+        nms_scores, nms_idx = classes.view(-1).topk(self.max_roi)
+        cls = (nms_idx // (height * width)).unsqueeze(-1)
+        center_x = (nms_idx % (height * width) // height).unsqueeze(-1)
+        center_y = (nms_idx % (height * width) % height).unsqueeze(-1)
+
+        offset_x = regressions[0, center_y, center_x]
+        offset_y = regressions[1, center_y, center_x]
+        size_x = regressions[2, center_y, center_x]
+        size_y = regressions[3, center_y, center_x]
+
+        # get upsampled centers by scaling up and applying offset
+        center_x = center_x.float().mul_(self.upsample).add_(offset_x)
+        center_y = center_y.float().mul_(self.upsample).add_(offset_y)
+
+        # get box coordinates by applying height/width deltas about upsampled centers
+        x1 = center_x - size_x.div(2)
+        x2 = center_x + size_x.div(2)
+        y1 = center_y - size_y.div(2)
+        y2 = center_y + size_y.div(2)
+
+        output = torch.cat([x1, y1, x2, y2, cls.float()], dim=-1)
+        output = output[nms_scores > self.threshold]
+        return output
+
+    def _batched_recurse(self, points: Tensor) -> Tensor:
+        assert points.ndim > 3
+        batch_size = points.shape[0]
+
+        # recurse on examples in batch
+        results = []
+        for elem in points:
+            results.append(self(elem))
+
+        # determine maximum number of boxes in example for padding
+        max_roi = max([t.shape[0] for t in results])
+
+        # combine examples into output batch
+        output = torch.empty(batch_size, max_roi, 5).fill_(-1).type_as(points)
+        for i, result in enumerate(results):
+            num_roi = result.shape[0]
+            output[i, :num_roi, ...] = result
+        return output
