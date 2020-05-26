@@ -89,13 +89,13 @@ def test_points_to_anchors(points, upsample, one_hot_indices, max_rois, num_clas
 
     if batch_size is None:
         assert output.shape[0] <= max_rois
-        assert output.shape[1] == 5
+        assert output.shape[1] == 6
     else:
         assert output.shape[0] == batch_size
         assert output.shape[1] <= max_rois
-        assert output.shape[2] == 5
+        assert output.shape[2] == 6
 
-    cls, reg = output[..., :, 4:].round(), output[..., :, :4]
+    cls, score, reg = output[..., :, 4:5].round(), output[..., :, 5:], output[..., :, :4]
 
     assert ((cls >= -1) & (cls < num_classes)).all()
     assert (reg[..., 0] <= reg[..., 2]).all()

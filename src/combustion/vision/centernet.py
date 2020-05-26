@@ -188,9 +188,10 @@ class PointsToAnchors:
     Shape:
         - Points: :math:`(*, C + 4, H, W)` where :math:`C` is the number of classes, and :math:`H, W`
           are the height and width of the heatmap.
-        - Output: :math:`(*, N, 5)` where :math:`*` means an optional batch dimension
+        - Output: :math:`(*, N, 6)` where :math:`*` means an optional batch dimension
           and :math:`N` is the number of output anchor boxes. Indices `0-3` of the output give
-          the box coordinates :math:`(x1, y1, x2, y2)`, and index `4` gives the class label.
+          the box coordinates :math:`(x1, y1, x2, y2)`, index `4` gives classification score,
+          and index `5` gives the class label.
 
     .. _Objects as Points:
         https://arxiv.org/abs/1904.07850
@@ -244,7 +245,7 @@ class PointsToAnchors:
         y1 = center_y - size_y.div(2)
         y2 = center_y + size_y.div(2)
 
-        output = torch.cat([x1, y1, x2, y2, cls.float()], dim=-1)
+        output = torch.cat([x1, y1, x2, y2, nms_scores.unsqueeze(-1), cls.float()], dim=-1)
         output = output[nms_scores > self.threshold]
         return output
 
@@ -261,7 +262,7 @@ class PointsToAnchors:
         max_roi = max([t.shape[0] for t in results])
 
         # combine examples into output batch
-        output = torch.empty(batch_size, max_roi, 5).fill_(-1).type_as(points)
+        output = torch.empty(batch_size, max_roi, 6).fill_(-1).type_as(points)
         for i, result in enumerate(results):
             num_roi = result.shape[0]
             output[i, :num_roi, ...] = result
