@@ -107,3 +107,30 @@ def test_cuda():
     layer = AnchorsToPoints(num_classes, 2)
     output = layer(bbox, classes, (img_h, img_w))
     assert output.device == bbox.device
+
+
+def test_no_box_input():
+    image_shape = (64, 64)
+    num_classes = 2
+    bbox = torch.empty(10, 4).fill_(-1)
+    classes = torch.empty(10, 1).fill_(-1)
+    downsample = 2
+
+    layer = AnchorsToPoints(num_classes, downsample)
+    output = layer(bbox, classes, image_shape)
+
+    height, width = image_shape
+    assert output.shape == (num_classes + 4, height // downsample, width // downsample)
+    assert (output[0:2] == 0).all()
+
+
+def test_exception_on_bad_boxes():
+    image_shape = (64, 64)
+    num_classes = 2
+    bbox = torch.tensor([[2.0, 2.0, 2.0, 2.0]])
+    classes = torch.tensor([[0.0]])
+    downsample = 2
+
+    layer = AnchorsToPoints(num_classes, downsample)
+    with pytest.raises(RuntimeError, match="2., 2., 2., 2."):
+        layer(bbox, classes, image_shape)

@@ -70,6 +70,9 @@ class AnchorsToPoints:
                 results.append(self(box, cls, shape))
             return torch.stack(results, 0)
 
+        valid_indices = classes[..., -1] >= 0
+        bbox, classes = bbox[valid_indices], classes[valid_indices]
+
         # unsqueeze a batch dim if not present
         bbox = bbox.view(bbox.shape[-2], 4)
         classes = classes.view(classes.shape[-2], 1)
@@ -86,6 +89,11 @@ class AnchorsToPoints:
 
         size_target_x = x2 - x1
         size_target_y = y2 - y1
+
+        # if user gives zero-area bounding box there will be nan results
+        bad_indices = (size_target_x == 0) | (size_target_y == 0)
+        if bad_indices.any():
+            raise RuntimeError(f"Found zero area bounding boxes:\n{bbox[bad_indices]}")
 
         # center x/y coords
         center_x = (x2 + x1).div_(2)
@@ -160,6 +168,7 @@ class AnchorsToPoints:
         square_diff_x = (mesh_x - center_x.view(num_rois, 1, 1)).pow_(2)
         square_diff_y = (mesh_y - center_y.view(num_rois, 1, 1)).pow_(2)
         divisor = sigma.pow(2).mul_(2).view(num_rois, 1, 1).expand_as(square_diff_x)
+        assert (divisor != 0).all(), "about to divide by zero, probably a zero area bbox"
         maps = (square_diff_x + square_diff_y).div_(divisor).neg_().exp()
         return maps
 
