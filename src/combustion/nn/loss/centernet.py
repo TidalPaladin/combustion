@@ -35,12 +35,13 @@ class CenterNetLoss:
         reg_loss = self.loc_criterion(pred_regression, tar_regression)
 
         # zero out regression loss for locations that were not box centers
-        reg_indices = (tar_class == tar_class.max()).max(dim=-3, keepdim=True).values.logical_not_().expand_as(reg_loss)
-        reg_loss[reg_indices] = 0
+        box_indices = (tar_class == 1.0).max(dim=-3, keepdim=True).values.expand_as(reg_loss)
+        reg_loss[~box_indices] = 0
 
         if self.reduction == "mean":
-            cls_loss = cls_loss.mean()
-            reg_loss = reg_loss.mean()
+            num_boxes = box_indices.sum().div_(4).clamp_(min=1)
+            cls_loss = cls_loss.sum().div_(num_boxes)
+            reg_loss = reg_loss.sum().div_(num_boxes)
         elif self.reduction == "sum":
             cls_loss = cls_loss.sum()
             reg_loss = reg_loss.sum()
