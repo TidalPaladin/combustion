@@ -139,6 +139,9 @@ class TestRandomInputs:
         else:
             cls = torch.rand(num_classes, *input_shape)
             reg = torch.randint(0, 10, (4, *input_shape))
+
+        maxes = cls.max(dim=-1, keepdim=True).values.max(dim=-2, keepdim=True).values
+        cls.div_(maxes)
         return torch.cat([cls.float(), reg.float()], dim=-3)
 
     def test_center_net_loss(self, input, target):
@@ -147,3 +150,13 @@ class TestRandomInputs:
         assert len(loss) == 2
         cls_loss, reg_loss = loss
         assert cls_loss.bool().any()
+
+    def test_smooth_l1(self, input, target):
+        baseline = CenterNetLoss(reduction="none")
+        criterion = CenterNetLoss(reduction="none", smooth=False)
+
+        true_loss = baseline(input, target)
+        loss = criterion(input, target)
+
+        assert torch.allclose(loss[0], true_loss[0])
+        assert not torch.allclose(loss[1], true_loss[1])

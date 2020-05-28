@@ -4,7 +4,7 @@
 from typing import Optional, Tuple
 
 from torch import Tensor
-from torch.nn import SmoothL1Loss
+from torch.nn import L1Loss, SmoothL1Loss
 
 from .focal import FocalLossWithLogits
 
@@ -16,10 +16,11 @@ class CenterNetLoss:
         pos_weight: float = 0.5,
         label_smoothing: Optional[float] = None,
         reduction: str = "mean",
+        smooth: bool = True,
     ):
         self.reduction = reduction
         self.cls_criterion = FocalLossWithLogits(gamma, pos_weight, label_smoothing, reduction="none")
-        self.loc_criterion = SmoothL1Loss(reduction="none")
+        self.loc_criterion = SmoothL1Loss(reduction="none") if smooth else L1Loss(reduction="none")
 
     def __call__(self, inputs: Tensor, targets: Tensor) -> Tuple[Tensor, Tensor]:
         assert inputs.shape == targets.shape
