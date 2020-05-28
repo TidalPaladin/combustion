@@ -53,3 +53,34 @@ def test_center_net_loss(input, target):
     cls_loss, reg_loss = loss
     assert cls_loss.bool().any()
     assert reg_loss.bool().any()
+
+
+def test_non_center_regressions_ignored():
+    input = torch.tensor(
+        [
+            [[1.0, 0.0], [0.0, 0.0]],
+            [[0.0, 0.0], [0.0, 1.0]],
+            [[1.0, 1.0], [1.0, 1.0]],
+            [[2.0, 2.0], [2.0, 2.0]],
+            [[3.0, 3.0], [3.0, 3.0]],
+            [[4.0, 4.0], [4.0, 4.0]],
+        ]
+    )
+
+    target = torch.tensor(
+        [
+            [[0.0, 0.0], [0.0, 0.0]],
+            [[0.0, 0.0], [0.0, 1.0]],
+            [[-1.0, -1.0], [-1.0, 2.0]],
+            [[-1.0, -1.0], [-1.0, 3.0]],
+            [[-1.0, -1.0], [-1.0, 4.0]],
+            [[-1.0, -1.0], [-1.0, 5.0]],
+        ]
+    )
+
+    criterion = CenterNetLoss(reduction="none")
+
+    cls_loss, reg_loss = criterion(input, target)
+    assert (reg_loss[..., 0, 0] == 0).all()
+    assert (reg_loss[..., 0, 1] == 0).all()
+    assert (reg_loss[..., 1, 1] == 0.5).all()
