@@ -111,3 +111,45 @@ def test_cuda(batch_size):
         points = torch.rand(6, 32, 32).cuda()
     output = layer(points)
     assert output.device == points.device
+
+
+def test_input_unchanged():
+    layer = PointsToAnchors(2, 10, 0.0)
+    points = torch.rand(6, 32, 32)
+    points_orig = points.clone()
+    layer(points)
+    assert torch.allclose(points, points_orig)
+
+
+def test_corner_case():
+    input = torch.tensor(
+        [
+            [0.0, 1.0, 2.0, 2.0, 200.0, 100.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [1.0, 0.0, 1.0, 1.0, 100.0, 100.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [0.0, 0.0, -1.0, -1.0, -1.0, -1.0],
+            [1.0, 0.0, 1.0, 1.0, 100.0, 100.0],
+        ]
+    )
+    input = input.view(2, 8, 6).permute(-1, 0, 1).contiguous()
+    layer = PointsToAnchors(1, 10, 0.0)
+    output = layer(input)
+    expected = torch.tensor(
+        [
+            [-98.0, -48.0, 102.0, 52.0, 1.0, 1.0],
+            [-42.0, -48.0, 58.0, 52.0, 1.0, 0.0],
+            [-45.0, -49.0, 55.0, 51.0, 1.0, 0.0],
+        ]
+    )
+    assert torch.allclose(expected, output)

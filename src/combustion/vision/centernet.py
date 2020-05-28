@@ -47,10 +47,10 @@ class AnchorsToPoints:
     def __init__(
         self, num_classes: int, downsample: int, iou_threshold: Optional[float] = 0.7, radius_div: Optional[float] = 3
     ):
-        self.num_classes = int(num_classes)
-        self.downsample = int(downsample)
-        self.iou_threshold = float(iou_threshold)
-        self.radius_div = float(radius_div)
+        self.num_classes = abs(int(num_classes))
+        self.downsample = abs(int(downsample))
+        self.iou_threshold = abs(float(iou_threshold))
+        self.radius_div = abs(float(radius_div))
 
     def __repr__(self):
         s = f"AnchorsToPoints(num_classes={self.num_classes}"
@@ -87,8 +87,8 @@ class AnchorsToPoints:
         x1, y1 = bbox[..., 0], bbox[..., 1]
         x2, y2 = bbox[..., 2], bbox[..., 3]
 
-        size_target_x = x2 - x1
-        size_target_y = y2 - y1
+        size_target_x = (x2 - x1).abs_()
+        size_target_y = (y2 - y1).abs_()
 
         # if user gives zero-area bounding box there will be nan results
         bad_indices = (size_target_x == 0) | (size_target_y == 0)
@@ -142,9 +142,7 @@ class AnchorsToPoints:
         #   r = threshold * (x2 - x1) + x1 - x2
         #   sigma = r / c
         #   => sigma = [threshold * (x2 - x1) + x1 - x2] / c
-        sigma = (x2 - x1).mul_(self.iou_threshold).add_(x1).sub_(x2).div_(self.radius_div).abs_()
-        kernel_size = (sigma * 3).round_().long()
-        kernel_size = torch.where(kernel_size * 2 != 0, kernel_size, kernel_size + 1)
+        sigma = (x2 - x1).mul_(self.iou_threshold).add_(x1).sub_(x2).div_(self.radius_div).abs_().clamp_(min=1e-6)
         heatmap = self._gaussian_splat(num_rois, center_x, center_y, sigma, out_height, out_width)
 
         # combine heatmaps of same classes within a batch using element-wise maximum
@@ -159,7 +157,7 @@ class AnchorsToPoints:
         return output
 
     def _gaussian_splat(self, num_rois, center_x, center_y, sigma, out_height, out_width) -> Tensor:
-        mesh_x, mesh_y = torch.meshgrid(torch.arange(out_height), torch.arange(out_width))
+        mesh_y, mesh_x = torch.meshgrid(torch.arange(out_height), torch.arange(out_width))
         mesh_x = mesh_x.expand(num_rois, -1, -1).type_as(center_x)
         mesh_y = mesh_y.expand(num_rois, -1, -1).type_as(center_y)
 
@@ -168,6 +166,7 @@ class AnchorsToPoints:
         square_diff_x = (mesh_x - center_x.view(num_rois, 1, 1)).pow_(2)
         square_diff_y = (mesh_y - center_y.view(num_rois, 1, 1)).pow_(2)
         divisor = sigma.pow(2).mul_(2).view(num_rois, 1, 1).expand_as(square_diff_x)
+
         assert (divisor != 0).all(), "about to divide by zero, probably a zero area bbox"
         maps = (square_diff_x + square_diff_y).div_(divisor).neg_().exp()
         return maps
@@ -227,17 +226,22 @@ class PointsToAnchors:
             return self._batched_recurse(points)
 
         classes, regressions = points[:-4, :, :], points[-4:, :, :]
-        classes.shape[-3]
         height, width = classes.shape[-2:]
+        classes.shape[-3]
 
         # identify maxima as points greater than their 8 neighbors
-        classes = non_maxima_suppression2d(classes.unsqueeze(0), kernel_size=(3,) * 2)
+        classes = non_maxima_suppression2d(classes.unsqueeze(0), kernel_size=(3,) * 2).squeeze(0)
 
         # extract class / center x / center y indices of top k scores over heatmap
-        nms_scores, nms_idx = classes.view(-1).topk(self.max_roi)
+        topk = min(self.max_roi, classes.numel())
+        nms_scores, nms_idx = classes.view(-1).topk(topk, dim=-1)
+        nms_idx = nms_idx[nms_scores > self.threshold]
+        nms_scores = nms_scores[nms_scores > self.threshold]
+
+        # % / width
+        center_x = (nms_idx % (height * width) % width).unsqueeze(-1)
+        center_y = (nms_idx % (height * width) // width).unsqueeze(-1)
         cls = (nms_idx // (height * width)).unsqueeze(-1)
-        center_x = (nms_idx % (height * width) // height).unsqueeze(-1)
-        center_y = (nms_idx % (height * width) % height).unsqueeze(-1)
 
         offset_x = regressions[0, center_y, center_x]
         offset_y = regressions[1, center_y, center_x]
@@ -253,6 +257,8 @@ class PointsToAnchors:
         x2 = center_x + size_x.div(2)
         y1 = center_y - size_y.div(2)
         y2 = center_y + size_y.div(2)
+        assert (x1 <= x2).all()
+        assert (y1 <= y2).all()
 
         output = torch.cat([x1, y1, x2, y2, nms_scores.unsqueeze(-1), cls.float()], dim=-1)
         output = output[nms_scores > self.threshold]

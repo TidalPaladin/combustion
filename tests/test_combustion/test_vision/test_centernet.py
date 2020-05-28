@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from combustion.testing import cuda_or_skip
-from combustion.vision import AnchorsToPoints
+from combustion.vision import AnchorsToPoints, PointsToAnchors
 
 
 @pytest.fixture(params=[None, 1, 2])
@@ -134,3 +134,68 @@ def test_exception_on_bad_boxes():
     layer = AnchorsToPoints(num_classes, downsample)
     with pytest.raises(RuntimeError, match="2., 2., 2., 2."):
         layer(bbox, classes, image_shape)
+
+
+@pytest.mark.parametrize("downsample", [2, 4, 8])
+def test_reversible_with_points_to_anchors(downsample):
+    image_shape = (16, 16)
+    num_classes = 3
+    bbox = torch.tensor([[0.0, 00.0, 10.0, 10.0]])
+    classes = torch.tensor([[0.0]])
+
+    to_points = AnchorsToPoints(num_classes, downsample)
+    to_anchors = PointsToAnchors(downsample, 1)
+
+    midpoint = to_points(bbox, classes, image_shape)
+    output = to_anchors(midpoint)
+
+    out_bbox = output[..., :4]
+    out_cls = output[..., 6:7]
+    out_score = output[..., 5:6]
+    assert torch.allclose(out_bbox, bbox)
+    assert torch.allclose(out_cls.type_as(classes), classes)
+
+
+def test_overlapping_boxes():
+    image_shape = (16, 16)
+    num_classes = 3
+    downsample = 8
+    bbox = torch.tensor([[0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 10.0]])
+    classes = torch.tensor([[0.0], [1.0]])
+
+    layer = AnchorsToPoints(num_classes, downsample)
+    output = layer(bbox, classes, image_shape)
+    assert output[0, 0, 0] == 1.0
+    assert output[1, 0, 0] == 1.0
+    assert output[0, 1:, 1:] < 1.0
+    assert output[1, 1:, 1:] < 1.0
+
+
+def test_input_unchanged():
+    image_shape = (16, 16)
+    num_classes = 3
+    downsample = 8
+    bbox = torch.tensor([[0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 10.0]])
+    classes = torch.tensor([[0.0], [1.0]])
+
+    bbox_orig = bbox.clone()
+    classes_orig = classes.clone()
+    layer = AnchorsToPoints(num_classes, downsample)
+    layer(bbox, classes, image_shape)
+
+    assert torch.allclose(bbox_orig, bbox)
+    assert torch.allclose(classes_orig, classes)
+
+
+def test_corner_case():
+    bbox = torch.tensor(
+        [[[115.0, 235.0, 188.0, 345.0], [-1.0, -1.0, -1.0, -1.0], [-1.0, -1.0, -1.0, -1.0], [-1.0, -1.0, -1.0, -1.0]]]
+    )
+    classes = torch.tensor([[[0.0], [-1.0], [-1.0], [-1.0]]])
+    layer = AnchorsToPoints(2, 2, 0.7, 3.0)
+    output = layer(bbox, classes, (512, 256))
+    assert (output[0, :2, ...] == 1).sum() == 1
+
+    positive_ind = (output[:, :2, ...] == 1).nonzero()
+    positive_elems = output[0, :, positive_ind[:, -2], positive_ind[:, -1]]
+    assert (positive_elems[..., -2:] >= 0.0).all()
