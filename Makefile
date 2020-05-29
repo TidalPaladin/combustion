@@ -1,14 +1,21 @@
-.PHONY: docker docker-dev clean clean-venv pre-commit quality run style test venv 
+.PHONY: docs docker docker-dev clean clean-venv pre-commit quality run style test venv 
 
 PY_VER=py37
 QUALITY_DIRS=src tests
 CLEAN_DIRS=src tests
-VENV=venv
+VENV=$(shell pwd)/venv
 PYTHON=$(VENV)/bin/python3
+
+SPHINXBUILD=$(VENV)/bin/sphinx-build
+export SPHINXBUILD
+
 
 LINE_LEN=120
 DOC_LEN=120
 
+docs:
+	$(VENV)/bin/sphinx-apidoc -o docs src/
+	cd docs && make html 
 
 docker: 
 	docker build \
@@ -29,6 +36,7 @@ clean:
 	find $(CLEAN_DIRS) -type d -name '__pycache__' -empty -delete
 	find $(CLEAN_DIRS) -name '*@neomake*' -type f -delete
 	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
+	cd docs && make clean
 
 clean-venv:
 	rm -rf $(VENV)
