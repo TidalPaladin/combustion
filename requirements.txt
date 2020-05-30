@@ -1,0 +1,13 @@
+decorator
+matplotlib
+numpy
+pytorch-lightning>=0.7.5
+hydra-core
+torchvision
+torch
+scipy
+pynvml
+kornia
+opencv-python
+h5py
+Pillow-SIMD
