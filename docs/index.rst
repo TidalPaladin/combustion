@@ -3,14 +3,22 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to Combustion's documentation!
-======================================
+:github_url: https://github.com/TidalPaladin/combustion
+
+Combustion documentation
+===================================
+
+Combustion is a collection of useful PyTorch utilities.
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 1
+   :caption: Python API
 
-  modules
+   data
+   lightning
+   nn
+   testing
+   vision
 
 
 Indices and tables
@@ -18,4 +26,3 @@ Indices and tables
 
 * :ref:`genindex`
 * :ref:`modindex`
-* :ref:`search`

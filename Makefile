@@ -7,14 +7,16 @@ VENV=$(shell pwd)/venv
 PYTHON=$(VENV)/bin/python3
 
 SPHINXBUILD=$(VENV)/bin/sphinx-build
+#SPHINXOPTS=-W
 export SPHINXBUILD
+export SPHINXOPTS
 
 
 LINE_LEN=120
 DOC_LEN=120
 
 docs:
-	$(VENV)/bin/sphinx-apidoc -o docs src/
+	#$(VENV)/bin/sphinx-apidoc -d 1 -E --implicit-namespaces -o docs src/combustion
 	cd docs && make html 
 
 docker: 
@@ -37,6 +39,8 @@ clean:
 	find $(CLEAN_DIRS) -name '*@neomake*' -type f -delete
 	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
 	cd docs && make clean
+	rm -rf docs/api docs/generated
+
 
 clean-venv:
 	rm -rf $(VENV)
@@ -90,4 +94,5 @@ $(VENV)/bin/activate: setup.py src/combustion
 	$(PYTHON) -m pip install -U pip
 	$(PYTHON) -m pip install -e .[dev]
 	$(PYTHON) -m pip install --pre -U git+https://github.com/facebookresearch/hydra.git
+	$(PYTHON) -m pip install git+https://github.com/pytorch/pytorch_sphinx_theme.git
 	touch $(VENV)/bin/activate

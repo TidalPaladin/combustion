@@ -9,16 +9,19 @@ from torch import Tensor
 
 
 class Window(ABC):
-    """Helper to apply a window over an iterable or set of indices."""
+    r"""Helper to apply a window over an iterable or set of indices.
+
+    Args:
+
+        before (int, optional):
+            The number of prior elements to include in the window.
+
+        after (int, optional):
+            The number of proceeding elements to include in the window.
+
+    """
 
     def __init__(self, before: int = 0, after: int = 0):
-        """__init__
-
-        :param before: Number of frames before the current frame to
-        include in the window. :type before: int :param after: Number of
-        frames after the current frame to include in the window. :type
-        after: int
-        """
         if int(before) < 0:
             raise ValueError("before must be int >= 0")
         if int(after) < 0:
@@ -29,17 +32,23 @@ class Window(ABC):
             raise ValueError("before or after must not be 0")
 
     def __len__(self):
-        """__len__ Returns the number of frames in the window."""
+        """Returns the number of frames in the window."""
         return self.before + self.after + 1
 
     def __call__(self, examples: Iterable) -> Generator[Tuple[Tensor, Tensor], None, None]:
-        """__call__ Generates frames, labels tuples by applying the window to
-        `examples`. For an input/labels of shape `CxHxW`, and a window of len
-        `D`, the output will be of frame, label tuples of shape (`CxDxHxW`,
-        `CxHxW`).
+        r"""Generates frames, labels tuples by applying the window to
+        ``examples``. For an input/labels of shape :math:`CxHxW`, and a window of length
+        :math:`D`, the output will be of frame, label tuples of shape
+        (:math:`CxDxHxW`, :math:`CxHxW`).
 
-        :param examples: An iterable of (frame, label) tuples to be
-        windowed :type examples: Iterable
+        Args:
+
+            examples (Iterable):
+                An iterable of (frame, label) tuples to be windowed
+
+        Returns:
+            A generator that yields torch.Tensor tuples with the window
+            function applied.
         """
         # method to efficiently yield window tuples from iterable
         def raw_window():
@@ -71,38 +80,63 @@ class Window(ABC):
 
     @abstractmethod
     def indices(self, pos: int) -> Tuple[int, ...]:
-        """indices Given an index `pos`, return a tuple of indices that are
-        part of the window centered at `pos`.
+        r"""Given an index ``pos``, return a tuple of indices that are
+        part of the window centered at ``pos``.
 
-        :param pos: The index of the window center :type pos: int
-        :rtype: Tuple[int, ...] :returns: Indices that are part of the
-        window centered at `pos`
+        Args:
+
+            pos (int): The index of the window center
+
+        Returns:
+
+            A tuple of ints giving the indices of a window centered at ``pos``.
         """
         low = pos - self.before
         high = pos + self.after
         return tuple(set(range(low, high)))
 
     def estimate_size(self, num_frames: int) -> int:
-        """estimate_size Given a number of examples in the un-windowed input,
+        r"""Given a number of examples in the un-windowed input,
         estimate the number of examples in the windowed result.
 
-        :param num_frames: The number of frames in the un-windowed
-        dataset. :type num_frames: int :rtype: int :returns: Estimated
-        number of frames in the windowed output.
+        Args:
+            num_frames (int):
+                The number of frames in the un-windowed dataset.
+
+        Returns:
+            Estimated number of frames in the windowed output.
         """
         return num_frames - (self.before + self.after)
 
 
 class DenseWindow(Window):
-    """Window Applies a window function."""
+    r"""Helper to apply a dense window over an iterable or set of indices.
+    A dense window includes all indices from ``center-before`` to ``center+after``.
+    For a window that includes only frames (``center-before``, ``center``, ``center+after``),
+    see SparseWindow.
+
+
+    Args:
+
+        before (int, optional):
+            The number of prior elements to include in the window.
+
+        after (int, optional):
+            The number of proceeding elements to include in the window.
+
+    """
 
     def indices(self, pos: int) -> Tuple[int, ...]:
-        """indices Given an index `pos`, return a tuple of indices that are
-        part of the window centered at `pos`.
+        r"""Given an index ``pos``, return a tuple of indices that are
+        part of the window centered at ``pos``.
 
-        :param pos: The index of the window center :type pos: int
-        :rtype: Tuple[int, ...] :returns: Indices that are part of the
-        window centered at `pos`
+        Args:
+
+            pos (int): The index of the window center
+
+        Returns:
+
+            A tuple of ints giving the indices of a window centered at ``pos``.
         """
         low = pos - self.before
         high = pos + self.after
@@ -110,15 +144,33 @@ class DenseWindow(Window):
 
 
 class SparseWindow(Window):
-    """Window Applies a window function."""
+    r"""Helper to apply a sparse window over an iterable or set of indices.
+    A sparse window only includes frames (``center-before``, ``center``, ``center+after``).
+    For a window that includes all indices from ``center-before`` to ``center+after``, see
+    :class:`DenseWindow`
+
+
+    Args:
+
+        before (int, optional):
+            The number of prior elements to include in the window.
+
+        after (int, optional):
+            The number of proceeding elements to include in the window.
+
+    """
 
     def indices(self, pos: int) -> Tuple[int, ...]:
-        """indices Given an index `pos`, return a tuple of indices that are
-        part of the window centered at `pos`.
+        r"""Given an index ``pos``, return a tuple of indices that are
+        part of the window centered at ``pos``.
 
-        :param pos: The index of the window center :type pos: int
-        :rtype: Tuple[int, ...] :returns: Indices that are part of the
-        window centered at `pos`
+        Args:
+
+            pos (int): The index of the window center
+
+        Returns:
+
+            A tuple of ints giving the indices of a window centered at ``pos``.
         """
         low = pos - self.before
         high = pos + self.after

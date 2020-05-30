@@ -163,21 +163,19 @@ class _BottleneckNd(nn.Module):
         self.convs = nn.Sequential(*convs)
 
     def forward(self, input: Tensor) -> Tensor:
+        r""""""
         return self.convs(input)
 
 
 class Bottleneck3d(_BottleneckNd, metaclass=BottleneckMeta):
     r"""Applies a 3D bottlnecked convolution over an input.
     Bottlnecked convolutions are detailed in the paper
-    `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ .
-
-    * :attr:`bn_depth` controls the bottlneck in the channel dimension.
-    * :attr:`bn_spatial` controls the bottlneck in the spatial dimensions.
+    `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ .
 
     .. note::
         Nonlinearities are omitted for low dimensional subspaces as
         mentioned in section 6 of the paper
-        `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ ,
+        `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ ,
 
     Args:
         in_channels (int): Number of channels in the input image
@@ -198,7 +196,7 @@ class Bottleneck3d(_BottleneckNd, metaclass=BottleneckMeta):
         padding_mode (string, optional): ``'zeros'``, ``'reflect'``, ``'replicate'``
             or ``'circular'``. Default: ``'zeros'``
 
-    .. _MobileNetV2: Inverted Residuals and Linear Bottlenecks:
+    .. _MobileNetV2\: Inverted Residuals and Linear Bottlenecks:
         https://arxiv.org/abs/1801.04381
     """
 
@@ -206,15 +204,12 @@ class Bottleneck3d(_BottleneckNd, metaclass=BottleneckMeta):
 class Bottleneck2d(_BottleneckNd, metaclass=BottleneckMeta):
     r"""Applies a 2D bottlnecked convolution over an input.
     Bottlnecked convolutions are detailed in the paper
-    `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ .
-
-    * :attr:`bn_depth` controls the bottlneck in the channel dimension.
-    * :attr:`bn_spatial` controls the bottlneck in the spatial dimensions.
+    `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ .
 
     .. note::
         Nonlinearities are omitted for low dimensional subspaces as
         mentioned in section 6 of the paper
-        `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ ,
+        `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ ,
 
     Args:
         in_channels (int): Number of channels in the input image
@@ -235,7 +230,7 @@ class Bottleneck2d(_BottleneckNd, metaclass=BottleneckMeta):
         padding_mode (string, optional): ``'zeros'``, ``'reflect'``, ``'replicate'``
             or ``'circular'``. Default: ``'zeros'``
 
-    .. _MobileNetV2: Inverted Residuals and Linear Bottlenecks:
+    .. _MobileNetV2\: Inverted Residuals and Linear Bottlenecks:
         https://arxiv.org/abs/1801.04381
     """
 
@@ -243,15 +238,12 @@ class Bottleneck2d(_BottleneckNd, metaclass=BottleneckMeta):
 class Bottleneck1d(_BottleneckNd, metaclass=BottleneckMeta):
     r"""Applies a 1D bottlnecked convolution over an input.
     Bottlnecked convolutions are detailed in the paper
-    `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ .
-
-    * :attr:`bn_depth` controls the bottlneck in the channel dimension.
-    * :attr:`bn_spatial` controls the bottlneck in the spatial dimension.
+    `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ .
 
     .. note::
         Nonlinearities are omitted for low dimensional subspaces as
         mentioned in section 6 of the paper
-        `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ ,
+        `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ ,
 
     Args:
         in_channels (int): Number of channels in the input image
@@ -272,7 +264,7 @@ class Bottleneck1d(_BottleneckNd, metaclass=BottleneckMeta):
         padding_mode (string, optional): ``'zeros'``, ``'reflect'``, ``'replicate'``
             or ``'circular'``. Default: ``'zeros'``
 
-    .. _MobileNetV2: Inverted Residuals and Linear Bottlenecks:
+    .. _MobileNetV2\: Inverted Residuals and Linear Bottlenecks:
         https://arxiv.org/abs/1801.04381
     """
 
@@ -280,17 +272,14 @@ class Bottleneck1d(_BottleneckNd, metaclass=BottleneckMeta):
 class BottleneckFactorized3d(_BottleneckNd, metaclass=BottleneckMeta):
     r"""Applies a 3D bottlnecked convolution over an input.
     Bottlnecked convolutions are detailed in the paper
-    `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ . In the
+    `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ . In the
     factorized case, spatial convolutions are performed along each spatial
     dimension separately.
-
-    * :attr:`bn_depth` controls the bottlneck in the channel dimension.
-    * :attr:`bn_spatial` controls the bottlneck in the spatial dimensions.
 
     .. note::
         Nonlinearities are omitted for low dimensional subspaces as
         mentioned in section 6 of the paper
-        `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ ,
+        `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ ,
 
     Args:
         in_channels (int): Number of channels in the input image
@@ -311,7 +300,7 @@ class BottleneckFactorized3d(_BottleneckNd, metaclass=BottleneckMeta):
         padding_mode (string, optional): ``'zeros'``, ``'reflect'``, ``'replicate'``
             or ``'circular'``. Default: ``'zeros'``
 
-    .. _MobileNetV2: Inverted Residuals and Linear Bottlenecks:
+    .. _MobileNetV2\: Inverted Residuals and Linear Bottlenecks:
         https://arxiv.org/abs/1801.04381
     """
 
@@ -319,17 +308,14 @@ class BottleneckFactorized3d(_BottleneckNd, metaclass=BottleneckMeta):
 class BottleneckFactorized2d(_BottleneckNd, metaclass=BottleneckMeta):
     r"""Applies a 2D bottlnecked convolution over an input.
     Bottlnecked convolutions are detailed in the paper
-    `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ . In the
+    `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ . In the
     factorized case, spatial convolutions are performed along each spatial
     dimension separately.
-
-    * :attr:`bn_depth` controls the bottlneck in the channel dimension.
-    * :attr:`bn_spatial` controls the bottlneck in the spatial dimensions.
 
     .. note::
         Nonlinearities are omitted for low dimensional subspaces as
         mentioned in section 6 of the paper
-        `MobileNetV2: Inverted Residuals and Linear Bottlenecks`_ ,
+        `MobileNetV2\: Inverted Residuals and Linear Bottlenecks`_ ,
 
     Args:
         in_channels (int): Number of channels in the input image
@@ -350,7 +336,7 @@ class BottleneckFactorized2d(_BottleneckNd, metaclass=BottleneckMeta):
         padding_mode (string, optional): ``'zeros'``, ``'reflect'``, ``'replicate'``
             or ``'circular'``.  Default: ``'zeros'``
 
-    .. _MobileNetV2: Inverted Residuals and Linear Bottlenecks:
+    .. _MobileNetV2\: Inverted Residuals and Linear Bottlenecks:
         https://arxiv.org/abs/1801.04381
     """
 

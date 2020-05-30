@@ -15,20 +15,27 @@ class Batch(ABC):
     r"""Abstract base class representing a batch of examples. Items are
     passed to the batch constructor as keyword args.
 
+    .. warning::
+        This class has fallen out of favor, though is not deprecated.
+        Options that integrate better with PyTorch Lightning are preferred.
+
+
     Keyword args are processed as follows:
-        * Tensor:  tensor is attached to the batch without modification
+        * Tensor:  Tensor is attached to the batch without modification.
         * List of Tensors: Tensors in the list are stacked along a new
-        dimension with index 0
-        * Tuple of Tensors: Same behavior as with list of tensors
+          outermost dimension.
+        * Tuple of Tensors: Same behavior as with list of tensors.
+
 
     The following features are supported:
         * Tuple expansion based on the order of keyword args given at initialization.
-        * Application of Tensor operations to all tensors in batch via `apply`
+        * Application of Tensor operations to all tensors in batch via ``apply``
+
 
     The following features are experimental:
-        * Application of Tensor operations to all tensors in batch via `getattr`.
-        This allows for Tensor methods to be called on the batch as if it were a Tensor.
-        The invoked function is called on each tensor in the batch.
+        * Application of Tensor operations to all tensors in batch via ``__getattr__``.
+          This allows for Tensor methods to be called on the batch as if it were a Tensor.
+          The invoked function is called on each tensor in the batch.
     """
 
     def __init__(self, **kwargs):
@@ -82,7 +89,7 @@ class Batch(ABC):
 
         If so, the Tensor callable is invoked on all batch tensors. This
         is an experimental shortcut that allows for operations like
-        `batch.cuda()`
+        ``batch.cuda()``
         """
         # try get tensor attribute first
         if attr in self._tensors:
@@ -113,7 +120,7 @@ class Batch(ABC):
         r"""Collate function used to collect an iterable of examples into
         a batch.
 
-        See https://pytorch.org/docs/stable/data.html#working-with-collate-fn
+        See `collate_fn <https://pytorch.org/docs/stable/data.html#working-with-collate-fn>`_
         for more details.
         """
         raise NotImplementedError("must implement collate_fn")

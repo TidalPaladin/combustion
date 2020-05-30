@@ -40,7 +40,7 @@ extras["docs"] = [
     "recommonmark",
     "sphinx",
     "sphinx-markdown-tables",
-    "sphinx-rtd-theme",
+    "sphinxcontrib.katex",
 ]
 extras["quality"] = [
     "black",

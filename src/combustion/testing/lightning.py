@@ -7,7 +7,7 @@ import torch
 from torch import Tensor
 from torch.utils.data import DataLoader
 
-from .utils import cuda_or_skip
+from .decorators import cuda_or_skip
 
 
 def check_overriden(model, method):
@@ -41,31 +41,27 @@ class LightningModuleTest:
 
     The following fixtures should be implemented in the subclass:
 
-        * A `model` fixture which should create and return an instance
-        of the model to be tested.
-
-        * A `data` fixture that will be used to test `model.forward()`.
-        It should return an input that will be passed to the `forward()` call of
-        the model being tested.
+        * :func:`model`
+        * :func:`data`
 
     Simple tests are provided for the following lifecycle hooks:
-        * `configure_optimizers`
-        * `prepare_data` (optional)
-        * `train_dataloader`
-        * `val_dataloader` (optional)
-        * `test_dataloader` (optional)
-        * `training_step`
-        * `validation_step` (optional)
-        * `test_step` (optional)
-        * `validation_epoch_end` (optional)
-        * `test_epoch_end` (optional)
+        * :func:`configure_optimizers`
+        * :func:`prepare_data` (optional)
+        * :func:`train_dataloader`
+        * :func:`val_dataloader` (optional)
+        * :func:`test_dataloader` (optional)
+        * :func:`training_step`
+        * :func:`validation_step` (optional)
+        * :func:`test_step` (optional)
+        * :func:`validation_epoch_end` (optional)
+        * :func:`test_epoch_end` (optional)
 
     If the model under test does not implement an optional method, the test will be
     skipped.
 
-    The following mock attributes will be attached to your model as `PropertyMock`
-        * `logger`
-        * `trainer`
+    The following mock attributes will be attached to your model as ``PropertyMock``
+        * :attr:`logger`
+        * :attr:`trainer`
 
     Example Usage::
         >>> # minimal example
@@ -107,6 +103,9 @@ class LightningModuleTest:
         return m
 
     def test_configure_optimizers(self, model: pl.LightningModule):
+        r"""Tests that ``model.configure_optimizers()`` runs and returns the required
+        outputs.
+        """
         optim = model.configure_optimizers()
         is_optimizer = isinstance(optim, torch.optim.Optimizer)
         is_optim_schedule_tuple = (
@@ -121,16 +120,21 @@ class LightningModuleTest:
         return optim
 
     def test_prepare_data(self, model: pl.LightningModule):
+        r"""Calls ``model.prepare_data()`` to see if any fatal errors are thrown. No
+        tests are performed to assess change of state
+        """
         model.prepare_data()
 
     @pytest.mark.usefixtures("prepare_data")
     def test_train_dataloader(self, model: pl.LightningModule):
+        r"""Tests that ``model.train_dataloader()`` runs and returns the required output."""
         dl = model.train_dataloader()
         check_dataloader(dl)
         return dl
 
     @pytest.mark.usefixtures("prepare_data")
     def test_val_dataloader(self, model: pl.LightningModule):
+        r"""Tests that ``model.val_dataloader()`` runs and returns the required output."""
         check_overriden(model, "val_dataloader")
         dl = model.val_dataloader()
         check_dataloader(dl)
@@ -138,6 +142,7 @@ class LightningModuleTest:
 
     @pytest.mark.usefixtures("prepare_data")
     def test_test_dataloader(self, model: pl.LightningModule):
+        r"""Tests that ``model.test_dataloader()`` runs and returns the required output."""
         check_overriden(model, "test_dataloader")
         dl = model.test_dataloader()
         check_dataloader(dl)
@@ -147,6 +152,10 @@ class LightningModuleTest:
     @pytest.mark.usefixtures("prepare_data")
     @pytest.mark.parametrize("training", [True, False])
     def test_forward(self, model: pl.LightningModule, data: torch.Tensor, training: bool):
+        r"""Calls ``model.forward()`` and tests that the output is not ``None``.
+
+        Because of the size of some models, this test is only run when a GPU is available.
+        """
         if torch.cuda.is_available():
             model = model.cuda()
             data = data.cuda()
@@ -162,6 +171,12 @@ class LightningModuleTest:
     @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_training_step(self, model: pl.LightningModule):
+        r"""Runs a training step based on the data returned from ``model.train_dataloader()``.
+        Tests that the dictionary returned from ``training_step()`` are as required by PyTorch
+        Lightning.
+
+        Because of the size of some models, this test is only run when a GPU is available.
+        """
         dl = model.train_dataloader()
         batch = next(iter(dl))
 
@@ -189,6 +204,12 @@ class LightningModuleTest:
     @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_validation_step(self, model: pl.LightningModule):
+        r"""Runs a validation step based on the data returned from ``model.val_dataloader()``.
+        Tests that the dictionary returned from ``validation_step()`` are as required by PyTorch
+        Lightning.
+
+        Because of the size of some models, this test is only run when a GPU is available.
+        """
         check_overriden(model, "val_dataloader")
         check_overriden(model, "validation_step")
 
@@ -220,6 +241,11 @@ class LightningModuleTest:
     @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_validation_epoch_end(self, model: pl.LightningModule):
+        r"""Tests that ``validation_epoch_end()`` runs and outputs a dict as required by PyTorch
+        Lightning.
+
+        Because of the size of some models, this test is only run when a GPU is available.
+        """
         check_overriden(model, "val_dataloader")
         check_overriden(model, "validation_step")
         check_overriden(model, "validation_epoch_end")
@@ -240,6 +266,12 @@ class LightningModuleTest:
     @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_test_step(self, model: pl.LightningModule):
+        r"""Runs a testing step based on the data returned from ``model.test_dataloader()``.
+        Tests that the dictionary returned from ``test_step()`` are as required by PyTorch
+        Lightning.
+
+        Because of the size of some models, this test is only run when a GPU is available.
+        """
         check_overriden(model, "test_dataloader")
         check_overriden(model, "test_step")
 
@@ -270,6 +302,11 @@ class LightningModuleTest:
     @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     def test_test_epoch_end(self, model: pl.LightningModule):
+        r"""Tests that ``test_epoch_end()`` runs and outputs a dict as required by PyTorch
+        Lightning.
+
+        Because of the size of some models, this test is only run when a GPU is available.
+        """
         check_overriden(model, "test_dataloader")
         check_overriden(model, "test_step")
         check_overriden(model, "test_epoch_end")
