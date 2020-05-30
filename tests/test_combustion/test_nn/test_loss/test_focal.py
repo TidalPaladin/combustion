@@ -10,6 +10,11 @@ from combustion.nn import FocalLoss, FocalLossWithLogits, focal_loss, focal_loss
 from combustion.testing import assert_tensors_close
 
 
+@pytest.fixture(autouse=True)
+def torch_seed():
+    torch.random.manual_seed(42)
+
+
 def test_compare_with_without_logits():
     x1 = torch.rand(10, 10) * 3
     x2 = torch.sigmoid(x1)
@@ -73,6 +78,18 @@ class TestFunctionalFocalLoss:
         y = torch.rand(10, 10).round()
         loss = fn(x, y, gamma=0, reduction="none")
         assert loss.shape == x.shape
+
+    @pytest.mark.parametrize("has_positive", [True, False])
+    def test_normalize(self, fn, true_fn, has_positive):
+        x = torch.rand(10, 10)
+        y = torch.rand(10, 10).round()
+        if not has_positive:
+            y = torch.zeros_like(y)
+        num_positive_examples = (y == 1.0).sum()
+
+        expected = fn(x, y, 2.0, reduction="none") / max(num_positive_examples, 1)
+        norm_loss = fn(x, y, 2.0, reduction="none", normalize=True)
+        assert torch.allclose(norm_loss, expected)
 
 
 class TestFunctionalFocalLossWithLogits(TestFunctionalFocalLoss):
@@ -152,6 +169,18 @@ class TestFocalLoss:
         y = torch.rand(10, 10).round()
         loss = cls(gamma=0, reduction="none")(x, y)
         assert loss.shape == x.shape
+
+    @pytest.mark.parametrize("has_positive", [True, False])
+    def test_normalize(self, cls, true_cls, has_positive):
+        x = torch.rand(10, 10)
+        y = torch.rand(10, 10).round()
+        if not has_positive:
+            y = torch.zeros_like(y)
+        num_positive_examples = (y == 1.0).sum()
+
+        expected = cls(2.0, reduction="none")(x, y) / max(num_positive_examples, 1)
+        norm_loss = cls(2.0, reduction="none", normalize=True)(x, y)
+        assert torch.allclose(norm_loss, expected)
 
 
 class TestFocalLossWithLogits(TestFocalLoss):
