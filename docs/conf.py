@@ -18,14 +18,11 @@ import sys
 import shutil
 import typing
 
-import pytorch_lightning as pl
-
 from sphinx.ext import apidoc
 
 PATH_HERE = os.path.abspath(os.path.dirname(__file__))
 PATH_ROOT = os.path.join(PATH_HERE, '..', 'src')
 sys.path.insert(0, os.path.abspath('../src/combustion'))
-import combustion
 
 
 # -- Project information -----------------------------------------------------
@@ -92,7 +89,7 @@ intersphinx_mapping = {
 
 # packages for which sphinx-apidoc should generate the docs (.rst files)
 PACKAGES = [
-    combustion.__name__,
+    'combustion'
 ]
 
 apidoc_output_folder = os.path.join(PATH_HERE, 'api')
