@@ -26,47 +26,37 @@ class DefaultConvBlock(nn.Module):
 
 class BiFPN(nn.Module):
     r"""A bi-directional feature pyramid network (BiFPN) used in the EfficientDet implementation
-    (`_EfficientDet Scalable and Efficient Object Detection:`_).
+    (`EfficientDet Scalable and Efficient Object Detection`_).
 
-                        BiFPN
-            |===========================|
-    P7 -->  | ----------------> P7'' ---|--->
-            | \_____.           ^       |
-            |       V           |       |
-    P6 -->  | ---> P6' -------> P6'' ---|--->
-            |  \    |           ^       |
-            |   \___|__________/|       |
-            |       |           ^       |
-            |       V           |       |
-    P5 -->  | ---> P5' -------> P5'' ---|--->
-            |  \    |           ^       |
-            |   \___|__________/|       |
-            |       |           ^       |
-            |       V           |       |
-    P4 -->  | ---> P4' -------> P4'' ---|--->
-            |  \    |           ^       |
-            |   \___|__________/|       |
-            |       |           ^       |
-            |       V           |       |
-    P3 -->  | ---> P3' -------> P3'' ---|--->
-            |===========================|
+    The structure of the block is as follows:
+
+    .. image:: https://miro.medium.com/max/1000/1*qH6d0kBU2cRxOkWUsfgDgg.png
+        :width: 300px
+        :align: center
+        :height: 400px
+        :alt: Diagram of BiFPN layer
+
+    Note:
+
+        It is assumed that adjacent levels in the feature pyramid differ in spatial resolution by
+        a factor of 2.
 
     Args:
         num_channels (int):
-            The number of channels in each feature pyramid level.
+            The number of channels in each feature pyramid level. All inputs :math:`P_i` should
+            have ``num_channels`` channels, and outputs :math:`P_i'` will have ``num_channels`` channels.
 
-        levels (list of ints):
-            The positive weight coefficient :math:`\alpha` to use on the positive examples.
-            Must be non-negative.
+        levels (int):
+            The number of levels in the feature pyramid.
 
-        conv (Callable[[int], nn.Module], optional):
+        conv (callable or torch.nn.Module, optional):
             A function used to override the convolutional layer used. Function must accept one parameter,
-            an int equal to `num_channels`, and return a convolutional layer.
+            an int equal to ``num_channels``, and return a convolutional layer.
             Default convolutional layer is a separable 2d convolution with batch normalization and relu activation.
 
-        epsilon : float, optional
+        epsilon (float, optional):
             Small value used for numerical stability when normalizing weights.
-            Default :math:`0.0001`.
+            Default ``1e-4``.
 
     Shape:
         - Inputs: Tensor of shape :math:`(N, *C, *H, *W)` where :math:`*C, *H, *W` indicates
@@ -111,6 +101,7 @@ class BiFPN(nn.Module):
         )
 
     def forward(self, inputs: Iterable[Tensor]) -> List[Tensor]:
+        """"""
         inputs = {x: feature_map for x, feature_map in zip(self.levels, inputs)}
         up_maps, out_maps = {}, {}
 

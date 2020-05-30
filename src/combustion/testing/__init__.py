@@ -9,8 +9,8 @@ from .assertions import (
     assert_tensors_close,
     assert_zero_grad,
 )
+from .decorators import cuda_or_skip
 from .lightning import LightningModuleTest
-from .utils import cuda_or_skip
 
 
 __all__ = [

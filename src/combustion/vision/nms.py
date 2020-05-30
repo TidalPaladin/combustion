@@ -30,6 +30,19 @@ def nms(boxes: Tensor, scores: Tensor, iou_threshold: float) -> Tuple[Tensor, Tu
         - Scores: :math:`(N)` or :math:`(B, N)` where :math:`B` is an optional batch
           dimension and `N` is the number of anchor boxes.
         - Output: Tensor tuple giving the maximal indices, each of shape :math:`(K)`.
+
+    Example::
+
+        >>> boxes = torch.tensor([[
+        >>>     [0., 0., 10., 10.],
+        >>>     [1., 1., 11., 11.],
+        >>>     [10., 10., 20., 20.]
+        >>> ]])
+
+        >>> scores = torch.tensor([[0.1, 0.5, 0.05]])
+
+        >>> nms_indices = nms(boxes, scores, threshold=0.5)
+        >>> nms_boxes, nms_scores = boxes[nms_indices], scores[nms_indices]
     """
     # batched recursion
     if boxes.ndim == 3:

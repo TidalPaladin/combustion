@@ -40,7 +40,7 @@ extras["docs"] = [
     "recommonmark",
     "sphinx",
     "sphinx-markdown-tables",
-    "sphinx-rtd-theme",
+    "sphinxcontrib.katex",
 ]
 extras["quality"] = [
     "black",
@@ -49,7 +49,7 @@ extras["quality"] = [
     "pre-commit",
 ]
 
-extras["dev"] = extras["testing"] + extras["quality"] + ["scikit-learn", "torch"]
+extras["dev"] = extras["docs"] + extras["testing"] + extras["quality"] + ["scikit-learn", "torch"]
 
 setup(
     name="combustion",

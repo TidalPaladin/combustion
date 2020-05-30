@@ -21,7 +21,36 @@ def focal_loss(
     reduction: str = "mean",
     normalize: bool = False,
 ):
-    """Computes the Focal Loss between input and target. See FocalLoss for more details"""
+    r"""Computes the Focal Loss between input and target. See :class:`FocalLoss` for more details
+
+    Args:
+        input (torch.Tensor):
+            The predicted values on the interval :math:`[0, 1]`.
+
+        target (torch.Tensor):
+            The target values on the interval :math:`[0, ``]`.
+
+        gamma (float):
+            The focusing parameter :math:`\gamma`. Must be non-negative.
+
+        pos_weight (float, optional):
+            The positive weight coefficient :math:`\alpha` to use on
+            the positive examples. Must be non-negative.
+
+        label_smoothing (float, optional):
+            Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
+            ground truth labels are clamped to :math:`[p, 1-p]`.
+
+        reduction (str, optional): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of
+            elements in the output, ``'sum'``: the output will be summed.
+            Default: ``'mean'``
+
+        normalize (bool, optional):
+            If given, output loss will be divided by the number of positive elements
+            in ``target``.
+    """
     positive_indices = target == 1
 
     with torch.no_grad():
@@ -62,7 +91,36 @@ def focal_loss_with_logits(
     reduction: str = "mean",
     normalize: bool = False,
 ):
-    """Computes the Focal Loss between input and target. See FocalLossWithLogits for more details"""
+    r"""Computes the Focal Loss between input and target. See :class:`FocalLossWithLogits` for more details
+
+    Args:
+        input (torch.Tensor):
+            The predicted values.
+
+        target (torch.Tensor):
+            The target values.
+
+        gamma (float):
+            The focusing parameter :math:`\gamma`. Must be non-negative.
+
+        pos_weight (float, optional):
+            The positive weight coefficient :math:`\alpha` to use on
+            the positive examples. Must be non-negative.
+
+        label_smoothing (float, optional):
+            Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
+            ground truth labels are clamped to :math:`[p, 1-p]`.
+
+        reduction (str, optional): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of
+            elements in the output, ``'sum'``: the output will be summed.
+            Default: ``'mean'``
+
+        normalize (bool, optional):
+            If given, output loss will be divided by the number of positive elements
+            in ``target``.
+    """
 
     positive_indices = target == 1
 
@@ -105,45 +163,6 @@ def focal_loss_with_logits(
 
 
 class _FocalLoss(nn.Module):
-    r"""Creates a criterion that measures the Focal Loss
-    between the target and the output. Focal loss is described
-    in the paper `Focal Loss For Dense Object Detection:`_ .
-
-    Args:
-        gamma : float
-            The focusing parameter :math:`\gamma`. Must be non-negative.
-
-        pos_weight : float, optional
-            The positive weight coefficient :math:`\alpha` to use on
-            the positive examples. Must be non-negative.
-
-        label_smoothing : float, optional
-            Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
-            ground truth labels are clamped to :math:`[p, 1-p]`.
-
-        reduction (string, optional): Specifies the reduction to apply to the output:
-            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-            ``'mean'``: the sum of the output will be divided by the number of
-            elements in the output, ``'sum'``: the output will be summed.
-            Default: ``'mean'``
-
-    Shape:
-        - Input: :math:`(N, *)` where :math:`*` means, any number of additional
-          dimensions
-        - Target: :math:`(N, *)`, same shape as the input
-        - Output: scalar. If :attr:`reduction` is ``'none'``, then :math:`(N, *)`, same
-          shape as input.
-
-    Examples::
-
-        >>> loss = FocalLoss(gamma=1.0, pos_weight=0.8)
-        >>> pred = torch.rand(10, 10, requires_grad=True)
-        >>> target = torch.rand(10, 10).round()
-        >>> output = loss(pred, target)
-
-    .. _Focal Loss For Dense Object Detection:
-        https://arxiv.org/abs/1708.02002
-    """
 
     _loss = focal_loss
 
@@ -173,10 +192,100 @@ class _FocalLoss(nn.Module):
 
 
 class FocalLoss(_FocalLoss):
+    r"""Creates a criterion that measures the Focal Loss
+    between the target and the output. Focal loss is described
+    in the paper `Focal Loss For Dense Object Detection`_.
+
+    Args:
+        gamma (float):
+            The focusing parameter :math:`\gamma`. Must be non-negative.
+
+        pos_weight (float, optional):
+            The positive weight coefficient :math:`\alpha` to use on
+            the positive examples. Must be non-negative.
+
+        label_smoothing (float, optional):
+            Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
+            ground truth labels are clamped to :math:`[p, 1-p]`.
+
+        reduction (str, optional): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of
+            elements in the output, ``'sum'``: the output will be summed.
+            Default: ``'mean'``
+
+        normalize (bool, optional):
+            If given, output loss will be divided by the number of positive elements
+            in ``target``.
+
+    Shape:
+        - Input: :math:`(N, *)` where :math:`*` means, any number of additional
+          dimensions
+        - Target: :math:`(N, *)`, same shape as the input
+        - Output: scalar. If :attr:`reduction` is ``'none'``, then :math:`(N, *)`, same
+          shape as input.
+
+    Examples::
+
+        >>> loss = FocalLoss(gamma=1.0, pos_weight=0.8)
+        >>> pred = torch.rand(10, 10, requires_grad=True)
+        >>> target = torch.rand(10, 10).round()
+        >>> output = loss(pred, target)
+
+    .. _Focal Loss For Dense Object Detection:
+        https://arxiv.org/abs/1708.02002
+    """
     _loss = focal_loss
 
 
 class FocalLossWithLogits(_FocalLoss):
+    r"""Creates a criterion that measures the Focal Loss
+    between the target and the output. Focal loss is described
+    in the paper `Focal Loss For Dense Object Detection`_. Inputs
+    are expected to be logits (i.e. not already scaled to the interval
+    :math:`[0, 1]` through a sigmoid or softmax). This computation on
+    logits is more numerically stable and efficient for reverse mode
+    auto-differentiation and should be preferred for that use case.
+
+    Args:
+        gamma (float):
+            The focusing parameter :math:`\gamma`. Must be non-negative.
+
+        pos_weight (float, optional):
+            The positive weight coefficient :math:`\alpha` to use on
+            the positive examples. Must be non-negative.
+
+        label_smoothing (float, optional):
+            Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
+            ground truth labels are clamped to :math:`[p, 1-p]`.
+
+        reduction (str, optional): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of
+            elements in the output, ``'sum'``: the output will be summed.
+            Default: ``'mean'``
+
+        normalize (bool, optional):
+            If given, output loss will be divided by the number of positive elements
+            in ``target``.
+
+    Shape:
+        - Input: :math:`(N, *)` where :math:`*` means, any number of additional
+          dimensions
+        - Target: :math:`(N, *)`, same shape as the input
+        - Output: scalar. If :attr:`reduction` is ``'none'``, then :math:`(N, *)`, same
+          shape as input.
+
+    Examples::
+
+        >>> loss = FocalLoss(gamma=1.0, pos_weight=0.8)
+        >>> pred = torch.rand(10, 10, requires_grad=True)
+        >>> target = torch.rand(10, 10).round()
+        >>> output = loss(pred, target)
+
+    .. _Focal Loss For Dense Object Detection:
+        https://arxiv.org/abs/1708.02002
+    """
     _loss = focal_loss_with_logits
 
 

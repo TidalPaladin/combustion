@@ -14,10 +14,32 @@ from torch.utils.data import DataLoader, Dataset, random_split
 
 class HydraMixin(ABC):
     r"""
-    Mixin for creating LightningModules using Hydra
+    Mixin for creating :class:`pytorch_lightning.LightningModule`
+    using `Hydra <https://hydra.cc/>`_.
+
+    The following :class:`pytorch_lightning.LightningModule` abstract methods are implemented:
+
+        * :attr:`configure_optimizers`
+        * :attr:`prepare_data`
+        * :attr:`train_dataloader`
+        * :attr:`val_dataloader`
+        * :attr:`test_dataloader`
     """
 
     def get_lr(self, pos: int = 0, param_group: int = 0) -> float:
+        r"""Gets the current learning rate. Useful for logging learning rate when using a learning
+        rate schedule.
+
+        Args:
+            pos (int, optional):
+                The index of the optimizer to retrieve a learning rate from. When using a single
+                optimizer this can be omitted.
+
+            param_group (int, optional):
+                The index of the parameter group to retrieve a learning rate for. When using one
+                optimizer for the entire model this can be omitted.
+
+        """
         if not self.trainer.lr_schedulers:
             return self.trainer.optimizer.state_dict()["param_groups"][param_group]["lr"]
         else:
@@ -25,6 +47,37 @@ class HydraMixin(ABC):
             return scheduler.get_last_lr()[param_group]
 
     def configure_optimizers(self):
+        r"""Override for :class:`pytorch_lightning.LightningModule` that automatically configures
+        optimizers and learning rate scheduling based on a `Hydra <https://hydra.cc/>`_ configuration.
+
+        The Hydra config should have an ``optimizer`` section, and optionally a ``schedule`` section
+        if learning rate scheduling is desired.
+
+        Sample Hydra Config
+
+        .. code-block:: yaml
+
+            optimizer:
+              name: adam
+              cls: torch.optim.Adam
+              params:
+                lr: 0.001
+
+            schedule:
+              interval: step
+              monitor: val_loss
+              frequency: 1
+              cls: torch.optim.lr_scheduler.OneCycleLR
+              params:
+                max_lr: ${optimizer.params.lr}
+                epochs: 10
+                steps_per_epoch: 'none'
+                pct_start: 0.03
+                div_factor: 10
+                final_div_factor: 10000.0
+                anneal_strategy: cos
+        """
+
         if not hasattr(self, "config"):
             raise AttributeError("'config' attribute is required for configure_optimizers")
 
@@ -57,6 +110,41 @@ class HydraMixin(ABC):
         return result
 
     def prepare_data(self) -> None:
+        r"""Override for :class:`pytorch_lightning.LightningModule` that automatically prepares
+        any datasets based on a `Hydra <https://hydra.cc/>`_ configuration.
+
+        The Hydra config should have an ``dataset`` section, and optionally a ``schedule`` section
+        if learning rate scheduling is desired.
+
+        Sample Hydra Config
+
+        .. code-block:: yaml
+
+            dataset:
+              train:
+                # passed to DataLoader
+                num_workers: 1
+                pin_memory: true
+                drop_last: true
+                shuffle: true
+
+                # instantiates dataset
+                cls: torchvision.datasets.FakeData
+                params:
+                  size: 10000
+                  image_size: [1, 128, 128]
+                  transform:
+                    cls: torchvision.transforms.ToTensor
+
+              # test/validation sets can be explicitly given as above,
+              # or as a split from training set
+
+              # as a random split from training set by number of examples
+              # validate: 32
+
+              # as a random split from training set by fraction
+              # test: 0.1
+        """
         dataset_cfg = self.config.dataset
         train_ds: Optional[Dataset] = (
             HydraMixin.instantiate(dataset_cfg["train"]) if "train" in dataset_cfg.keys() else None
@@ -141,6 +229,11 @@ class HydraMixin(ABC):
     def instantiate(config: Union[DictConfig, dict], *args, **kwargs) -> Any:
         r"""
         Recursively instantiates classes in a Hydra configuration.
+
+        Args:
+            config (omegaconf.DictConfig or dict):
+                The config to recursively instantiate from.
+
         """
         # deepcopy so we can modify config
         config = deepcopy(config)

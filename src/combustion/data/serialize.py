@@ -19,8 +19,11 @@ except ImportError:
 
 
 class SerializeMixin:
-    """Mixin to enable serialization a map or iterable style dataset to disk in
-    HDF5 file format."""
+    r"""Mixin to enable serialization a map or iterable style dataset to disk in
+    HDF5 file format.
+
+
+    """
 
     def save(
         self, path: str, num_shards: Optional[int] = None, shard_size: Optional[int] = None, verbose: bool = True
@@ -28,11 +31,11 @@ class SerializeMixin:
         r"""Saves the contents of the dataset to one or more HDF5 files.
 
         Serialization is performed as follows:
-            1.  Dataset partitions are determined if required by `num_shards` or `shard_size`. By default,
+            1.  Dataset partitions are determined if required by ``num_shards`` or ``shard_size``. By default,
                 only a single file containing the entire dataset will be produced.
             2.  Examples are read by iterating over the dataset and are written to disk. For multiple
-                shards, a shard index is added to the filename given in `path`.
-            3.  Attributes accessible by `vars(self)` are attached as HDF5 attributes, allowing for loading
+                shards, a shard index is added to the filename given in ``path``.
+            3.  Attributes accessible by ``vars(self)`` are attached as HDF5 attributes, allowing for loading
                 of instance variables. Tensors are not saved in this way, as all attributes should be small.
 
         .. note::
@@ -40,15 +43,16 @@ class SerializeMixin:
             for more details.
 
         .. note::
-            When saving multiple shards, the file created at `path` will be a h5py virtual dataset.
+            When saving multiple shards, the file created at `path` will be a h5py
+            `Virtual Dataset <http://docs.h5py.org/en/stable/vds.html>`_
 
         Args:
             path (str): The filepath to save to. Ex `foo/bar.h5`
             num_shards (optional, int): If given, `num_shards` files will be created, each
-                containing `1 / num_shards` of the dataset. Exclusive with `shard_size`.
+                containing ``1 / num_shards`` of the dataset. Exclusive with ``shard_size``.
                 Must be a positive int.
             shard_size (optional, int): If given, multiple files will be created such that
-                each file contains `shard_size` examples. Exclusive with `num_shards`.
+                each file contains ``shard_size`` examples. Exclusive with ``num_shards``.
                 Must be a positive int.
             verbose (bool): If False, do not print progress updates during saving.
         """
@@ -93,8 +97,15 @@ class SerializeMixin:
         path: str,
         transform: Optional[Callable[[Tensor], Any]] = None,
         target_transform: Optional[Callable[[Tensor], Any]] = None,
-    ) -> SerializeMixin:
-        r"""Loads the contents of a dataset previously saved with `save()`.
+    ) -> HDF5Dataset:
+        r"""
+        Loads the contents of a dataset previously saved with `save()`, returning a :class:`HDF5Dataset`.
+
+        .. warning::
+            Using HDF5 in a parallel / multithreaded manner poses additional challenges that have
+            not yet been overcome. As such, using a :class:`HDF5Dataset` with
+            :class:`torch.utils.data.DataLoader` when ``num_workers > 1`` will yield incorrect data.
+            See `Parallel HDF5 <http://docs.h5py.org/en/stable/mpi.html>`_ for more details.
 
         .. note::
             Loading requires the h5py library. See http://docs.h5py.org/en/stable/index.html
@@ -162,6 +173,12 @@ class SerializeMixin:
 
 class HDF5Dataset(SerializeMixin):
     r"""Dataset used to read from HDF5 files.
+
+    .. warning::
+        Using HDF5 in a parallel / multithreaded manner poses additional challenges that have
+        not yet been overcome. As such, using a :class:`HDF5Dataset` with
+        :class:`torch.utils.data.DataLoader` when ``num_workers > 1`` will yield incorrect data.
+        See `Parallel HDF5 <http://docs.h5py.org/en/stable/mpi.html>`_ for more details.
 
     .. note::
         Requires the h5py library. See http://docs.h5py.org/en/stable/index.html

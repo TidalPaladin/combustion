@@ -10,7 +10,7 @@ from torch import Tensor
 
 class AnchorsToPoints:
     r"""Transform that converts bounding boxes to CenterNet style labels
-    as described in the paper `Objects as Points:`_ .
+    as described in the paper `Objects as Points`_.
 
     Transformed outputs are as follows
         * probabilities of a pixel being a box center of class `i` with gaussian smoothing
@@ -175,7 +175,7 @@ class AnchorsToPoints:
 class PointsToAnchors:
     r"""Transform that converts CenterNet style labels to anchor boxes and class labels
     (i.e. reverses the transform performed by `AnchorsToPoints`) as described in the
-    paper `Objects as Points:`_ . Anchor boxes are identified in the input as points
+    paper `Objects as Points`_. Anchor boxes are identified in the input as points
     that are greater than their 8 neighbors. The maximum number of boxes returned is
     parameterized, and selection is performed based on classification score. A threshold
     is can also be set such that scores below this threshold will not contribute to the

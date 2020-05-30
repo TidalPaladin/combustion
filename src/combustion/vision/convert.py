@@ -11,7 +11,9 @@ from .bbox import _check_input
 
 def to_8bit(img: Union[Tensor, ndarray], per_channel: bool = True) -> Tensor:
     r"""Converts an image Tensor or numpy array with an arbitrary range
-    of values to a uint8 (byte) Tensor / numpy array.
+    of values to a uint8 (byte) Tensor / numpy array. This is particularly useful
+    when attempting to visualize images that have been standardized to zero mean
+    unit variance or have higher than 8 bits of resolution.
 
     Args:
         img (Tensor or ndarray): The image to convert
