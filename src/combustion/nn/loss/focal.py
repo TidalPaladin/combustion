@@ -22,13 +22,14 @@ def focal_loss(
     normalize: bool = False,
 ):
     """Computes the Focal Loss between input and target. See FocalLoss for more details"""
+    positive_indices = target == 1
 
     with torch.no_grad():
         target = target.clone().detach()
 
         if pos_weight is not None:
             alpha = torch.empty_like(input).fill_(1 - pos_weight)
-            alpha[target == 1] = pos_weight
+            alpha[positive_indices] = pos_weight
         else:
             alpha = torch.ones_like(input)
         if label_smoothing:
@@ -39,6 +40,12 @@ def focal_loss(
     pt = torch.where(target == 1, p, 1 - p)
     ce_loss = F.binary_cross_entropy(input, target, reduction="none")
     loss = alpha * torch.pow(1 - pt, gamma) * ce_loss
+
+    # normalize
+    if normalize:
+        num_positive_examples = positive_indices.sum().clamp_(min=1)
+        loss.div_(num_positive_examples)
+
     if reduction == "mean":
         loss = loss.mean()
     if reduction == "sum":
@@ -87,7 +94,7 @@ def focal_loss_with_logits(
 
     # normalize
     if normalize:
-        num_positive_examples = (target == 1).sum().clamp_(min=-1)
+        num_positive_examples = positive_indices.sum().clamp_(min=1)
         loss.div_(num_positive_examples)
 
     if reduction == "mean":
