@@ -63,16 +63,17 @@ style:
 
 test: venv
 	$(PYTHON) -m pytest \
+		-rs \
 		--cov=./src \
 		--cov-report=xml \
 		-n auto --dist=loadfile -s -v \
 		./tests/
 
 test-%: venv
-	$(PYTHON) -m pytest -k $* -s -v ./tests/ 
+	$(PYTHON) -m pytest -rs -k $* -s -v ./tests/ 
 
 test-pdb-%: venv
-	$(PYTHON) -m pytest --pdb -k $* -s -v ./tests/ 
+	$(PYTHON) -m pytest -rs --pdb -k $* -s -v ./tests/ 
 
 venv: $(VENV)/bin/activate
 
