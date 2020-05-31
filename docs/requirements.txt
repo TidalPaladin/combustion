@@ -1,3 +1,4 @@
+sphinx>=3.0
 sphinxcontrib.katex
 pytest
 git+https://github.com/pytorch/pytorch_sphinx_theme.git

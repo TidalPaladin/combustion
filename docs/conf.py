@@ -26,6 +26,8 @@ sys.path.insert(0, os.path.abspath('../src/combustion'))
 
 master_doc = 'index'
 
+needs_sphinx = '3.0'
+
 
 # -- Project information -----------------------------------------------------
 
