@@ -30,6 +30,40 @@ def visualize_bbox(
     thickness: int = 2,
 ) -> Union[Tensor, ndarray]:
     r"""Adds bounding box visualization to an input array
+
+    Args:
+        img (Tensor or numpy.ndarray):
+            The image to draw anchor boxes on.
+
+        bbox (Tensor or numpy.ndarray, optional):
+            The anchor boxes to draw
+
+        label (Tensor or numpy.ndarray, optional):
+            Class labels associated with each anchor box
+
+        scores (Tensor or numpy.ndarray, optional):
+            Class scores associated with each anchor box
+
+        class_names (dict, optional):
+            Dictionary mapping integer class labels to string names.
+            If ``label`` is supplied but ``class_names`` is not, integer
+            class labels will be used.
+
+        box_color (tuple of ints, optional):
+            A 3-tuple giving the RGB color value to use for anchor boxes.
+
+        text_color (tuple of ints, optional):
+            A 3-tuple giving the RGB color value to use for labels.
+
+        label_alpha (float, optional):
+            Alpha to apply to the colored background for class labels.
+
+        thickness (int, optional):
+            Specifies the thickness of anchor boxes.
+
+    Returns:
+        :class:`torch.Tensor` or :class:`numpy.ndarray` (depending on what was given for `img`)
+        with the output image.
     """
     original_img_type = type(img)
 

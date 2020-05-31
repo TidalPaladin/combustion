@@ -23,3 +23,11 @@ Ops
 ----------------------------------
 
 .. autofunction:: combustion.vision.nms
+.. autofunction:: combustion.vision.visualize_bbox
+
+.. autoclass:: combustion.vision.AnchorsToPoints
+    :members: 
+
+.. autoclass:: combustion.vision.PointsToAnchors
+    :members: 
+

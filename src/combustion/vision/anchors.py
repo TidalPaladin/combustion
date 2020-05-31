@@ -50,6 +50,23 @@ class AnchorBoxTransform(nn.Module):
 
 
 class ClipBoxes(nn.Module):
+    r"""Clips anchor boxes such that all corners of the box lie within
+    a given image.
+
+    Args:
+
+        boxes (Tensor):
+            The anchor boxes to clip in format :math:`x_1, y_1, x_2, y_2`.
+
+        img (Tensor):
+            The image that anchor boxes should be clipped to lie within.
+
+    Shapes
+        Image: :math:`(N, C, H, W)` where :math:`N` is the batch size
+        Boxes: :math:`(N, B, 4)` where :math:`N` is the batch size and
+            :math:`B` is the number of anchor boxes
+    """
+
     def __init__(self):
         super(ClipBoxes, self).__init__()
 
