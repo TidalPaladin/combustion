@@ -11,17 +11,21 @@ from .focal import FocalLossWithLogits
 
 class CenterNetLoss:
     r"""The loss function used for CenterNet and similar networks, as described
-    in the paper `Objects as Points`_ .
+    in the paper `Objects as Points`_.
 
 
     Args:
 
         gamma (float):
-            The focusing parameter :math:`\gamma`. Must be non-negative.
+            The focusing parameter :math:`\gamma`. Must be non-negative. Note that
+            this parameter is referred to as :math:`\alpha` in `_Objects as Points`_
+            and :math:`\gamma` in the focal loss literature.
 
         pos_weight (float, optional):
             The positive weight coefficient :math:`\alpha` to use on
-            the positive examples. Must be non-negative.
+            the positive examples. Must be non-negative. Note that
+            this parameter is referred to as :math:`\beta` in `_Objects as Points`_
+            and :math:`\alpha` in the focal loss literature.
 
         label_smoothing (float, optional):
             Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
@@ -58,14 +62,15 @@ class CenterNetLoss:
     def __init__(
         self,
         gamma: float = 2.0,
-        pos_weight: float = 0.5,
+        pos_weight: float = 4.0,
         label_smoothing: Optional[float] = None,
         reduction: str = "mean",
         smooth: bool = True,
     ):
         self.reduction = reduction
-        self.cls_criterion = FocalLossWithLogits(gamma, pos_weight, label_smoothing, reduction="none")
+        self.cls_criterion = FocalLossWithLogits(gamma, label_smoothing=label_smoothing, reduction="none")
         self.loc_criterion = SmoothL1Loss(reduction="none") if smooth else L1Loss(reduction="none")
+        self.pos_weight = pos_weight
 
     def __call__(self, inputs: Tensor, targets: Tensor) -> Tuple[Tensor, Tensor]:
         assert inputs.shape == targets.shape
@@ -77,11 +82,17 @@ class CenterNetLoss:
         tar_class = targets[..., :-4, :, :]
 
         # compute classification/regression loss
-        cls_loss = self.cls_criterion(pred_class, tar_class)
+        cls_loss = self.cls_criterion(pred_class, tar_class.floor_divide(1.0))
         reg_loss = self.loc_criterion(pred_regression, tar_regression)
 
+        # apply positive example weight to focal loss
+        positive_indices = (tar_class == 1.0)
+        weight = (1. - tar_class[~positive_indices]).pow_(self.pos_weight)
+        positive_examples = cls_loss[~positive_indices]
+        positive_examples.mul_(weight)
+
         # zero out regression loss for locations that were not box centers
-        box_indices = (tar_class == 1.0).max(dim=-3, keepdim=True).values.expand_as(reg_loss)
+        box_indices = positive_indices.max(dim=-3, keepdim=True).values.expand_as(reg_loss)
         reg_loss[~box_indices] = 0
 
         if self.reduction == "mean":
