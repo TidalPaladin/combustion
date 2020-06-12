@@ -14,10 +14,16 @@ PLACEHOLDER
 Saving and Loading
 ----------------------------------
 
+.. autofunction:: combustion.data.save_hdf5
+.. autofunction:: combustion.data.save_torch
+
 .. autoclass:: combustion.data.SerializeMixin
     :members:
 
 .. autoclass:: combustion.data.HDF5Dataset
+    :members:
+
+.. autoclass:: combustion.data.TorchDataset
     :members:
 
 Window Operations

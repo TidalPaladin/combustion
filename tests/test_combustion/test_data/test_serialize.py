@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 import torch
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 # from combustion.data import AbstractDataset
-from combustion.data import HDF5Dataset, SerializeMixin
+from combustion.data import HDF5Dataset, SerializeMixin, TorchDataset
 
 
 def check_file_exists(filepath):
@@ -28,6 +28,9 @@ def h5py():
 
 
 class TestSerialize:
+
+    fmt = "hdf5"
+
     @pytest.fixture
     def data(self, torch):
         return [(torch.rand(1, 10, 10), torch.rand(1, 5)) for x in range(10)]
@@ -55,8 +58,12 @@ class TestSerialize:
         return DatasetImpl()
 
     @pytest.fixture
-    def input_file(self, h5py, torch, tmp_path, data):
-        path = os.path.join(tmp_path, "foo.pth")
+    def save_path(self, tmp_path):
+        return os.path.join(tmp_path, "foo.h5")
+
+    @pytest.fixture
+    def input_file(self, h5py, torch, tmp_path, data, save_path):
+        path = save_path
         f = h5py.File(path, "w")
         f.create_dataset("data_0", (len(data), *data[0][0].shape))
         f.create_dataset("data_1", (len(data), *data[0][1].shape))
@@ -65,26 +72,24 @@ class TestSerialize:
             f["data_1"][i, ...] = ex[1]
         return path
 
-    def test_save(self, h5py, tmp_path, dataset):
-        path = os.path.join(tmp_path, "foo.pth")
-        dataset.save(path)
-        check_file_exists(path)
+    def test_save(self, h5py, tmp_path, dataset, save_path):
+        dataset.save(save_path, fmt=self.fmt)
+        check_file_exists(save_path)
 
     def test_load(self, h5py, torch, tmp_path, dataset, input_file, data):
-        path = os.path.join(tmp_path, "foo.pth")
-        new_dataset = dataset.__class__.load(path)
+        os.path.join(tmp_path, "foo.h5")
+        new_dataset = dataset.__class__.load(input_file)
         assert isinstance(new_dataset, HDF5Dataset)
         for e1, e2 in zip(data, new_dataset):
             for t1, t2 in zip(e1, e2):
                 assert torch.allclose(t1, t2)
 
-    def test_preserves_attributes(self, h5py, tmp_path, dataset):
-        path = os.path.join(tmp_path, "foo.pth")
+    def test_preserves_attributes(self, h5py, tmp_path, dataset, save_path):
         shard = 0
         setattr(dataset, "shard", shard)
-        dataset.save(path)
-        check_file_exists(path)
-        new_dataset = dataset.__class__.load(path)
+        dataset.save(save_path, fmt=self.fmt)
+        check_file_exists(save_path)
+        new_dataset = dataset.__class__.load(save_path)
         assert hasattr(new_dataset, "shard")
         assert new_dataset.shard == shard
 
@@ -99,10 +104,10 @@ class TestSerialize:
             pytest.param(None, None),
         ],
     )
-    def test_save_shards(self, h5py, tmp_path, dataset, num_shards, shard_size):
-        pattern = os.path.join(tmp_path, "foo_{shard}.pth")
-        path = os.path.join(tmp_path, "foo.pth")
-        dataset.save(path, num_shards=num_shards, shard_size=shard_size)
+    def test_save_shards(self, h5py, tmp_path, dataset, num_shards, shard_size, save_path):
+        pattern = os.path.join(tmp_path, "foo_{shard}.h5")
+        path = os.path.join(tmp_path, "foo.h5")
+        dataset.save(path, fmt=self.fmt, num_shards=num_shards, shard_size=shard_size)
         if num_shards is None and shard_size is not None:
             num_shards = math.ceil(len(dataset) // shard_size)
         elif shard_size is None and num_shards is not None:
@@ -115,11 +120,11 @@ class TestSerialize:
             for shard in range(1, num_shards + 1):
                 check_file_exists(pattern.format(shard=shard, num_shards=num_shards))
 
-    def test_set_shard_metadata(self, h5py, tmp_path, dataset):
-        pattern = os.path.join(tmp_path, "foo_{shard}.pth")
-        path = os.path.join(tmp_path, "foo.pth")
+    def test_set_shard_metadata(self, h5py, tmp_path, dataset, save_path):
+        pattern = os.path.join(tmp_path, "foo_{shard}.h5")
+        path = os.path.join(tmp_path, "foo.h5")
         num_shards = 2
-        dataset.save(path, num_shards=num_shards)
+        dataset.save(path, fmt=self.fmt, num_shards=num_shards)
 
         for shard in range(1, num_shards + 1):
             path = pattern.format(shard=shard, num_shards=num_shards)
@@ -128,10 +133,8 @@ class TestSerialize:
 
     @pytest.mark.parametrize("transform", [lambda x: torch.ones(2, 2), None])
     @pytest.mark.parametrize("target_transform", [lambda x: torch.zeros(2, 2), None])
-    def test_apply_transforms_to_loaded_data(self, h5py, tmp_path, dataset, transform, target_transform):
-        path = os.path.join(tmp_path, "foo.pth")
-        dataset.save(path)
-        new_dataset = dataset.__class__.load(path, transform=transform, target_transform=target_transform)
+    def test_apply_transforms_to_loaded_data(self, h5py, tmp_path, dataset, transform, target_transform, input_file):
+        new_dataset = dataset.__class__.load(input_file, transform=transform, target_transform=target_transform)
         example = next(iter(new_dataset))
 
         if transform is not None:
@@ -140,7 +143,7 @@ class TestSerialize:
             assert torch.allclose(example[1], target_transform(None))
 
     def test_repr(self, h5py, torch, tmp_path, dataset, input_file, data):
-        path = os.path.join(tmp_path, "foo.pth")
+        path = input_file
         ds1 = dataset.__class__.load(path)
         repr(ds1)
 
@@ -151,20 +154,19 @@ class TestSerialize:
         print(repr(ds2))
 
     @pytest.mark.parametrize("verbose", [True, False])
-    def test_verbose(self, h5py, tmp_path, dataset, mocker, verbose):
-        path = os.path.join(tmp_path, "foo.pth")
+    def test_verbose(self, h5py, tmp_path, dataset, mocker, verbose, save_path):
         spy = mocker.spy(builtins, "print")
-        dataset.save(path, verbose=verbose)
+        dataset.save(save_path, fmt=self.fmt, verbose=verbose)
 
         if verbose:
             spy.assert_called()
         else:
             spy.assert_not_called()
 
-    def test_multiple_loops(self, h5py, tmp_path, dataset):
-        os.path.join(tmp_path, "foo_{shard}.pth")
-        path = os.path.join(tmp_path, "foo.pth")
-        dataset.save(path)
+    def test_multiple_loops(self, h5py, tmp_path, dataset, save_path):
+        os.path.join(tmp_path, "foo_{shard}.h5")
+        os.path.join(tmp_path, "foo.h5")
+        dataset.save(save_path, fmt=self.fmt)
 
         for example in dataset:
             pass
@@ -172,9 +174,81 @@ class TestSerialize:
         for example in dataset:
             pass
 
-    def test_length(self, h5py, tmp_path, dataset):
-        os.path.join(tmp_path, "foo_{shard}.pth")
-        path = os.path.join(tmp_path, "foo.pth")
-        dataset.save(path)
+    def test_length(self, h5py, tmp_path, dataset, input_file, save_path):
+        path = input_file
+        dataset.save(save_path, fmt=self.fmt)
         ds = dataset.__class__.load(path)
         assert len(ds) == 10
+
+    @pytest.mark.parametrize(
+        "num_workers",
+        [
+            pytest.param(1),
+            # pytest.param(4, marks=pytest.mark.xfail(reason="parallel hdf5")),
+        ],
+    )
+    def test_dataloader(self, h5py, torch, tmp_path, dataset, input_file, data, num_workers):
+        path = input_file
+        new_dataset = dataset.__class__.load(path)
+        dataloader = DataLoader(new_dataset, num_workers=num_workers, batch_size=1)
+
+        for i in range(10):
+            for e1, e2 in zip(dataloader, new_dataset):
+                for t1, t2 in zip(e1, e2):
+                    assert torch.allclose(t1, t2)
+
+
+class TestTorchSerialize(TestSerialize):
+    fmt = "torch"
+
+    @pytest.fixture
+    def input_file(self, torch, tmp_path, data):
+        for i, example in enumerate(data):
+            path = os.path.join(tmp_path, f"example_{i}.pth")
+            torch.save(example, path)
+        return tmp_path
+
+    @pytest.fixture
+    def save_path(self, tmp_path):
+        path = os.path.join(tmp_path, "foo")
+        os.makedirs(path)
+        return path
+
+    def test_save(self, h5py, tmp_path, dataset, save_path):
+        dataset.save(save_path, fmt=self.fmt)
+        target = os.path.join(save_path, "example_0.pth")
+        check_file_exists(target)
+
+    def test_create_directory_on_save(self, h5py, tmp_path, dataset, save_path):
+        os.rmdir(save_path)
+        dataset.save(save_path, fmt=self.fmt)
+        target = os.path.join(save_path, "example_0.pth")
+        check_file_exists(target)
+
+    def test_load(self, torch, tmp_path, dataset, input_file, data):
+        path = tmp_path
+        new_dataset = dataset.__class__.load(path)
+        assert isinstance(new_dataset, TorchDataset)
+        for e1, e2 in zip(data, new_dataset):
+            for t1, t2 in zip(e1, e2):
+                assert torch.allclose(t1, t2)
+
+    @pytest.mark.parametrize("num_workers", [1, 4])
+    def test_dataloader(self, h5py, torch, tmp_path, dataset, input_file, data, num_workers):
+        path = tmp_path
+        new_dataset = dataset.__class__.load(path)
+        dataloader = DataLoader(new_dataset, num_workers=num_workers, batch_size=1)
+
+        for i in range(10):
+            for e1, e2 in zip(dataloader, new_dataset):
+                for t1, t2 in zip(e1, e2):
+                    assert torch.allclose(t1, t2)
+
+    def test_preserves_attributes(self):
+        pass
+
+    def test_save_shards(self):
+        pass
+
+    def test_set_shard_metadata(self):
+        pass
