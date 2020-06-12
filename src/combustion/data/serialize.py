@@ -42,19 +42,20 @@ def save_hdf5(
         for more details.
 
     .. note::
-        When saving multiple shards, the file created at `path` will be a h5py
-        `Virtual Dataset <http://docs.h5py.org/en/stable/vds.html>`_
+        When saving multiple shards, the file created at ``path`` will be created from a
+        :class:`h5py.VirtualSource`. See `Virtual Dataset <http://docs.h5py.org/en/stable/vds.html>`_
+        for more details.
 
     Args:
         dataset (Datset): The dataset to save.
-        path (str): The filepath to save to. Ex `foo/bar.h5`
-        num_shards (optional, int): If given, `num_shards` files will be created, each
+        path (str): The filepath to save to. Ex ``foo/bar.h5``.
+        num_shards (int, optional): If given, `num_shards` files will be created, each
             containing ``1 / num_shards`` of the dataset. Exclusive with ``shard_size``.
             Must be a positive int.
-        shard_size (optional, int): If given, multiple files will be created such that
+        shard_size (int, optional): If given, multiple files will be created such that
             each file contains ``shard_size`` examples. Exclusive with ``num_shards``.
             Must be a positive int.
-        verbose (bool): If False, do not print progress updates during saving.
+        verbose (bool, optional): If False, do not print progress updates during saving.
     """
     if num_shards is not None and shard_size is not None:
         raise ValueError("num_shards is incompatible with shard_size, please use one or the other")
@@ -93,16 +94,18 @@ def save_hdf5(
     return path
 
 
-def save_torch(dataset: Dataset, path: str, verbose: bool = True) -> None:
+def save_torch(dataset: Dataset, path: str, prefix: str = "example_", verbose: bool = True) -> None:
     r"""Saves the contents of the dataset to multiple files using :func:`torch.save`.
 
     .. note::
         This is less elegant than HDF5 serialization, but is a thread safe alternative.
 
     Args:
-        dataset (Datset): The dataset to save.
+        dataset (Dataset): The dataset to save.
         path (str): The filepath to save to. Ex ``foo/bar``.
-        verbose (bool): If False, do not print progress updates during saving.
+        prefix (str, optional): A prefix to append to each ``.pth`` file. Output files will be of
+            the form ``{path}/{prefix}{index}.pth``
+        verbose (bool, optional): If False, do not print progress updates during saving.
     """
     if not os.path.exists(path):
         os.mkdir(path)
@@ -111,7 +114,7 @@ def save_torch(dataset: Dataset, path: str, verbose: bool = True) -> None:
         print(f"Writing to {path}", end="", flush=True)
 
     for i, example in enumerate(dataset):
-        target = os.path.join(path, f"example_{i}.pth")
+        target = os.path.join(path, f"{prefix}{i}.pth")
         torch.save(example, target)
         if verbose:
             print(".", end="", flush=True)
@@ -128,6 +131,7 @@ class SerializeMixin:
         fmt: str = "hdf5",
         num_shards: Optional[int] = None,
         shard_size: Optional[int] = None,
+        prefix: str = "example_",
         verbose: bool = True,
     ) -> None:
         r"""Saves the contents of the dataset to disk. See :func:`save_hdf5` and :func:`save_torch` respectively for more information
@@ -139,19 +143,20 @@ class SerializeMixin:
 
         Args:
             path (str): The filepath to save to. Ex `foo/bar.h5`
-            fmt (str): The format to save in. Should be one of ``hdf5``, ``torch``.
-            num_shards (optional, int): If given, `num_shards` files will be created, each
+            fmt (str, optional): The format to save in. Should be one of ``hdf5``, ``torch``.
+            num_shards (int, optional): If given, `num_shards` files will be created, each
                 containing ``1 / num_shards`` of the dataset. Exclusive with ``shard_size``.
-                Must be a positive int. Only has an effect when ``fmt`` is ``hdf5``.
-            shard_size (optional, int): If given, multiple files will be created such that
+                Must be a positive int. Only has an effect when ``fmt`` is ``"hdf5"``.
+            shard_size (int, optional): If given, multiple files will be created such that
                 each file contains ``shard_size`` examples. Exclusive with ``num_shards``.
-                Must be a positive int. Only has an effect when ``fmt`` is ``hdf5``.
-            verbose (bool): If False, do not print progress updates during saving.
+                Must be a positive int. Only has an effect when ``fmt`` is ``"hdf5"``.
+            prefix (str, optional): Passted to :func:`save_torch` if ``fmt`` is ``"hdf5"``
+            verbose (bool, optional): If False, do not print progress updates during saving.
         """
         if fmt == "hdf5":
-            return save_hdf5(self, path, num_shards, shard_size, verbose)
+            return save_hdf5(self, path=path, num_shards=num_shards, shard_size=shard_size, verbose=verbose)
         elif fmt == "torch":
-            return save_torch(self, path, verbose)
+            return save_torch(self, path=path, prefix=prefix, verbose=verbose)
         else:
             raise ValueError(f"Expected fmt to be one of 'hdf5', 'torch': found {fmt}")
 
@@ -169,11 +174,15 @@ class SerializeMixin:
             Using HDF5 in a parallel / multithreaded manner poses additional challenges that have
             not yet been overcome. As such, using a :class:`HDF5Dataset` with
             :class:`torch.utils.data.DataLoader` when ``num_workers > 1`` will yield incorrect data.
+            For in situations where multiple threads will be used, prefer saving with ``fmt="torch"``.
             See `Parallel HDF5 <http://docs.h5py.org/en/stable/mpi.html>`_ for more details.
 
         .. note::
-            Loading requires the h5py library. See http://docs.h5py.org/en/stable/index.html
+            Loading HDF5 files requires the h5py library. See http://docs.h5py.org/en/stable/index.html
             for more details.
+
+        .. note::
+            Dataset attributes are preserved when loading a HDF5 file, but not a Torch file.
 
         Args:
             path (str): The filepath to load from. See `HDF5Dataset.load()` for more details
@@ -188,26 +197,25 @@ class SerializeMixin:
                 See `HDF5Dataset` for more details
         """
         pth_pattern = os.path.join(path, "*.pth")
+
+        # respect user choice of fmt
         if fmt == "hdf5":
             return HDF5Dataset(path, transform, target_transform)
         elif fmt == "torch":
             return TorchDataset(path, transform, target_transform)
+
+        # try hdf5 first if present, then try torch
         elif ".h5" in str(path) or "hdf5" in str(path):
             return HDF5Dataset(path, transform, target_transform)
         elif list(glob.glob(pth_pattern)):
             return TorchDataset(path, transform, target_transform)
+
         else:
             raise FileNotFoundError(f"Could not find a target to load in path {path}")
 
 
 class HDF5Dataset(Dataset, SerializeMixin):
-    r"""Dataset used to read from HDF5 files.
-
-    .. warning::
-        Using HDF5 in a parallel / multithreaded manner poses additional challenges that have
-        not yet been overcome. As such, using a :class:`HDF5Dataset` with
-        :class:`torch.utils.data.DataLoader` when ``num_workers > 1`` will yield incorrect data.
-        See `Parallel HDF5 <http://docs.h5py.org/en/stable/mpi.html>`_ for more details.
+    r"""Dataset used to read from HDF5 files. See :class:`SerializeMixin` for more details
 
     .. note::
         Requires the h5py library. See http://docs.h5py.org/en/stable/index.html
@@ -287,7 +295,7 @@ class HDF5Dataset(Dataset, SerializeMixin):
 
 
 class TorchDataset(Dataset, SerializeMixin):
-    r"""Dataset used to read serialized examples in torch format.
+    r"""Dataset used to read serialized examples in torch format. See :class:`SerializeMixin` for more details.
 
     Args:
         path (str): The path to the saved dataset. Note that unlike :class:`HDF5Dataset`, ``path``
