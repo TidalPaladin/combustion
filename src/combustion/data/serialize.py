@@ -104,6 +104,8 @@ def save_torch(dataset: Dataset, path: str, verbose: bool = True) -> None:
         path (str): The filepath to save to. Ex ``foo/bar``.
         verbose (bool): If False, do not print progress updates during saving.
     """
+    if not os.path.exists(path):
+        os.mkdir(path)
 
     if verbose:
         print(f"Writing to {path}", end="", flush=True)

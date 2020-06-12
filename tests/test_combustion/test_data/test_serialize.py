@@ -219,6 +219,12 @@ class TestTorchSerialize(TestSerialize):
         target = os.path.join(save_path, "example_0.pth")
         check_file_exists(target)
 
+    def test_create_directory_on_save(self, h5py, tmp_path, dataset, save_path):
+        os.rmdir(save_path)
+        dataset.save(save_path, fmt=self.fmt)
+        target = os.path.join(save_path, "example_0.pth")
+        check_file_exists(target)
+
     def test_load(self, torch, tmp_path, dataset, input_file, data):
         path = tmp_path
         new_dataset = dataset.__class__.load(path)
