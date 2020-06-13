@@ -17,9 +17,11 @@ def to_8bit(img: Union[Tensor, ndarray], per_channel: bool = True) -> Tensor:
 
     Args:
         img (Tensor or ndarray): The image to convert
-        per_channel (bool): If true, quantize each channel separately
+        per_channel (bool, optional): If true, quantize each channel separately
 
-    Returns: Tensor
+    Shape:
+        - Image: :math:`(C, H, W)` or :math:`(N, C, H, W)` where :math:`N` is an optional batch
+          dimension.
     """
     return_tensor = isinstance(img, Tensor)
     img: Tensor = _check_input(img, "img", ndim=(2, 4))
