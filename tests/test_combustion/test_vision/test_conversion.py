@@ -80,3 +80,11 @@ class TestTo8bit:
         original_input = input.clone()
         result = to_8bit(input, per_channel=True)
         assert torch.allclose(input, original_input)
+
+    def test_batched_input(self):
+        input = torch.tensor([[[[-1.0, 0.0], [0.0, 1.0]]], [[[-1.0, 0.5], [0.0, 1.0]]],])
+
+        expected = torch.tensor([[[[0, 128], [128, 255]]], [[[0, 191], [128, 255]]],]).byte()
+
+        result = to_8bit(input, per_channel=True)
+        assert torch.allclose(result, expected)
