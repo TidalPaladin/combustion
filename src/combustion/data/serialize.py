@@ -134,8 +134,8 @@ class SerializeMixin:
         prefix: str = "example_",
         verbose: bool = True,
     ) -> None:
-        r"""Saves the contents of the dataset to disk. See :func:`save_hdf5` and :func:`save_torch` respectively for more information
-        on how saving functions for HDF5 or Torch files.
+        r"""Saves the contents of the dataset to disk. See :func:`save_hdf5` and :func:`save_torch`
+        respectively for more information on how saving functions for HDF5 or Torch files.
 
         .. note::
             Serialization requires the h5py library. See http://docs.h5py.org/en/stable/index.html
