@@ -37,7 +37,7 @@ class TestTo8bit:
             raise pytest.UsageError(f"Unknown dtype {dtype}")
 
     @pytest.mark.parametrize("per_channel", [True, False])
-    def test_to_8bit(self, input, per_channel, shape, dtype):
+    def test_random_input(self, input, per_channel, shape, dtype):
         result = to_8bit(input, per_channel)
         assert result.shape == shape
         assert result.min() >= 0
@@ -47,3 +47,36 @@ class TestTo8bit:
 
         if dtype == "byte":
             assert torch.allclose(input, result)
+
+    def test_known_float_input_per_channel(self):
+        input = torch.tensor([[-1.0, 0.0], [0.0, 1.0]]).unsqueeze(0)
+        expected = torch.tensor([[0, 128], [128, 255]]).unsqueeze(0).byte()
+        result = to_8bit(input, per_channel=True)
+        assert result.shape == input.shape
+        assert torch.allclose(result, expected)
+
+    def test_known_long_input_per_channel(self):
+        input = torch.tensor([[0, 1000], [1001, 2000]]).unsqueeze(0).long()
+        expected = torch.tensor([[0, 128], [128, 255]]).unsqueeze(0).byte()
+        result = to_8bit(input, per_channel=True)
+        assert result.shape == input.shape
+        assert torch.allclose(result, expected)
+
+    @pytest.mark.parametrize("per_channel", [True, False])
+    def test_known_input_per_channel_result(self, per_channel):
+        input = torch.tensor([[[0, 1000], [1001, 2000]], [[0, 500], [500, 1000]],]).long()
+
+        if per_channel:
+            expected = torch.tensor([[[0, 128], [128, 255]], [[0, 128], [128, 255]]]).byte()
+        else:
+            expected = torch.tensor([[[0, 128], [128, 255]], [[0, 64], [64, 128]]]).byte()
+
+        result = to_8bit(input, per_channel=per_channel)
+        assert result.shape == input.shape
+        assert torch.allclose(result, expected)
+
+    def test_input_unchanged(self):
+        input = torch.tensor([[0, 1000], [1001, 2000]]).unsqueeze(0).long()
+        original_input = input.clone()
+        result = to_8bit(input, per_channel=True)
+        assert torch.allclose(input, original_input)
