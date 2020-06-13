@@ -78,7 +78,7 @@ test: venv
 		-rs \
 		--cov=./src \
 		--cov-report=xml \
-		-n auto --dist=loadfile -s -v \
+		-s -v \
 		./tests/
 
 test-%: venv
