@@ -5,6 +5,7 @@ from .bifpn import BiFPN
 from .bottleneck import Bottleneck1d, Bottleneck2d, Bottleneck3d, BottleneckFactorized2d, BottleneckFactorized3d
 from .conv import DownSample3d, UpSample2d, UpSample3d
 from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
+from .preprocessing import Standardize
 
 
 __all__ = [
@@ -23,4 +24,5 @@ __all__ = [
     "Bottleneck1d",
     "BottleneckFactorized3d",
     "BottleneckFactorized2d",
+    "Standardize",
 ]

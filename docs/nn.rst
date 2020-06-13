@@ -59,3 +59,11 @@ Loss Functions
 
 .. autoclass:: combustion.nn.CenterNetLoss
     :members:
+
+
+Utilities
+----------------------------------
+
+.. autoclass:: combustion.nn.Standardize
+    :members: 
+    :undoc-members: forward

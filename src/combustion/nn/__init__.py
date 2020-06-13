@@ -16,6 +16,7 @@ from .modules import (
     ConvTranspose2d,
     ConvTranspose3d,
     DownSample3d,
+    Standardize,
     UpSample2d,
     UpSample3d,
 )
@@ -42,4 +43,5 @@ __all__ = [
     "focal_loss",
     "FocalLoss",
     "FocalLossWithLogits",
+    "Standardize",
 ]
