@@ -3,6 +3,7 @@
 
 from typing import Tuple, Union
 
+import torch
 import torch.nn as nn
 from torch import Tensor
 
@@ -49,21 +50,7 @@ class Standardize(nn.Module):
             if abs(dim) >= inputs.ndim:
                 raise ValueError(f"Invalid dim {dim} for input of shape {inputs.shape}")
 
-        # determine shape properties and which dims should be reduced / preserved
-        ndim = inputs.ndim
-        inputs.shape
-        reduce_dims = set([d if d >= 0 else ndim + d for d in self.dims])
-        preserve_dims = set(range(ndim)) - reduce_dims
-
-        # flatten all reduced dimensions into dim=-1
-        inputs = inputs.permute(*preserve_dims, *reduce_dims)
-        permuted_shape = inputs.shape
-        inputs = inputs.flatten(start_dim=-1 * len(reduce_dims))
-
-        # compute mean /variance over reduced dimensions and standardize input
-        mean = inputs.mean(dim=-1, keepdim=True)
-        var = inputs.var(dim=-1, keepdim=True).clamp_(min=self.epsilon)
-        result = inputs.sub_(mean).div_(var)
-
-        # restore original shape
-        return result.view(*permuted_shape).permute(*preserve_dims, *reduce_dims)
+        std, mean = torch.std_mean(inputs, dim=tuple(self.dims), keepdim=True)
+        var = std.pow(2).clamp_(min=self.epsilon)
+        result = inputs.sub(mean).div_(var)
+        return result
