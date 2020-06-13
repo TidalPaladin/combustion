@@ -7,6 +7,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from combustion.nn import BiFPN
+from combustion.testing import cuda_or_skip
 
 
 def custom_conv(num_channels) -> nn.Sequential:
@@ -58,9 +59,10 @@ def test_validation(levels, num_channels, conv, epsilon):
         BiFPN(num_channels, levels, conv, epsilon)
 
 
+@cuda_or_skip
 def test_forward(levels, num_channels, conv, inputs):
-    layer = BiFPN(num_channels, levels, conv)
-    output = layer(inputs)
+    layer = BiFPN(num_channels, levels, conv).cuda()
+    output = layer([x.cuda() for x in inputs])
     assert isinstance(output, list)
     for out_item, in_item in zip(output, inputs):
         assert isinstance(out_item, Tensor)
