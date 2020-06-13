@@ -19,7 +19,8 @@ class Standardize(nn.Module):
     Args:
         dims (int or tuple of ints): The dimension(s) to standardize over
         epsilon (float, optional): Lower bound on variance
-
+        unbiased (bool, optional): Whether or not to used unbiased estimation
+            in variance calculation. See :func:`torch.var_mean` for more details.
 
     Shape:
         - Inputs: Tensor of shape :math:`(*)` where :math:`*` indicates
@@ -27,17 +28,20 @@ class Standardize(nn.Module):
         - Output: Same shape as input.
     """
 
-    def __init__(self, dims: Union[int, Tuple[int]], epsilon=1e-9):
+    def __init__(self, dims: Union[int, Tuple[int]], epsilon: float = 1e-9, unbiased: bool = True):
         super(Standardize, self).__init__()
         if isinstance(dims, int):
             dims = (dims,)
         self.dims = set([int(x) for x in dims])
         self.epsilon = abs(float(epsilon))
+        self.unbiased = bool(unbiased)
 
     def __repr__(self):
         s = f"Standardize(dims={tuple(self.dims)}"
         if self.epsilon != 1e-9:
             s += f", epsilon={self.epsilon}"
+        if not self.unbiased:
+            s += f", unbiased={self.unbiased}"
         s += ")"
         return s
 
@@ -50,7 +54,7 @@ class Standardize(nn.Module):
             if abs(dim) >= inputs.ndim:
                 raise ValueError(f"Invalid dim {dim} for input of shape {inputs.shape}")
 
-        std, mean = torch.std_mean(inputs, dim=tuple(self.dims), keepdim=True)
-        var = std.pow(2).clamp_(min=self.epsilon)
+        var, mean = torch.var_mean(inputs, dim=tuple(self.dims), keepdim=True, unbiased=self.unbiased)
+        var.clamp_(min=self.epsilon)
         result = inputs.sub(mean).div_(var)
         return result
