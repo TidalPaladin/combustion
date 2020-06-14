@@ -92,6 +92,8 @@ class Model(MinimalModel):
 
 
 class TestLightningModuleTest(LightningModuleTest):
+    DISTRIBUTED = False
+
     @pytest.fixture
     def model(self):
         return Model(1, 10, 3)
@@ -102,9 +104,21 @@ class TestLightningModuleTest(LightningModuleTest):
 
 
 class TestMinimalLightningModuleTest(LightningModuleTest):
+    DISTRIBUTED = False
+
     @pytest.fixture
     def model(self):
         return MinimalModel(1, 10, 3)
+
+    @pytest.fixture
+    def data(self):
+        return torch.rand(2, 1, 10, 10)
+
+
+class TestDistributedLightningModuleTest(LightningModuleTest):
+    @pytest.fixture(params=[True, False])
+    def model(self, request):
+        return Model(1, 10, 3)
 
     @pytest.fixture
     def data(self):
