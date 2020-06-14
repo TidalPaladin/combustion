@@ -4,14 +4,23 @@
 import pytest
 import pytorch_lightning as pl
 import torch
+from pytorch_lightning.overrides.data_parallel import LightningDistributedDataParallel
+from pytorch_lightning.trainer.optimizers import TrainerOptimizersMixin
 from torch import Tensor
 from torch.utils.data import DataLoader
 
 from .decorators import cuda_or_skip
 
 
+# dummy class to hold mixin methods
+class _ProcessOptimizers(TrainerOptimizersMixin):
+    pass
+
+
 def check_overriden(model, method):
     try:
+        if isinstance(model, LightningDistributedDataParallel):
+            model = model.module
         model_method = getattr(model.__class__, method)
         lightning_method = getattr(pl.LightningModule, method)
         if model_method == lightning_method:
@@ -50,7 +59,7 @@ class LightningModuleTest:
         * :func:`train_dataloader`
         * :func:`val_dataloader` (optional)
         * :func:`test_dataloader` (optional)
-        * :func:`training_step`
+        * :func:`training_step` - single process and with :class:`torch.nn.parallel.DistributedDataParallel`
         * :func:`validation_step` (optional)
         * :func:`test_step` (optional)
         * :func:`validation_epoch_end` (optional)
@@ -74,6 +83,18 @@ class LightningModuleTest:
         >>>     def data():
         >>>         return torch.rand(2, 1, 10, 10) # will be passed to model.forward()
     """
+    DISTRIBUTED: bool = True
+
+    def init_process_group(self):
+        if not torch.distributed.is_initialized():
+            torch.cuda.set_device(0)
+            torch.distributed.init_process_group(
+                backend="nccl", world_size=1, rank=0, init_method="tcp://127.0.0.1:23456"
+            )
+
+    def _distributed_model(self, model: pl.LightningModule) -> LightningDistributedDataParallel:
+        model = LightningDistributedDataParallel(model, device_ids=[0], find_unused_parameters=True)
+        return model
 
     @pytest.fixture
     def model(self):
@@ -84,7 +105,15 @@ class LightningModuleTest:
         raise pytest.UsageError("Must implement data fixture for LightningModuleTest")
 
     @pytest.fixture
+    def distributed_model(self, model):
+        self.init_process_group()
+        model = model.cuda()
+        return self._distributed_model(model)
+
+    @pytest.fixture
     def prepare_data(self, model):
+        if isinstance(model, LightningDistributedDataParallel):
+            model = model.module
         try:
             model.prepare_data()
         except NotImplementedError:
@@ -106,6 +135,8 @@ class LightningModuleTest:
         r"""Tests that ``model.configure_optimizers()`` runs and returns the required
         outputs.
         """
+        if isinstance(model, LightningDistributedDataParallel):
+            model = model.module
         optim = model.configure_optimizers()
         is_optimizer = isinstance(optim, torch.optim.Optimizer)
         is_optim_schedule_tuple = (
@@ -123,11 +154,15 @@ class LightningModuleTest:
         r"""Calls ``model.prepare_data()`` to see if any fatal errors are thrown. No
         tests are performed to assess change of state
         """
+        if isinstance(model, LightningDistributedDataParallel):
+            model = model.module
         model.prepare_data()
 
     @pytest.mark.usefixtures("prepare_data")
     def test_train_dataloader(self, model: pl.LightningModule):
         r"""Tests that ``model.train_dataloader()`` runs and returns the required output."""
+        if isinstance(model, LightningDistributedDataParallel):
+            model = model.module
         dl = model.train_dataloader()
         check_dataloader(dl)
         return dl
@@ -135,6 +170,8 @@ class LightningModuleTest:
     @pytest.mark.usefixtures("prepare_data")
     def test_val_dataloader(self, model: pl.LightningModule):
         r"""Tests that ``model.val_dataloader()`` runs and returns the required output."""
+        if isinstance(model, LightningDistributedDataParallel):
+            model = model.module
         check_overriden(model, "val_dataloader")
         dl = model.val_dataloader()
         check_dataloader(dl)
@@ -143,6 +180,8 @@ class LightningModuleTest:
     @pytest.mark.usefixtures("prepare_data")
     def test_test_dataloader(self, model: pl.LightningModule):
         r"""Tests that ``model.test_dataloader()`` runs and returns the required output."""
+        if isinstance(model, LightningDistributedDataParallel):
+            model = model.module
         check_overriden(model, "test_dataloader")
         dl = model.test_dataloader()
         check_dataloader(dl)
@@ -156,6 +195,9 @@ class LightningModuleTest:
 
         Because of the size of some models, this test is only run when a GPU is available.
         """
+        if isinstance(model, LightningDistributedDataParallel):
+            pytest.skip()
+
         if torch.cuda.is_available():
             model = model.cuda()
             data = data.cuda()
@@ -166,18 +208,36 @@ class LightningModuleTest:
             model.eval()
 
         _ = model(data)
+
         assert _ is not None
 
     @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
-    def test_training_step(self, model: pl.LightningModule):
+    @pytest.mark.parametrize(
+        "distributed", [pytest.param(True, id="distributed"), pytest.param(False, id="non-distributed"),]
+    )
+    def test_training_step(self, model: pl.LightningModule, distributed: bool):
         r"""Runs a training step based on the data returned from ``model.train_dataloader()``.
         Tests that the dictionary returned from ``training_step()`` are as required by PyTorch
-        Lightning.
+        Lightning. A backward pass and optimizer step are also performed using the optimizer
+        provided by :func:`LightningModule.configure_optimizers`. By default, training steps
+        are tested for distributed and non-distributed models using the
+        :class:`torch.nn.parallel.DistributedDataParallel` wrapper. Distributed tests can be disabled
+        by setting :attr:`LightningModuleTest.DISTRIBUTED` to ``False``.
 
         Because of the size of some models, this test is only run when a GPU is available.
         """
-        dl = model.train_dataloader()
+        if distributed:
+            if not self.DISTRIBUTED:
+                pytest.skip("LightningModuleTest.DISTRIBUTED was False, skipping distributed training step")
+            self.init_process_group()
+            model = self._distributed_model(model.cuda())
+
+        if isinstance(model, LightningDistributedDataParallel):
+            dl = model.module.train_dataloader()
+        else:
+            dl = model.train_dataloader()
+
         batch = next(iter(dl))
 
         if torch.cuda.is_available():
@@ -187,11 +247,27 @@ class LightningModuleTest:
         model.train()
 
         # TODO this can't handle multiple optimizers
-        output = model.training_step(batch, 0)
+        if isinstance(model, LightningDistributedDataParallel):
+            output = model(batch, 0)
+        else:
+            output = model.training_step(batch, 0)
+
         assert isinstance(output, dict)
 
         assert "loss" in output.keys(), "loss key is required"
         assert_valid_loss(output["loss"])
+
+        # test loss / backward pass, important for distributed operation
+        if isinstance(model, LightningDistributedDataParallel):
+            output = model(batch, 0)
+            optimizers, lr_scheduler, frequencies = _ProcessOptimizers().init_optimizers(model.module)
+        else:
+            optimizers, lr_scheduler, frequencies = _ProcessOptimizers().init_optimizers(model)
+        optim = optimizers[0]
+        loss = output["loss"]
+        optim.zero_grad()
+        loss.backward()
+        optim.step()
 
         if "log" in output.keys():
             assert isinstance(output["log"], dict)
@@ -210,6 +286,9 @@ class LightningModuleTest:
 
         Because of the size of some models, this test is only run when a GPU is available.
         """
+        if isinstance(model, LightningDistributedDataParallel):
+            pytest.skip()
+
         check_overriden(model, "val_dataloader")
         check_overriden(model, "validation_step")
 
@@ -246,6 +325,9 @@ class LightningModuleTest:
 
         Because of the size of some models, this test is only run when a GPU is available.
         """
+        if isinstance(model, LightningDistributedDataParallel):
+            pytest.skip()
+
         check_overriden(model, "val_dataloader")
         check_overriden(model, "validation_step")
         check_overriden(model, "validation_epoch_end")
@@ -272,6 +354,9 @@ class LightningModuleTest:
 
         Because of the size of some models, this test is only run when a GPU is available.
         """
+        if isinstance(model, LightningDistributedDataParallel):
+            pytest.skip()
+
         check_overriden(model, "test_dataloader")
         check_overriden(model, "test_step")
 
@@ -307,6 +392,9 @@ class LightningModuleTest:
 
         Because of the size of some models, this test is only run when a GPU is available.
         """
+        if isinstance(model, LightningDistributedDataParallel):
+            pytest.skip()
+
         check_overriden(model, "test_dataloader")
         check_overriden(model, "test_step")
         check_overriden(model, "test_epoch_end")
