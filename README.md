@@ -1,5 +1,9 @@
 # Combustion
 
+[![CircleCI](https://circleci.com/gh/TidalPaladin/combustion/tree/master.svg?style=svg)](https://circleci.com/gh/TidalPaladin/combustion/tree/master)
+[![Documentation Status](https://readthedocs.org/projects/combustion/badge/?version=latest)](https://combustion.readthedocs.io/en/latest/?badge=latest)
+[![codecov](https://codecov.io/gh/TidalPaladin/combustion/branch/master/graph/badge.svg)](https://codecov.io/gh/TidalPaladin/combustion)
+
 Combustion is a collection of layers/models/helper functions that I
 have found useful or incorporated into a deep learning project at
 some point.
