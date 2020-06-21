@@ -4,3 +4,4 @@ trainer:
   params:
     max_epochs: 2
     fast_dev_run: true
+    auto_lr_find: false

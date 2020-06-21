@@ -10,6 +10,7 @@ from omegaconf import DictConfig
 from torch.nn import functional as F
 
 from combustion.lightning import HydraMixin
+import combustion
 
 
 log = logging.getLogger(__name__)
@@ -70,30 +71,9 @@ class FakeModel(HydraMixin, pl.LightningModule):
         return {"avg_test_loss": avg_loss, "log": logs, "progress_bar": logs}
 
 
-# accepts options from the yaml structure in ./conf
-# see hydra docs: https://hydra.cc/docs/intro
-@hydra.main(config_path="./conf/config.yaml")
+@hydra.main(config_path="./conf", config_name="config")
 def main(cfg):
-    log.info("Initializing")
-    log.info("Configuration: \n%s", cfg.pretty())
-
-    # instantiate model (and optimizer) selected in yaml
-    # see pytorch lightning docs: https://pytorch-lightning.rtfd.io/en/latest
-    model: pl.LightningModule = hydra.utils.instantiate(cfg.model, cfg)
-
-    # instantiate trainer with params as selected in yaml
-    # handles tensorboard, checkpointing, etc
-    trainer: pl.Trainer = hydra.utils.instantiate(cfg.trainer)
-
-    # train
-    log.info("Starting training")
-    trainer.fit(model)
-
-    # test
-    log.info("Starting testing")
-    trainer.test(model)
-
-    log.info("Finished!")
+    combustion.main(cfg)
 
 
 if __name__ == "__main__":
