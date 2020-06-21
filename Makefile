@@ -89,7 +89,7 @@ test-pdb-%: venv
 
 venv: $(VENV)/bin/activate
 
-$(VENV)/bin/activate: setup.py src/combustion
+$(VENV)/bin/activate: setup.py 
 	test -d $(VENV) || virtualenv $(VENV)
 	$(PYTHON) -m pip install -U pip
 	$(PYTHON) -m pip install -e .[dev]
