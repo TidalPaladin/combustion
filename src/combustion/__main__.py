@@ -3,6 +3,7 @@
 
 import logging
 import os
+from typing import Optional
 
 import hydra
 import pytorch_lightning as pl
@@ -21,7 +22,25 @@ def check_exceptions():
         raise x
 
 
-def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> None:
+def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
+    r"""Performs automatic learning rate selection using PyTorch Lightning.
+    This is essentially a wrapper function that invokes PyTorch Lightning's
+    auto LR selection using Hydra inputs. The model's learning rate is
+    automatically set to the selected learning rate, and the selected
+    learning rate is logged. If possible, a plot of the learning rate
+    selection curve will also be produced.
+
+    Args:
+
+        cfg (DictConfig):
+            The Hydra config
+
+        model (LightningModule):
+            The model to select a learning rate for.
+
+    Returns:
+        The learning rate if one was found, otherwise ``None``.
+    """
     # store original precision, set trainer to 32 bit mode for stability
     if "precision" in cfg.trainer["params"].keys():
         precision = cfg.trainer["params"]["precision"]
@@ -29,12 +48,14 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> None:
     else:
         precision = 32
 
+    lr = None
     try:
         model.prepare_data()
         lr_trainer: pl.Trainer = HydraMixin.instantiate(cfg.trainer)
         lr_finder = lr_trainer.lr_find(model)
-        log.info("Found learning rate %f", lr_finder.suggestion())
-        cfg.optimizer["params"]["lr"] = lr_finder.suggestion()
+        lr = lr_finder.suggestion()
+        log.info("Found learning rate %f", lr)
+        cfg.optimizer["params"]["lr"] = lr
 
         # save lr curve figure
         try:
@@ -57,10 +78,37 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> None:
             cfg.trainer["params"]["precision"] = precision
         cfg.trainer["params"]["auto_lr_find"] = False
 
+    return lr
+
 
 # accepts options from the yaml config file
 # see hydra docs: https://hydra.cc/docs/intro
-def main(cfg: DictConfig, train=False, test=False):
+def main(cfg: DictConfig) -> None:
+    r"""Main method for training/testing of a model using PyTorch Lightning and Hydra.
+
+    This method is robust to exceptions (other than :class:`SystemExit` or :class:`KeyboardInterrupt`),
+    making it useful when using Hydra's multirun feature. If one combination of hyperparameters results in
+    an exception, other combinations will still be attempted.
+
+    Automatic learning rate selection is handled automatically using :func:`auto_lr_find`.
+
+    Training / testing is automatically performed based on the configuration keys present in ``config.dataset``.
+
+    Args:
+
+        cfg (DictConfig):
+            The Hydra config
+
+    Example::
+
+        # define main method as per Hydra that calls combustion.main()
+        @hydra.main(config_path="./conf", config_name="config")
+        def main(cfg):
+            combustion.main(cfg)
+
+        if __name__ == "__main__":
+            main()
+    """
     try:
         log.info("Configuration: \n%s", cfg.pretty())
 
