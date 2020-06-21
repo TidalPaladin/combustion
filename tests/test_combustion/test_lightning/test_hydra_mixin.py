@@ -93,7 +93,8 @@ def trainer():
 def test_constructor_sets_hparams(cfg):
     hparams = cfg["model"]["params"]
     model = Subclass(cfg, **hparams)
-    assert model.hparams == hparams
+    for k, v in hparams.items():
+        assert model.hparams[k] == v
 
 
 def test_constructor_sets_config(cfg):
