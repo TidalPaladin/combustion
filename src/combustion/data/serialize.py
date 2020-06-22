@@ -166,6 +166,7 @@ class SerializeMixin:
         fmt: Optional[str] = None,
         transform: Optional[Callable[[Tensor], Any]] = None,
         target_transform: Optional[Callable[[Tensor], Any]] = None,
+        **kwargs,
     ) -> HDF5Dataset:
         r"""
         Loads the contents of a dataset previously saved with `save()`, returning a :class:`HDF5Dataset`.
@@ -195,20 +196,22 @@ class SerializeMixin:
                 See `HDF5Dataset` for more details
             target_transform (callable, optional): A tranform to be applied to the label tensor
                 See `HDF5Dataset` for more details
+            **kwargs:  Forwarded to the constructors for :class:`HDF5Dataset` or :class:`TorchDataset`,
+                depending on what dataset is constructed.
         """
         pth_pattern = os.path.join(path, "*.pth")
 
         # respect user choice of fmt
         if fmt == "hdf5":
-            return HDF5Dataset(path, transform, target_transform)
+            return HDF5Dataset(path, transform, target_transform, **kwargs)
         elif fmt == "torch":
-            return TorchDataset(path, transform, target_transform)
+            return TorchDataset(path, transform, target_transform, **kwargs)
 
         # try hdf5 first if present, then try torch
         elif ".h5" in str(path) or "hdf5" in str(path):
-            return HDF5Dataset(path, transform, target_transform)
+            return HDF5Dataset(path, transform, target_transform, **kwargs)
         elif list(glob.glob(pth_pattern)):
-            return TorchDataset(path, transform, target_transform)
+            return TorchDataset(path, transform, target_transform, **kwargs)
 
         else:
             raise FileNotFoundError(f"Could not find a target to load in path {path}")
@@ -303,6 +306,7 @@ class TorchDataset(Dataset, SerializeMixin):
         transform (optional, callable): Transform to be applied to data tensors.
         target_transform (optional, callable): Transform to be applied to label tensors. If
             given, the loaded dataset must produce
+        pattern (optional, str): Pattern of filenames to match.
     """
 
     def __init__(
@@ -310,15 +314,19 @@ class TorchDataset(Dataset, SerializeMixin):
         path: str,
         transform: Optional[Callable[[Tensor], Any]] = None,
         target_transform: Optional[Callable[[Tensor], Any]] = None,
+        pattern: str = "*.pth",
     ):
-        pattern = os.path.join(path, "*.pth")
         self.path = path
+        self.pattern = pattern
+        pattern = os.path.join(path, pattern)
         self.files = sorted(list(glob.glob(pattern)))
         self._transform = transform
         self._target_transform = target_transform
 
     def __repr__(self):
         rep = f"TorchDataset({self.path}"
+        if self.pattern != "*.pth":
+            rep += f", pattern={self.pattern}"
         if self._transform is not None:
             rep += f", transform={self._transform}"
         if self._target_transform is not None:

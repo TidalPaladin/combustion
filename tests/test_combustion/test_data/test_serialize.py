@@ -5,6 +5,7 @@ import builtins
 import math
 import os
 from pathlib import Path
+from shutil import copyfile
 
 import pytest
 import torch
@@ -229,6 +230,20 @@ class TestTorchSerialize(TestSerialize):
         for e1, e2 in zip(data, new_dataset):
             for t1, t2 in zip(e1, e2):
                 assert torch.allclose(t1, t2)
+
+    def test_load_pattern(self, torch, tmp_path, dataset, input_file, data):
+        src_files = os.listdir(tmp_path)
+        for i, f in enumerate(src_files):
+            p = os.path.join(tmp_path, f)
+            new_p = os.path.join(tmp_path, f"copy_{i}.pth")
+            copyfile(p, new_p)
+
+        path = tmp_path
+        new_dataset = dataset.__class__.load(path, pattern="example_*.pth")
+
+        assert len(new_dataset) == len(data)
+        for f in src_files:
+            assert os.path.join(tmp_path, f) in new_dataset.files
 
     @pytest.mark.parametrize("num_workers", [1, 4])
     def test_dataloader(self, h5py, torch, tmp_path, dataset, input_file, data, num_workers):
