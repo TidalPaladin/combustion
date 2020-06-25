@@ -4,7 +4,7 @@ numpy
 pytorch-lightning>=0.7.5
 hydra-core
 torchvision
-torch
+torch>=1.5.0
 scipy
 pynvml
 kornia
