@@ -15,3 +15,9 @@ Utilities to facilitate operation with
 
 .. autoclass:: combustion.lightning.HydraMixin
     :members:
+
+Callbacks
+----------------------------------
+
+.. autoclass:: combustion.lightning.TorchScriptCallback
+    :members:

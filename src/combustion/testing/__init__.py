@@ -11,6 +11,7 @@ from .assertions import (
 )
 from .decorators import cuda_or_skip
 from .lightning import LightningModuleTest
+from .mixins import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
 __all__ = [
@@ -22,4 +23,6 @@ __all__ = [
     "assert_tensors_close",
     "cuda_or_skip",
     "LightningModuleTest",
+    "TorchScriptTestMixin",
+    "TorchScriptTraceTestMixin",
 ]

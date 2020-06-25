@@ -44,3 +44,12 @@ lifecycle can be tested without writing any additional test code.
 .. autoclass:: combustion.testing.LightningModuleTest
     :members:
 
+
+Mixins
+----------------------------------
+
+.. autoclass:: combustion.testing.TorchScriptTestMixin
+    :members:
+
+.. autoclass:: combustion.testing.TorchScriptTraceTestMixin
+    :members:
