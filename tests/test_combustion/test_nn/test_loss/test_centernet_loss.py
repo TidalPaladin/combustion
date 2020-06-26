@@ -55,7 +55,7 @@ class TestConstantInputs:
     def expected(self, target, box_present):
 
         cls_loss = torch.tensor(
-            [[[0.3509341, 0.0866434], [0.0866434, 0.0866434]], [[0.0866434, 0.0866434], [0.0866434, 0.0113290]]]
+            [[[0.7018683, 0.1732868], [0.1732868, 0.1732868]], [[0.1732868, 0.1732868], [0.1732868, 0.0226581]]]
         )
 
         reg_loss = torch.tensor(
@@ -70,7 +70,7 @@ class TestConstantInputs:
         if not box_present:
             reg_loss[:, 0, 0] = 0
             reg_loss[:, 1, 1] = 0
-            cls_loss[1, 1, 1] = 0.3509341
+            cls_loss[1, 1, 1] = 0.7018683
         return cls_loss, reg_loss
 
     def test_returned_correct_class_loss(self, input, target, expected):
