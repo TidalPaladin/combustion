@@ -81,10 +81,14 @@ class TestTo8bit:
         result = to_8bit(input, per_channel=True)
         assert torch.allclose(input, original_input)
 
-    def test_batched_input(self):
-        input = torch.tensor([[[[-1.0, 0.0], [0.0, 1.0]]], [[[-1.0, 0.5], [0.0, 1.0]]],])
-
-        expected = torch.tensor([[[[0, 128], [128, 255]]], [[[0, 191], [128, 255]]],]).byte()
-
-        result = to_8bit(input, per_channel=True)
+    @pytest.mark.parametrize(
+        "same_on_batch, expected",
+        [
+            pytest.param(True, torch.tensor([[[[0, 170], [170, 255]]], [[[85, 212], [170, 255]]],]).byte()),
+            pytest.param(False, torch.tensor([[[[0, 170], [170, 255]]], [[[0, 191], [128, 255]]],]).byte()),
+        ],
+    )
+    def test_batched_input(self, same_on_batch, expected):
+        input = torch.tensor([[[[-2.0, 0.0], [0.0, 1.0]]], [[[-1.0, 0.5], [0.0, 1.0]]],])
+        result = to_8bit(input, per_channel=True, same_on_batch=same_on_batch)
         assert torch.allclose(result, expected)
