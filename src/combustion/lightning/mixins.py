@@ -4,8 +4,10 @@
 import warnings
 from abc import ABC
 from copy import deepcopy
+from itertools import islice
 from typing import Any, Optional, Union
 
+import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
@@ -112,15 +114,29 @@ class HydraMixin(ABC):
     def prepare_data(self) -> None:
         r"""Override for :class:`pytorch_lightning.LightningModule` that automatically prepares
         any datasets based on a `Hydra <https://hydra.cc/>`_ configuration.
-
         The Hydra config should have an ``dataset`` section, and optionally a ``schedule`` section
         if learning rate scheduling is desired.
+
+        The following keys can be provided to compute statistics on the training set
+            * ``stats_sample_size`` - number of training examples to compute statistics over,
+              or ``"all"`` to use the entire training set.
+
+            * ``stats_dim`` - dimension that will not be reduced when computing statistics.
+              Defaults to ``0``.
+
+        The following statistics will be computed and attached as attributes if ``stats_sample_size`` is set
+            * ``channel_mean``
+            * ``channel_variance``
+            * ``channel_min``
+            * ``channel_max``
 
         Sample Hydra Config
 
         .. code-block:: yaml
 
             dataset:
+              stats_sample_size: 100    # compute training set statistics using 100 examples
+              stats_dim: 0              # channel dimension to compute statistics for
               train:
                 # passed to DataLoader
                 num_workers: 1
@@ -184,6 +200,25 @@ class HydraMixin(ABC):
             val_ds = HydraMixin.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
             test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
 
+        # collect sample statistics from the train ds and attach to self as a buffer
+        if train_ds is not None and "stats_sample_size" in dataset_cfg.keys():
+            num_examples = dataset_cfg["stats_sample_size"]
+            if num_examples == "all":
+                num_examples = len(train_ds)
+            elif isinstance(num_examples, (float, int)):
+                num_examples = int(num_examples)
+            else:
+                raise MisconfigurationException(f"Unexpected value for dataset.stats_sample_size: {num_examples}")
+
+            dim = int(dataset_cfg["stats_dim"]) if "stats_dim" in dataset_cfg.keys() else 0
+
+            if num_examples < 0:
+                raise MisconfigurationException(f"Expected dataset.stats_sample_size >= 0, found {num_examples}")
+            elif num_examples > 0:
+                self._inspect_dataset(train_ds, num_examples, dim)
+            else:
+                warnings.warn("dataset.stats_sample_size = 0, not collecting dataset staistics")
+
         self.train_ds: Dataset = train_ds
         self.val_ds: Optional[Dataset] = val_ds
         self.test_ds: Optional[Dataset] = test_ds
@@ -224,6 +259,28 @@ class HydraMixin(ABC):
             )
         else:
             return None
+
+    def _inspect_dataset(self, dataset: Dataset, sample_size: int, dim: int = 0) -> None:
+        # get order of permuted dimensions such that the channel dim is at index 0
+        _ = dataset[0][0]
+        num_channels = _.shape[dim]
+        ndims = _.ndim
+        if dim < 0:
+            dim = ndims + dim
+        permuted_dims = [dim] + list(set(range(ndims)) - set([dim]))
+
+        # draw sample_size examples from the given dataset
+        examples = torch.cat(
+            [x[0].permute(*permuted_dims).view(num_channels, -1) for x in islice(iter(dataset), sample_size)], -1
+        )
+
+        # compute sample statistics and attach to self as a buffer
+        var, mean = torch.var_mean(examples, dim=-1)
+        maximum, minimum = examples.max(dim=-1).values, examples.min(dim=-1).values
+        self.register_buffer("channel_mean", mean)
+        self.register_buffer("channel_variance", var)
+        self.register_buffer("channel_max", maximum)
+        self.register_buffer("channel_min", minimum)
 
     @staticmethod
     def instantiate(config: Union[DictConfig, dict], *args, **kwargs) -> Any:

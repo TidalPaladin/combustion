@@ -5,6 +5,7 @@ import pytest
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+from pytorch_lightning.utilities.exceptions import MisconfigurationException
 
 from combustion.lightning import HydraMixin
 
@@ -54,6 +55,8 @@ def cfg(torch):
             },
         },
         "dataset": {
+            "stats_sample_size": 100,
+            "stats_dim": 0,
             "num_workers": 4,
             "train": {
                 "cls": "torchvision.datasets.FakeData",
@@ -271,3 +274,32 @@ def test_dataloader_from_subset(cfg, subset, split):
     assert isinstance(dataloader, torch.utils.data.DataLoader)
     for key in ["pin_memory", "batch_size", "num_workers", "drop_last"]:
         assert getattr(dataloader, key) == getattr(train_dl, key)
+
+
+@pytest.mark.parametrize("dim", [0, -3])
+@pytest.mark.parametrize(
+    "num_examples",
+    [
+        pytest.param(100),
+        pytest.param(0),
+        pytest.param("all"),
+        pytest.param("BAD", marks=pytest.mark.xfail(raises=MisconfigurationException, strict=True)),
+        pytest.param(-1, marks=pytest.mark.xfail(raises=MisconfigurationException, strict=True)),
+    ],
+)
+def test_get_train_ds_statistics(cfg, dim, num_examples):
+    cfg.dataset["stats_sample_size"] = num_examples
+    cfg.dataset["stats_dim"] = dim
+
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+    num_channels = model.train_ds[0][0].shape[dim]
+
+    for attr in ["channel_mean", "channel_variance", "channel_max", "channel_min"]:
+        if isinstance(num_examples, str) or num_examples > 0:
+            assert hasattr(model, attr)
+            x = getattr(model, attr)
+            assert isinstance(x, torch.Tensor)
+            assert x.shape[0] == num_channels
+        else:
+            assert not hasattr(model, attr)
