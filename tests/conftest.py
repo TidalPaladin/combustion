@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import os
+
 import pytest
 
 
@@ -85,3 +87,8 @@ def matlab_saver():
         f.close()
 
     return func
+
+
+@pytest.fixture(autouse=True)
+def chdir_to_tmp_path(tmp_path):
+    os.chdir(tmp_path)

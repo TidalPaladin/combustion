@@ -5,6 +5,7 @@ import pytest
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+from pytorch_lightning.utilities.exceptions import MisconfigurationException
 
 from combustion.lightning import HydraMixin
 
@@ -17,9 +18,30 @@ class Subclass(HydraMixin, pl.LightningModule):
         self.trainer = pl.Trainer()
         self.l = nn.Linear(10, 1)
         self.trainer.optimizer = torch.optim.Adam(self.l.parameters(), 0.002)
+        if "criterion" in hparams.keys():
+            self.criterion = hparams["criterion"]
+            del hparams["criterion"]
 
     def forward(self, x):
-        return x
+        return torch.rand_like(x, requires_grad=True)
+
+
+class TrainOnlyModel(Subclass):
+    def training_step(self, batch, batch_nb):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.criterion(y_hat, y_hat)
+        return {"loss": loss}
+
+
+class TrainAndValidateModel(TrainOnlyModel):
+    def validation_step(self, batch, batch_nb):
+        return self.training_step(batch, batch_nb)
+
+
+class TrainTestValidateModel(TrainAndValidateModel):
+    def test_step(self, batch, batch_nb):
+        return self.training_step(batch, batch_nb)
 
 
 @pytest.fixture
@@ -34,9 +56,13 @@ def cfg(torch):
     cfg = {
         "optimizer": {"name": "adam", "cls": "torch.optim.Adam", "params": {"lr": 0.002,},},
         "model": {
-            "cls": Subclass.__module__ + ".Subclass",
-            "params": {"in_features": 10, "out_features": 10, "batch_size": 32},
-            "criterion": {"cls": "torch.nn.BCELoss"},
+            "cls": TrainTestValidateModel.__module__ + ".TrainTestValidateModel",
+            "params": {
+                "in_features": 10,
+                "out_features": 10,
+                "batch_size": 32,
+                "criterion": {"cls": "torch.nn.BCEWithLogitsLoss"},
+            },
         },
         "schedule": {
             "interval": "step",
@@ -54,8 +80,10 @@ def cfg(torch):
             },
         },
         "dataset": {
-            "num_workers": 4,
+            "stats_sample_size": 100,
+            "stats_dim": 0,
             "train": {
+                "num_workers": 4,
                 "cls": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
@@ -64,6 +92,7 @@ def cfg(torch):
                 },
             },
             "validate": {
+                "num_workers": 4,
                 "cls": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
@@ -72,6 +101,7 @@ def cfg(torch):
                 },
             },
             "test": {
+                "num_workers": 4,
                 "cls": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
@@ -80,6 +110,7 @@ def cfg(torch):
                 },
             },
         },
+        "trainer": {"cls": "pytorch_lightning.Trainer", "params": {"fast_dev_run": True,}},
     }
     return omegaconf.DictConfig(cfg)
 
@@ -271,3 +302,63 @@ def test_dataloader_from_subset(cfg, subset, split):
     assert isinstance(dataloader, torch.utils.data.DataLoader)
     for key in ["pin_memory", "batch_size", "num_workers", "drop_last"]:
         assert getattr(dataloader, key) == getattr(train_dl, key)
+
+
+@pytest.mark.parametrize("dim", [0, -3])
+@pytest.mark.parametrize(
+    "num_examples",
+    [
+        pytest.param(100),
+        pytest.param(0),
+        pytest.param("all"),
+        pytest.param("BAD", marks=pytest.mark.xfail(raises=MisconfigurationException, strict=True)),
+        pytest.param(-1, marks=pytest.mark.xfail(raises=MisconfigurationException, strict=True)),
+    ],
+)
+def test_get_train_ds_statistics(cfg, dim, num_examples):
+    cfg.dataset["stats_sample_size"] = num_examples
+    cfg.dataset["stats_dim"] = dim
+
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+    num_channels = model.train_ds[0][0].shape[dim]
+
+    for attr in ["channel_mean", "channel_variance", "channel_max", "channel_min"]:
+        if isinstance(num_examples, str) or num_examples > 0:
+            assert hasattr(model, attr)
+            x = getattr(model, attr)
+            assert isinstance(x, torch.Tensor)
+            assert x.shape[0] == num_channels
+        else:
+            assert not hasattr(model, attr)
+
+
+class TestRuntimeBehavior:
+    @pytest.fixture(autouse=True, params=[TrainOnlyModel, TrainAndValidateModel, TrainTestValidateModel])
+    def model(self, request, cfg):
+        cls = request.param.__module__ + "." + request.param.__name__
+        cfg.model["cls"] = cls
+
+    @pytest.fixture
+    def trainer(self, cfg):
+        return HydraMixin.instantiate(cfg.trainer)
+
+    def test_train_only(self, cfg, trainer):
+        for key in ["validate", "test"]:
+            if key in cfg.dataset.keys():
+                del cfg.dataset[key]
+
+        model = HydraMixin.instantiate(cfg.model, cfg)
+        trainer.fit(model)
+
+    def test_train_validate(self, cfg, trainer):
+        for key in ["test"]:
+            if key in cfg.dataset.keys():
+                del cfg.dataset[key]
+
+        model = HydraMixin.instantiate(cfg.model, cfg)
+        trainer.fit(model)
+
+    def test_train_validate_test(self, cfg, trainer):
+        model = HydraMixin.instantiate(cfg.model, cfg)
+        trainer.fit(model)
