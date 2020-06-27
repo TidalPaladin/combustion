@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import warnings
-from abc import ABC
 from copy import deepcopy
 from itertools import islice
 from typing import Any, Optional, Union
 
+import pytorch_lightning as pl
 import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
@@ -14,7 +14,7 @@ from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from torch.utils.data import DataLoader, Dataset, random_split
 
 
-class HydraMixin(ABC):
+class HydraMixin:
     r"""
     Mixin for creating :class:`pytorch_lightning.LightningModule`
     using `Hydra <https://hydra.cc/>`_.
@@ -27,6 +27,24 @@ class HydraMixin(ABC):
         * :attr:`val_dataloader`
         * :attr:`test_dataloader`
     """
+
+    def __new__(cls, *args, **kwargs):
+        # because HydraMixin provides default overrides for test/val dataloader methods,
+        # lightning will complain if a test/val step methods aren't provided
+        #
+        # to handle this, we replace test/val dataloader methods if test/val step methods
+        # arent overridden
+        if cls.validation_step == pl.LightningModule.validation_step:
+            cls.val_dataloader = pl.LightningModule.val_dataloader
+        else:
+            cls.val_dataloader = HydraMixin.val_dataloader
+        if cls.test_step == pl.LightningModule.test_step:
+            cls.test_dataloader = pl.LightningModule.test_dataloader
+        else:
+            cls.test_dataloader = HydraMixin.test_dataloader
+
+        x = super(HydraMixin, cls).__new__(cls)
+        return x
 
     def get_lr(self, pos: int = 0, param_group: int = 0) -> float:
         r"""Gets the current learning rate. Useful for logging learning rate when using a learning
