@@ -1,6 +1,6 @@
 # @package _global_
 model:
-  cls: __main__.FakeModel
+  target: __main__.FakeModel
   params:
     in_features: 1
     out_features: 10

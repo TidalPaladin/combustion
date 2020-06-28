@@ -1,7 +1,7 @@
 # @package _global_
 # https://pytorch-lightning.readthedocs.io/en/stable/trainer.html#trainer-flags
 trainer:
-  cls: pytorch_lightning.Trainer
+  target: pytorch_lightning.Trainer
   params:
     max_epochs: 2
     gpus: 1

@@ -3,7 +3,7 @@ schedule:
   interval: step
   monitor: val_loss
   frequency: 1
-  cls: torch.optim.lr_scheduler.OneCycleLR
+  target: torch.optim.lr_scheduler.OneCycleLR
   params:
     max_lr: ${optimizer.params.lr}
     epochs: ${trainer.params.max_epochs}

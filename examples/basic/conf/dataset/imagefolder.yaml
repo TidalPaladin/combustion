@@ -2,10 +2,10 @@
 dataset:
 
   train:
-    cls: torchvision.datasets.ImageFolder
+    target: torchvision.datasets.ImageFolder
     params:
       transform: 
-        cls: torchvision.transforms.ToTensor
+        target: torchvision.transforms.ToTensor
 
       # Prefer relative paths here where possible. When running with docker, 
       # path given here will be appended to the data mountpoint given in
@@ -16,10 +16,10 @@ dataset:
 
   
   validate:
-    cls: torchvision.datasets.ImageFolder
+    target: torchvision.datasets.ImageFolder
     params:
       transform: 
-        cls: torchvision.transforms.ToTensor
+        target: torchvision.transforms.ToTensor
       root: path/to/data 
 
   # Or as a fractional split or subset from the training set
@@ -28,9 +28,9 @@ dataset:
   #  size: 100
 
   test:
-    cls: torchvision.datasets.ImageFolder
+    target: torchvision.datasets.ImageFolder
     params:
       transform: 
-        cls: torchvision.transforms.ToTensor
+        target: torchvision.transforms.ToTensor
       root: path/to/data 
 

@@ -163,12 +163,12 @@ class HydraMixin:
                 shuffle: true
 
                 # instantiates dataset
-                cls: torchvision.datasets.FakeData
+                target: torchvision.datasets.FakeData
                 params:
                   size: 10000
                   image_size: [1, 128, 128]
                   transform:
-                    cls: torchvision.transforms.ToTensor
+                    target: torchvision.transforms.ToTensor
 
               # test/validation sets can be explicitly given as above,
               # or as a split from training set
@@ -317,7 +317,7 @@ class HydraMixin:
         params = dict(config.get("params")) if "params" in config.keys() else {}
 
         def is_subclass(d):
-            return isinstance(d, (dict, DictConfig)) and "cls" in d.keys()
+            return isinstance(d, (dict, DictConfig)) and ("cls" in d.keys() or "target" in d.keys())
 
         subclasses = {key: subconfig for key, subconfig in params.items() if is_subclass(subconfig)}
 

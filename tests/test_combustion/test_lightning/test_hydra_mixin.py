@@ -54,21 +54,21 @@ def hydra():
 def cfg(torch):
     omegaconf = pytest.importorskip("omegaconf")
     cfg = {
-        "optimizer": {"name": "adam", "cls": "torch.optim.Adam", "params": {"lr": 0.002,},},
+        "optimizer": {"name": "adam", "target": "torch.optim.Adam", "params": {"lr": 0.002,},},
         "model": {
-            "cls": TrainTestValidateModel.__module__ + ".TrainTestValidateModel",
+            "target": TrainTestValidateModel.__module__ + ".TrainTestValidateModel",
             "params": {
                 "in_features": 10,
                 "out_features": 10,
                 "batch_size": 32,
-                "criterion": {"cls": "torch.nn.BCEWithLogitsLoss"},
+                "criterion": {"target": "torch.nn.BCEWithLogitsLoss", "params": {}},
             },
         },
         "schedule": {
             "interval": "step",
             "monitor": "val_loss",
             "frequency": 1,
-            "cls": "torch.optim.lr_scheduler.OneCycleLR",
+            "target": "torch.optim.lr_scheduler.OneCycleLR",
             "params": {
                 "max_lr": 0.002,
                 "epochs": 10,
@@ -84,33 +84,33 @@ def cfg(torch):
             "stats_dim": 0,
             "train": {
                 "num_workers": 4,
-                "cls": "torchvision.datasets.FakeData",
+                "target": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
                     "image_size": [1, 64, 64],
-                    "transform": {"cls": "torchvision.transforms.ToTensor",},
+                    "transform": {"target": "torchvision.transforms.ToTensor", "params": {}},
                 },
             },
             "validate": {
                 "num_workers": 4,
-                "cls": "torchvision.datasets.FakeData",
+                "target": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
                     "image_size": [1, 64, 64],
-                    "transform": {"cls": "torchvision.transforms.ToTensor",},
+                    "transform": {"target": "torchvision.transforms.ToTensor", "params": {}},
                 },
             },
             "test": {
                 "num_workers": 4,
-                "cls": "torchvision.datasets.FakeData",
+                "target": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
                     "image_size": [1, 64, 64],
-                    "transform": {"cls": "torchvision.transforms.ToTensor",},
+                    "transform": {"target": "torchvision.transforms.ToTensor", "params": {}},
                 },
             },
         },
-        "trainer": {"cls": "pytorch_lightning.Trainer", "params": {"fast_dev_run": True,}},
+        "trainer": {"target": "pytorch_lightning.Trainer", "params": {"fast_dev_run": True,}},
     }
     return omegaconf.DictConfig(cfg)
 
@@ -191,9 +191,7 @@ def test_get_lr(scheduled, cfg, hydra):
 
 @pytest.mark.parametrize("params", [True, False])
 def test_recursive_instantiate(cfg, params):
-    cfg["model"]["params"]["test"] = {
-        "cls": "torch.nn.BCELoss",
-    }
+    cfg["model"]["params"]["test"] = {"target": "torch.nn.BCELoss", "params": {}}
 
     if params:
         cfg["model"]["params"]["test"]["params"] = {"reduction": "none"}
@@ -205,7 +203,7 @@ def test_recursive_instantiate(cfg, params):
 
 
 def test_recursive_instantiate_preserves_cfg(cfg):
-    key = {"cls": "torch.nn.BCELoss", "params": {"reduction": "none"}}
+    key = {"target": "torch.nn.BCELoss", "params": {"reduction": "none"}}
     cfg["model"]["params"]["test"] = key
     model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
     assert "test" in model.config["model"]["params"].keys()
@@ -336,8 +334,8 @@ def test_get_train_ds_statistics(cfg, dim, num_examples):
 class TestRuntimeBehavior:
     @pytest.fixture(autouse=True, params=[TrainOnlyModel, TrainAndValidateModel, TrainTestValidateModel])
     def model(self, request, cfg):
-        cls = request.param.__module__ + "." + request.param.__name__
-        cfg.model["cls"] = cls
+        target = request.param.__module__ + "." + request.param.__name__
+        cfg.model["target"] = target
 
     @pytest.fixture
     def trainer(self, cfg):
