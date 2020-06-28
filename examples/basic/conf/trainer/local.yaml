@@ -5,6 +5,6 @@ trainer:
   params:
     max_epochs: 2
     gpus: 1
-    amp_level: O1
-    precision: 16
+    #amp_level: O1
+    #precision: 16
     #default_save_path: /path/to/outputs

@@ -17,6 +17,27 @@ log = logging.getLogger(__name__)
 _exceptions = []
 
 
+def _log_versions():
+    import torch
+
+    log.info("Versions:")
+    log.info("\ttorch: %s", torch.__version__)
+    log.info("\tpytorch_lightning: %s", pl.__version__)
+    log.info("\thydra: %s", hydra.__version__)
+    try:
+        import torchvision
+
+        log.info("\ttorchvision: %s", torchvision.__version__)
+    except ImportError:
+        pass
+    try:
+        import kornia
+
+        log.info("\tkornia: %s", kornia.__version__)
+    except ImportError:
+        pass
+
+
 def check_exceptions():
     for x in _exceptions:
         raise x
@@ -110,6 +131,7 @@ def main(cfg: DictConfig) -> None:
             main()
     """
     try:
+        _log_versions()
         log.info("Configuration: \n%s", cfg.pretty())
 
         # instantiate model (and optimizer) selected in yaml
