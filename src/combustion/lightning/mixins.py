@@ -323,6 +323,9 @@ class HydraMixin:
 
         # instantiate recursively, remove those keys from config used in hydra instantiate call
         for key, subconfig in subclasses.items():
+            # avoid issues when cls given without params
+            if "params" not in subconfig:
+                subconfig["params"] = {}
             subclasses[key] = HydraMixin.instantiate(subconfig)
             del config.get("params")[key]
 
