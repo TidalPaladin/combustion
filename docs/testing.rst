@@ -24,6 +24,7 @@ Assertions
 .. autofunction:: combustion.testing.assert_in_training_mode
 .. autofunction:: combustion.testing.assert_is_int_tensor
 .. autofunction:: combustion.testing.assert_tensors_close
+.. autofunction:: combustion.testing.assert_zero_grad
 
 
 PyTest Decorators

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import pytest
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -25,11 +24,11 @@ def assert_has_gradient(module: nn.Module, recurse: bool = True):
     __tracebackhide__ = True
 
     if isinstance(module, torch.Tensor) and module.grad is None:
-        pytest.fail()
+        raise AssertionError(f"tensor grad == {module.grad}")
     elif isinstance(module, torch.nn.Module):
         for name, param in module.named_parameters(recurse=recurse):
             if param.requires_grad and param.grad is None:
-                pytest.fail()
+                raise AssertionError(f"param {name} grad == {param.grad}")
 
 
 def assert_zero_grad(module: nn.Module, recurse: bool = True):
@@ -46,15 +45,14 @@ def assert_zero_grad(module: nn.Module, recurse: bool = True):
             of child modules.
 
     """
-
     __tracebackhide__ = True
 
     if isinstance(module, torch.Tensor) and not all(module.grad == 0):
-        pytest.fail()
+        raise AssertionError(f"module.grad == {module.grad}")
     elif isinstance(module, torch.nn.Module):
         for name, param in module.named_parameters(recurse=recurse):
-            if param.requires_grad and not all(param.grad == 0):
-                pytest.fail()
+            if param.requires_grad and not (param.grad is None or (~param.grad.bool()).all()):
+                raise AssertionError(f"param {name} grad == {param.grad}")
 
 
 def assert_in_training_mode(module: nn.Module):
@@ -69,7 +67,7 @@ def assert_in_training_mode(module: nn.Module):
     """
     __tracebackhide__ = True
     if not module.training:
-        pytest.fail("Module not in training mode")
+        raise AssertionError(f"module.training == {module.training}")
 
 
 def assert_in_eval_mode(module: nn.Module):
@@ -84,7 +82,7 @@ def assert_in_eval_mode(module: nn.Module):
     """
     __tracebackhide__ = True
     if module.training:
-        pytest.fail("Module not in eval mode")
+        raise AssertionError(f"module.training == {module.training}")
 
 
 def assert_tensors_close(x: Tensor, y: Tensor, *args, **kwargs):
@@ -103,13 +101,11 @@ def assert_tensors_close(x: Tensor, y: Tensor, *args, **kwargs):
     Additional positional or keyword args are passed to :func:`torch.allclose`.
     """
     __tracebackhide__ = True
-    msg = None
     try:
         assert_allclose(x, y, *args, **kwargs)
         return
     except AssertionError as e:
-        msg = str(e)
-    pytest.fail(msg)
+        raise AssertionError(str(e))
 
 
 def assert_is_int_tensor(x: Tensor):
@@ -129,7 +125,7 @@ def assert_is_int_tensor(x: Tensor):
         try:
             assert str(x) == str(x.round())
         except AssertionError as e:
-            pytest.fail(str(e))
+            raise AssertionError(str(e))
 
 
 __all__ = [
