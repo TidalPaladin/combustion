@@ -331,6 +331,21 @@ def test_get_train_ds_statistics(cfg, dim, num_examples):
             assert not hasattr(model, attr)
 
 
+def test_statistics_set_only_once(cfg, mocker):
+    cfg.dataset["stats_sample_size"] = 100
+    cfg.dataset["stats_dim"] = -3
+
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+    old_mean = model.channel_mean
+
+    model.channel_mean *= 0.0
+    model.prepare_data()
+    new_mean = model.channel_mean
+
+    assert torch.allclose(old_mean, new_mean)
+
+
 class TestRuntimeBehavior:
     @pytest.fixture(autouse=True, params=[TrainOnlyModel, TrainAndValidateModel, TrainTestValidateModel])
     def model(self, request, cfg):

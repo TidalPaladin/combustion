@@ -27,6 +27,10 @@ class HydraMixin:
         * :attr:`val_dataloader`
         * :attr:`test_dataloader`
     """
+    _has_inspected: bool = False
+    train_ds: Optional[Dataset] = None
+    val_ds: Optional[Dataset] = None
+    test_ds: Optional[Dataset] = None
 
     def __new__(cls, *args, **kwargs):
         # because HydraMixin provides default overrides for test/val dataloader methods,
@@ -147,6 +151,10 @@ class HydraMixin:
             * ``channel_variance``
             * ``channel_min``
             * ``channel_max``
+
+        .. note::
+            Training set statistics will be computed and attached when :func:`prepare_data` the first time.
+            Subsequent calls will not alter the attached statistics.
 
         Sample Hydra Config
 
@@ -279,6 +287,9 @@ class HydraMixin:
             return None
 
     def _inspect_dataset(self, dataset: Dataset, sample_size: int, dim: int = 0) -> None:
+        if self._has_inspected:
+            return
+
         # get order of permuted dimensions such that the channel dim is at index 0
         _ = dataset[0][0]
         num_channels = _.shape[dim]
@@ -299,6 +310,7 @@ class HydraMixin:
         self.register_buffer("channel_variance", var)
         self.register_buffer("channel_max", maximum)
         self.register_buffer("channel_min", minimum)
+        self._has_inspected = True
 
     @staticmethod
     def instantiate(config: Union[DictConfig, dict], *args, **kwargs) -> Any:
