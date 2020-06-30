@@ -13,6 +13,12 @@ up to larger building blocks.
     :backlinks: top
     
 
+Activation Functions
+----------------------------------
+
+.. autoclass:: combustion.nn.Swish
+    :members: forward
+    :undoc-members: forward
 
 Convolution Layers
 ----------------------------------

@@ -16,6 +16,7 @@ Combustion is a collection of useful PyTorch utilities.
 
    data
    lightning
+   functional
    nn
    testing
    vision
