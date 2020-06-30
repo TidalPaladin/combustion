@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, List, Optional
 
 import torch
 import torch.nn as nn
@@ -22,6 +22,74 @@ class DefaultConvBlock(nn.Module):
 
     def forward(self, input: Tensor) -> Tensor:
         return self.conv(input)
+
+
+class _BiFPN_Level(nn.Module):
+    __constants__ = ["epsilon"]
+
+    def __init__(
+        self,
+        num_channels: int,
+        conv: Optional[Callable[[int], nn.Module]] = None,
+        epsilon: float = 1e-4,
+        scale_factor: int = 2,
+        weight_2_count: int = 3,
+    ):
+        super(_BiFPN_Level, self).__init__()
+
+        self.epsilon = float(epsilon)
+
+        if conv is None:
+            conv = DefaultConvBlock
+
+        self.conv_up = conv(num_channels)
+        self.conv_down = conv(num_channels)
+
+        self.feature_up = nn.Upsample(scale_factor=2, mode="nearest")
+
+        # Conv layers
+        self.conv_up = conv(num_channels)
+        self.conv_down = conv(num_channels)
+
+        # Feature scaling layers
+        self.feature_up = nn.Upsample(scale_factor=scale_factor, mode="nearest")
+        self.feature_down = nn.MaxPool2d(kernel_size=scale_factor)
+
+        self.weight_1 = nn.Parameter(torch.ones(2))
+        self.weight_2 = nn.Parameter(torch.ones(weight_2_count))
+
+    def forward(
+        self, same_level: Tensor, previous_level: Optional[Tensor] = None, next_level: Optional[Tensor] = None
+    ) -> Tensor:
+        output: Tensor = same_level
+
+        if previous_level is None and next_level is None:
+            raise ValueError("previous_level and next_level cannot both be None")
+
+        # input + higher level
+        if next_level is not None:
+            weight_1 = torch.relu(self.weight_1)
+            weight_1 = weight_1 / (torch.sum(weight_1, dim=0) + self.epsilon)
+
+            # weighted combination of current level and higher level
+            output = self.conv_up(weight_1[0] * same_level + weight_1[1] * self.feature_up(next_level))
+
+        # input + lower level + last bifpn level (if one exists)
+        if previous_level is not None:
+            weight_2 = torch.relu(self.weight_2)
+            weight_2 = weight_2 / (torch.sum(weight_2, dim=0) + self.epsilon)
+
+            if output is not None:
+                # weight_2ed combination of current level, downward fpn output, lower level
+                output = self.conv_down(
+                    weight_2[0] * same_level + weight_2[1] * output + weight_2[2] * self.feature_down(previous_level)
+                )
+            # special case for top of pyramid
+            else:
+                # weighted combination of current level, downward fpn output, lower level
+                output = self.conv_down(weight_2[0] * same_level + weight_2[1] * self.feature_down(previous_level))
+
+        return output
 
 
 class BiFPN(nn.Module):
@@ -66,6 +134,7 @@ class BiFPN(nn.Module):
     .. _EfficientDet Scalable and Efficient Object Detection:
         https://arxiv.org/abs/1911.09070
     """
+    __constants__ = ["levels"]
 
     def __init__(
         self, num_channels: int, levels: int, conv: Optional[Callable[[int], nn.Module]] = None, epsilon: float = 1e-4
@@ -80,70 +149,25 @@ class BiFPN(nn.Module):
         if conv is not None and not callable(conv):
             raise ValueError(f"conv must be callable, found {conv}")
 
-        self.levels = range(int(levels))
-        self.epsilon = float(epsilon)
+        self.levels = levels
 
         if conv is None:
             conv = DefaultConvBlock
 
-        # Conv layers
-        self.conv_up = nn.ModuleDict({str(x): conv(num_channels) for x in self.levels[:-1]})
-        self.conv_down = nn.ModuleDict({str(x): conv(num_channels) for x in reversed(self.levels[1:])})
+        level_modules = []
+        for i in range(levels):
+            3 if i > 0 else 2
+            level_modules.append(_BiFPN_Level(num_channels, conv, epsilon))
+        self.bifpn = nn.ModuleList(level_modules)
 
-        # Feature scaling layers
-        self.feature_up = nn.ModuleDict({str(x): nn.Upsample(scale_factor=2, mode="nearest") for x in self.levels[:-1]})
-        self.feature_down = nn.ModuleDict({str(x): nn.MaxPool2d(kernel_size=2) for x in reversed(self.levels[1:])})
-
-        # Weight
-        self.weight_1 = nn.ParameterDict({str(x): nn.Parameter(torch.ones(2)) for x in self.levels[:-1]})
-        self.weight_2 = nn.ParameterDict(
-            {str(x): nn.Parameter(torch.ones(3 if i > 0 else 2)) for i, x in enumerate(reversed(self.levels[1:]))}
-        )
-
-    def forward(self, inputs: Iterable[Tensor]) -> List[Tensor]:
+    def forward(self, inputs: List[Tensor]) -> List[Tensor]:
         """"""
-        inputs = {x: feature_map for x, feature_map in zip(self.levels, inputs)}
-        up_maps, out_maps = {}, {}
+        outputs: List[Tensor] = []
 
-        # downward direction
-        for level in self.levels[:-1]:
-            weight = torch.relu(self.weight_1[str(level)])
-            weight = weight / (torch.sum(weight, dim=0) + self.epsilon)
-            current_input = inputs[level]
-            higher_input = inputs[level + 1]
+        for i, layer in enumerate(self.bifpn):
+            current_level = inputs[i]
+            previous_level = inputs[i - 1] if i > 0 else None
+            next_level = inputs[i + 1] if i < len(inputs) - 1 else None
+            outputs.append(layer(current_level, previous_level, next_level))
 
-            # weighted combination of current level and higher level
-            output = self.conv_up[str(level)](
-                weight[0] * current_input + weight[1] * self.feature_up[str(level)](higher_input)
-            )
-
-            # special case for top of pyramid - has no higher level
-            if level not in self.weight_2.keys():
-                out_maps[level] = output
-            else:
-                up_maps[level] = output
-
-        # upward direction
-        for level in self.levels[1:]:
-            weight = torch.relu(self.weight_2[str(level)])
-            weight = weight / (torch.sum(weight, dim=0) + self.epsilon)
-            current_input = inputs[level]
-            lower_input = inputs[level - 1]
-            up_map = up_maps[level] if level in up_maps.keys() else None
-            assert up_map is None or len(weight) == 3
-
-            if up_map is not None:
-                # weighted combination of current level, downward fpn output, lower level
-                out_maps[level] = self.conv_down[str(level)](
-                    weight[0] * current_input
-                    + weight[1] * up_map
-                    + weight[2] * self.feature_down[str(level)](lower_input)
-                )
-            # special case for top of pyramid
-            else:
-                # weighted combination of current level, downward fpn output, lower level
-                out_maps[level] = self.conv_down[str(level)](
-                    weight[0] * current_input + weight[1] * self.feature_down[str(level)](lower_input)
-                )
-
-        return [out_maps[x] for x in sorted(out_maps.keys())]
+        return outputs

@@ -7,14 +7,14 @@ import torch.nn as nn
 from torch import Tensor
 
 from combustion.nn import BiFPN
-from combustion.testing import cuda_or_skip
+from combustion.testing import TorchScriptTestMixin, cuda_or_skip
 
 
 def custom_conv(num_channels) -> nn.Sequential:
     return nn.Sequential(nn.Conv2d(num_channels, num_channels, 3, padding=1), nn.ReLU())
 
 
-@pytest.fixture(params=[5, 3, 1])
+@pytest.fixture(params=[5, 3, 2])
 def levels(request):
     return request.param
 
@@ -68,3 +68,28 @@ def test_forward(levels, num_channels, conv, inputs):
         assert isinstance(out_item, Tensor)
         assert out_item.shape == in_item.shape
         assert out_item.requires_grad
+
+
+class TestScriptable(TorchScriptTestMixin):
+    @pytest.fixture
+    def model(self):
+        return BiFPN(32, 5)
+
+
+@cuda_or_skip
+def test_known_input():
+    torch.random.manual_seed(42)
+    layer = BiFPN(2, 3)
+    input = [
+        torch.rand(1, 2, 16, 16),
+        torch.rand(1, 2, 8, 8),
+        torch.rand(1, 2, 4, 4),
+    ]
+    output = layer(input)
+
+    # outout maps are large, so just compare the sums of elements in each level
+    output_sum = [x.sum() for x in output]
+    expected_output_sum = [torch.tensor(205.5710469), torch.tensor(51.3697109), torch.tensor(12.5726123)]
+
+    for level, (expected, actual) in enumerate(zip(expected_output_sum, output_sum)):
+        assert torch.allclose(expected, actual, rtol=0.1)
