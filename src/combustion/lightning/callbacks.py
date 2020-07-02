@@ -65,6 +65,11 @@ class TorchScriptCallback(Callback):
                 "Using _deivce: torch.device seems to work."
             )
 
+        # get training state of model so it can be restored later
+        training = pl_module.training
+        if training:
+            pl_module.eval()
+
         path = self.path if self.path is not None else self._get_default_save_path(trainer)
 
         if self.trace and self.sample_input is None:
@@ -83,6 +88,10 @@ class TorchScriptCallback(Callback):
             script = self._get_script(pl_module)
         torch.jit.save(script, path)
         log.info("Exported ScriptModule to %s", path)
+
+        # restore training state
+        if training:
+            pl_module.train()
 
     def _get_trace(self, pl_module: pl.LightningModule) -> ScriptModule:
         assert self.sample_input is not None

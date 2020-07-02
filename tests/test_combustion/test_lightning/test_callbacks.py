@@ -79,3 +79,26 @@ class TestTorchScriptCallback:
         callback = TorchScriptCallback(path, True)
         callback.on_train_end(trainer, model)
         assert os.path.isfile(path)
+
+    @pytest.mark.parametrize("training", [True, False])
+    def test_module_set_to_eval_mode(self, model, trainer, path, mocker, training):
+        if training:
+            model.train()
+        else:
+            model.eval()
+        spy = mocker.spy(model, "eval")
+        callback = TorchScriptCallback(path)
+        callback.on_train_end(trainer, model)
+
+        if training:
+            spy.assert_called()
+
+    @pytest.mark.parametrize("training", [True, False])
+    def test_module_training_state_unchanged(self, model, trainer, path, mocker, training):
+        if training:
+            model.train()
+        else:
+            model.eval()
+        callback = TorchScriptCallback(path)
+        callback.on_train_end(trainer, model)
+        assert model.training == training
