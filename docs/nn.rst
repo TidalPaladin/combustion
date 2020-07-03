@@ -17,8 +17,8 @@ Activation Functions
 ----------------------------------
 
 .. autoclass:: combustion.nn.Swish
-    :members: forward
-    :undoc-members: forward
+
+.. autoclass:: combustion.nn.HardSwish
 
 Convolution Layers
 ----------------------------------

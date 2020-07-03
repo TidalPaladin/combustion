@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .activations import Swish
+from .activations import HardSwish, Swish
 from .loss import CenterNetLoss, FocalLoss, FocalLossWithLogits, focal_loss, focal_loss_with_logits
 from .modules import (
     BiFPN,
@@ -46,4 +46,5 @@ __all__ = [
     "FocalLossWithLogits",
     "Standardize",
     "Swish",
+    "HardSwish",
 ]

@@ -3,6 +3,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 
 
@@ -72,3 +73,63 @@ class Swish(nn.Module):
             return self._memory_efficient_forward(inputs)
         else:
             return inputs * torch.sigmoid(inputs)
+
+
+def hard_swish(inputs: Tensor, inplace: bool = False) -> Tensor:
+    r"""The hard swish activation function proposed in
+    `Searching For MobileNetV3`_, defined as
+
+    .. math::
+        f(x) = x \cdot \frac{\text{ReLU6}(x + 3)}{6}
+
+    Hard swish approximates the swish activation, but computationally cheaper due to the
+    removal of :math:`\text{sigmoid}(x)`.
+
+    Args:
+
+        inputs (Tensor):
+            The input tensor
+
+        inplace (bool, optional):
+            Whether or not to perform the operation in place.
+
+    .. _Searching for MobileNetV3:
+        https://arxiv.org/abs/1905.02244
+    """
+    if inplace:
+        return inputs.mul_(F.relu6(inputs + 3, inplace=True).div_(6))
+    else:
+        return F.relu6(inputs + 3).div(6).mul(inputs)
+
+
+class HardSwish(nn.Module):
+    r"""The hard swish activation function proposed in
+    `Searching For MobileNetV3`_, defined as
+
+    .. math::
+        f(x) = x \cdot \frac{\text{ReLU6}(x + 3)}{6}
+
+    Hard swish approximates the swish activation, but computationally cheaper due to the
+    removal of :math:`\text{sigmoid}(x)`.
+
+    Args:
+
+        inplace (bool, optional):
+            Whether or not to perform the operation in place.
+
+    .. _Searching for MobileNetV3:
+        https://arxiv.org/abs/1905.02244
+    """
+
+    def __init__(self, inplace: bool = False):
+        super().__init__()
+        self.inplace = inplace
+
+    def extra_repr(self):
+        if self.inplace:
+            return "inplace=True"
+        else:
+            return ""
+
+    def forward(self, inputs: Tensor) -> Tensor:
+        return hard_swish(inputs, self.inplace)
