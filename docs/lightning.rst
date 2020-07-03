@@ -19,5 +19,8 @@ Utilities to facilitate operation with
 Callbacks
 ----------------------------------
 
-.. autoclass:: combustion.lightning.TorchScriptCallback
+.. autoclass:: combustion.lightning.callbacks.TorchScriptCallback
+    :members:
+
+.. autoclass:: combustion.lightning.callbacks.CountMACs
     :members:

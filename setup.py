@@ -84,6 +84,7 @@ setup(
         # "sklearn",
         "h5py",
         "Pillow-SIMD",
+        "thop",  # for model FLOP summary. TODO put this in an optional group
         # "pytorch-model-summary",
     ],
     extras_require=extras,

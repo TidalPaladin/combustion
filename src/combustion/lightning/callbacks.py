@@ -2,13 +2,19 @@
 # -*- coding: utf-8 -*-
 
 import logging
-from typing import Any, Optional
+import warnings
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks.base import Callback
 from torch.jit import ScriptModule
 
+
+try:
+    import thop
+except ImportError:
+    thop = None
 
 log = logging.getLogger(__name__)
 
@@ -112,3 +118,67 @@ class TorchScriptCallback(Callback):
 
             warnings.warn("Failed to find default path attribute on Trainer")
             return os.getcwd()
+
+
+class CountMACs(Callback):
+    r"""Callback to output the approximate number of MAC (multiply accumulate) operations
+    and parameters in a model. Runs at start of training.
+
+    .. note::
+        Counting MACs requires `thop <https://github.com/Lyken17/pytorch-OpCounter>`_
+
+    Total MACs / parameters are logged and attached to the model as attributes:
+
+        * ``total_macs``
+        * ``total_params``
+
+    Args:
+        sample_input (optional, Tuple):
+            Sample input data to use when counting MACs. If ``sample_input`` is not given the callback
+            will attempt to use attribute ``module.example_input_array`` as a sample input. If no sample
+            input can be found a warning will be raised.
+
+        custom_ops (optional, Dict[type, Callable]):
+            Forwarded to :func:`htop.profile`
+    """
+
+    def __init__(self, sample_input: Optional[Tuple[Any]] = None, custom_ops: Optional[Dict[type, Callable]] = None):
+        if thop is None:
+            raise ImportError("CountMACs requires thop. Please install it with " "pip install thop")
+        self.custom_ops = custom_ops
+        self.sample_input = sample_input
+
+    def on_train_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
+        r"""Called at start of training
+
+        Args:
+            trainer:
+                The :class:`pytorch_lightning.Trainer` instance
+
+            pl_module:
+                The :class:`pytorch_lightning.LightningModule` to analyze.
+        """
+
+        if self.sample_input is None:
+            if not hasattr(pl_module, "example_input_array") or pl_module.example_input_array is None:
+                warnings.warn(
+                    "MAC counting was requested, but no example input was provided. " "Skipping MAC counting."
+                )
+                return
+            self.sample_input = pl_module.example_input_array
+
+        if not isinstance(self.sample_input, tuple):
+            inputs = (self.sample_input,)
+        else:
+            inputs = self.sample_input
+
+        macs, params = thop.profile(pl_module, inputs=inputs, custom_ops=self.custom_ops)
+        macs, params = int(macs), int(params)
+        log.info("Model MACs: %d", macs)
+        log.info("Model Parameters: %d", params)
+
+        for attr, source in (("macs_count", macs), ("param_count", params)):
+            if hasattr(pl_module, attr):
+                warnings.warn(f"Model already has attribute {attr}, skipping attribute attachment")
+            else:
+                setattr(pl_module, attr, source)

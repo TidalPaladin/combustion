@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 
-from .callbacks import TorchScriptCallback
+from .callbacks import CountMACs, TorchScriptCallback
 from .mixins import HydraMixin
 
 
-__all__ = ["HydraMixin", "TorchScriptCallback"]
+__all__ = ["HydraMixin", "TorchScriptCallback", "CountMACs"]

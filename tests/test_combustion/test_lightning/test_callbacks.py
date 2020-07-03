@@ -10,7 +10,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.jit import ScriptModule
 
-from combustion.lightning import TorchScriptCallback
+from combustion.lightning.callbacks import CountMACs, TorchScriptCallback
 
 
 class BadModel(pl.LightningModule):
@@ -102,3 +102,35 @@ class TestTorchScriptCallback:
         callback = TorchScriptCallback(path)
         callback.on_train_end(trainer, model)
         assert model.training == training
+
+
+class TestCountMACs:
+    @pytest.fixture
+    def model(self):
+        return Model(10, 10, 3)
+
+    @pytest.fixture(scope="class")
+    def trainer(self):
+        return pl.Trainer(fast_dev_run=True)
+
+    @pytest.fixture
+    def data(self):
+        return torch.rand(1, 10, 32, 32)
+
+    def test_count_macs(self, model, trainer, data):
+        callback = CountMACs(data)
+        callback.on_train_start(trainer, model)
+
+        assert hasattr(model, "macs_count")
+        assert model.macs_count == 931840
+
+    def test_count_params(self, model, trainer, data):
+        callback = CountMACs(data)
+        callback.on_train_start(trainer, model)
+
+        assert hasattr(model, "param_count")
+        assert model.param_count == 910
+
+    def test_handles_no_input_data(self, model, trainer, data):
+        callback = CountMACs()
+        callback.on_train_start(trainer, model)
