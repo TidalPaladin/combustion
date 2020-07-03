@@ -51,6 +51,10 @@ Larger Modules
     :members: 
     :undoc-members: forward
 
+.. autoclass:: combustion.nn.SqueezeExcite1d
+.. autoclass:: combustion.nn.SqueezeExcite2d
+.. autoclass:: combustion.nn.SqueezeExcite3d
+
 Loss Functions
 ----------------------------------
 
