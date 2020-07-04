@@ -8,6 +8,7 @@ from torch import Tensor
 
 from .dropconnect import DropConnect
 from .squeeze_excite import HardSwish, SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
+from dataclasses import dataclass
 
 
 class _MobileNetMeta(type):
@@ -195,3 +196,76 @@ class MobileNetConvBlock2d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
 
 class MobileNetConvBlock3d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
     r"""3d version of :class:`combustion.nn.MobileNetConvBlock2d`."""
+
+@dataclass
+class MobileNetBlockConfig:
+    r"""Data class that groups parameters for MobileNet inverted bottleneck blocks
+    (:class:`MobileNetConvBlock1d`, :class:`MobileNetConvBlock2d`, :class:`MobileNetConvBlock3d`).
+
+    Attributes:
+        * :attr:`input_filters`
+        * :attr:`output_filters`
+        * :attr:`kernel_size`
+        * :attr:`stride`
+        * :attr:`bn_momentum`
+        * :attr:`bn_epsilon`
+        * :attr:`squeeze_excite_ratio`
+        * :attr:`expand_ratio`
+        * :attr:`use_skipconn`
+        * :attr:`dropconnect_rate`
+        * :attr:`padding_mode`
+        * :attr:`num_repeats`
+
+
+    """
+    input_filters: int
+    output_filters: int
+    kernel_size: Union[int, Tuple[int, ...]]
+    stride: Union[int, Tuple[int, ...]] = 1
+    bn_momentum: float = 0.1
+    bn_epsilon: float = 1e-5
+    squeeze_excite_ratio: float = 1.0
+    expand_ratio: float = 1.0
+    use_skipconn: bool = True
+    drop_connect_rate: float = 0.0
+    padding_mode: str = "zeros"
+
+    num_repeats: int = 1
+
+
+    def get_1d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock1d, nn.Sequential]:
+        return self._get_blocks(MobileNetConvBlock1d, repeated)
+
+    def get_2d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock2d, nn.Sequential]:
+        return self._get_blocks(MobileNetConvBlock2d, repeated)
+
+    def get_3d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock3d, nn.Sequential]:
+        return self._get_blocks(MobileNetConvBlock3d, repeated)
+
+    def _get_blocks(self, cls, repeated):
+        attrs = [
+            "input_filters",
+            "output_filters",
+            "kernel_size",
+            "stride",
+            "bn_momentum",
+            "bn_epsilon",
+            "squeeze_excite_ratio",
+            "expand_ratio",
+            "use_skipconn",
+            "drop_connect_rate",
+            "padding_mode"
+        ]
+        kwargs = {attr: getattr(self, attr) for attr in attrs}
+
+        # construct first block 
+        first_block = cls(**kwargs)
+
+        if not repeated or self.num_repeats == 1:
+            return first_block
+
+        # for multiple repetitions, override filters/stride of blocks 2-N 
+        kwargs["input_filters"] = self.output_filters
+        kwargs["stride"] = 1
+        blocks = [first_block] + [cls(**kwargs) for i in range(self.num_repeats - 1)]
+        return nn.Sequential(*blocks)

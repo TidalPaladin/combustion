@@ -6,7 +6,7 @@ from .bottleneck import Bottleneck1d, Bottleneck2d, Bottleneck3d, BottleneckFact
 from .conv import DownSample3d, UpSample2d, UpSample3d
 from .dropconnect import DropConnect
 from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
-from .mobilenet import MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d
+from .mobilenet import MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d, MobileNetBlockConfig
 from .preprocessing import Standardize
 from .squeeze_excite import SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
 
@@ -29,6 +29,7 @@ __all__ = [
     "BottleneckFactorized3d",
     "BottleneckFactorized2d",
     "Standardize",
+    "MobileNetBlockConfig",
     "MobileNetConvBlock1d",
     "MobileNetConvBlock2d",
     "MobileNetConvBlock3d",

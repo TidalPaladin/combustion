@@ -21,6 +21,7 @@ from .modules import (
     MobileNetConvBlock1d,
     MobileNetConvBlock2d,
     MobileNetConvBlock3d,
+    MobileNetBlockConfig,
     SqueezeExcite1d,
     SqueezeExcite2d,
     SqueezeExcite3d,
@@ -61,4 +62,5 @@ __all__ = [
     "MobileNetConvBlock1d",
     "MobileNetConvBlock2d",
     "MobileNetConvBlock3d",
+    "MobileNetBlockConfig",
 ]

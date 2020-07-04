@@ -4,7 +4,7 @@
 import pytest
 import torch
 
-from combustion.nn import MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d
+from combustion.nn import MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d, MobileNetBlockConfig
 from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
@@ -73,3 +73,39 @@ class TestMobileNetConvBlock3d(TestMobileNetConvBlock1d):
     @pytest.fixture
     def data(self):
         return torch.rand(1, 4, 32, 32, 32)
+
+class TestMobileNetBlockConfig:
+
+    @pytest.fixture(params=[1, 2])
+    def num_repeats(self, request):
+        return request.param
+
+    @pytest.fixture
+    def config(self, num_repeats):
+        return MobileNetBlockConfig(input_filters=4, output_filters=4, kernel_size=3, num_repeats=num_repeats)
+
+    @pytest.fixture
+    def data(self):
+        torch.random.manual_seed(42)
+        return torch.rand(1, 4, 32, 32)
+
+    def test_get_1d_blocks(self, config, data, num_repeats):
+        output = config.get_1d_blocks()
+        if num_repeats > 1:
+            assert isinstance(output, torch.nn.Sequential)
+        else:
+            assert isinstance(output, MobileNetConvBlock1d)
+
+    def test_get_2d_blocks(self, config, data, num_repeats):
+        output = config.get_2d_blocks()
+        if num_repeats > 1:
+            assert isinstance(output, torch.nn.Sequential)
+        else:
+            assert isinstance(output, MobileNetConvBlock2d)
+
+    def test_get_3d_blocks(self, config, data, num_repeats):
+        output = config.get_3d_blocks()
+        if num_repeats > 1:
+            assert isinstance(output, torch.nn.Sequential)
+        else:
+            assert isinstance(output, MobileNetConvBlock3d)
