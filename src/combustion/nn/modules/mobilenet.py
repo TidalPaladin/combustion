@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import torch.nn as nn
@@ -8,7 +9,6 @@ from torch import Tensor
 
 from .dropconnect import DropConnect
 from .squeeze_excite import HardSwish, SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
-from dataclasses import dataclass
 
 
 class _MobileNetMeta(type):
@@ -197,6 +197,7 @@ class MobileNetConvBlock2d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
 class MobileNetConvBlock3d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
     r"""3d version of :class:`combustion.nn.MobileNetConvBlock2d`."""
 
+
 @dataclass
 class MobileNetBlockConfig:
     r"""Data class that groups parameters for MobileNet inverted bottleneck blocks
@@ -232,7 +233,6 @@ class MobileNetBlockConfig:
 
     num_repeats: int = 1
 
-
     def get_1d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock1d, nn.Sequential]:
         return self._get_blocks(MobileNetConvBlock1d, repeated)
 
@@ -254,17 +254,17 @@ class MobileNetBlockConfig:
             "expand_ratio",
             "use_skipconn",
             "drop_connect_rate",
-            "padding_mode"
+            "padding_mode",
         ]
         kwargs = {attr: getattr(self, attr) for attr in attrs}
 
-        # construct first block 
+        # construct first block
         first_block = cls(**kwargs)
 
         if not repeated or self.num_repeats == 1:
             return first_block
 
-        # for multiple repetitions, override filters/stride of blocks 2-N 
+        # for multiple repetitions, override filters/stride of blocks 2-N
         kwargs["input_filters"] = self.output_filters
         kwargs["stride"] = 1
         blocks = [first_block] + [cls(**kwargs) for i in range(self.num_repeats - 1)]

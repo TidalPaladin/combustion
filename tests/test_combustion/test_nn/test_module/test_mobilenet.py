@@ -4,7 +4,7 @@
 import pytest
 import torch
 
-from combustion.nn import MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d, MobileNetBlockConfig
+from combustion.nn import MobileNetBlockConfig, MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d
 from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
@@ -74,8 +74,8 @@ class TestMobileNetConvBlock3d(TestMobileNetConvBlock1d):
     def data(self):
         return torch.rand(1, 4, 32, 32, 32)
 
-class TestMobileNetBlockConfig:
 
+class TestMobileNetBlockConfig:
     @pytest.fixture(params=[1, 2])
     def num_repeats(self, request):
         return request.param
