@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import os
+from typing import Iterable
 
 import pytest
 import torch
+from torch import Tensor
 from torch.jit import ScriptModule
 
 from combustion.testing import assert_tensors_close, cuda_or_skip
@@ -86,7 +88,13 @@ class TorchScriptTraceTestMixin:
         traced = torch.jit.trace(model, data)
         output = model(data)
         traced_output = traced(data)
-        assert_tensors_close(output, traced_output)
+        if isinstance(output, Tensor):
+            assert_tensors_close(output, traced_output)
+        elif isinstance(output, Iterable):
+            for out, traced_out in zip(output, traced_output):
+                assert_tensors_close(out, traced_out)
+        else:
+            pytest.skip()
 
     def test_save_traced(self, model, tmp_path, data):
         r"""Calls :func:`torch.jit.trace` on the given model and tests that the resultant
