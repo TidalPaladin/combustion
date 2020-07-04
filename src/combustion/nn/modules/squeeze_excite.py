@@ -100,6 +100,14 @@ class SqueezeExcite2d(_SqueezeExcite):
     .. math::
         C_\text{squeeze} = \max\bigg(1, \Big\lfloor\frac{\text{in\_channels}}{\text{squeeze\_ratio}}\Big\rfloor\bigg)
 
+    Diagram of the original squeeze/excitation layer
+
+    .. image:: ./squeeze_excite.png
+        :width: 400px
+        :align: center
+        :height: 500px
+        :alt: Diagram of MobileNetV3 inverted bottleneck block.
+
     Args:
         in_channels (int):
             Number of input channels :math:`C_i`.
