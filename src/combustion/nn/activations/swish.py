@@ -112,6 +112,13 @@ class HardSwish(nn.Module):
     Hard swish approximates the swish activation, but computationally cheaper due to the
     removal of :math:`\text{sigmoid}(x)`.
 
+
+    .. image:: ./hswish.png
+        :width: 600px
+        :align: center
+        :height: 300px
+        :alt: Comparison of Hard Swish and Swish activations.
+
     Args:
 
         inplace (bool, optional):
