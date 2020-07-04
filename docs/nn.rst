@@ -43,6 +43,10 @@ Convolution Layers
     :members:
     :undoc-members: forward
 
+Dropout Layers
+----------------------------------
+
+.. autoclass:: combustion.nn.DropConnect
 
 Larger Modules
 ----------------------------------
@@ -51,9 +55,22 @@ Larger Modules
     :members: 
     :undoc-members: forward
 
+
+.. autoclass:: combustion.nn.MobileNetConvBlock2d
+
+.. class:: combustion.nn.MobileNetConvBlock1d
+
+  1d version of :class:`combustion.nn.MobileNetConvBlock2d`.
+
+.. class:: combustion.nn.MobileNetConvBlock3d
+
+  3d version of :class:`combustion.nn.MobileNetConvBlock2d`.
+
 .. autoclass:: combustion.nn.SqueezeExcite1d
 .. autoclass:: combustion.nn.SqueezeExcite2d
 .. autoclass:: combustion.nn.SqueezeExcite3d
+
+
 
 Loss Functions
 ----------------------------------

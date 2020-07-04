@@ -23,7 +23,7 @@ class _SqueezeExcite(nn.Module):
         self.squeeze_ratio = abs(float(squeeze_ratio))
         self.out_channels = self.in_channels if out_channels is None else abs(int(out_channels))
 
-        mid_channels = max(1, in_channels // squeeze_ratio)
+        mid_channels = int(max(1, in_channels // squeeze_ratio))
 
         self.pool = self._get_pool()
         self.linear = nn.Sequential(
