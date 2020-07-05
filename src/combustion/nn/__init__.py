@@ -5,6 +5,9 @@ from .activations import HardSwish, Swish
 from .loss import CenterNetLoss, FocalLoss, FocalLossWithLogits, focal_loss, focal_loss_with_logits
 from .modules import (
     BiFPN,
+    BiFPN1d,
+    BiFPN2d,
+    BiFPN3d,
     Bottleneck1d,
     Bottleneck2d,
     Bottleneck3d,
@@ -33,6 +36,9 @@ from .modules import (
 
 __all__ = [
     "BiFPN",
+    "BiFPN1d",
+    "BiFPN2d",
+    "BiFPN3d",
     "CenterNetLoss",
     "Conv3d",
     "ConvTranspose3d",

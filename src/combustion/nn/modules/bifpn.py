@@ -8,20 +8,24 @@ import torch.nn as nn
 from torch import Tensor
 
 
-class DefaultConvBlock(nn.Module):
-    r"""Default 2D convolution block for BiFPN"""
-
-    def __init__(self, num_channels: int):
-        super(DefaultConvBlock, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(num_channels, num_channels, kernel_size=3, stride=1, padding=1, groups=num_channels, bias=False),
-            nn.Conv2d(num_channels, num_channels, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(num_features=num_channels, momentum=0.9997, eps=4e-5),
-            nn.ReLU(),
-        )
-
-    def forward(self, input: Tensor) -> Tensor:
-        return self.conv(input)
+class _BiFPNMeta(type):
+    def __new__(cls, name, bases, dct):
+        x = super().__new__(cls, name, bases, dct)
+        if "3d" in name:
+            x.Conv = nn.Conv3d
+            x.BatchNorm = nn.BatchNorm3d
+            x.MaxPool = nn.MaxPool3d
+        elif "2d" in name:
+            x.Conv = nn.Conv2d
+            x.BatchNorm = nn.BatchNorm2d
+            x.MaxPool = nn.MaxPool2d
+        elif "1d" in name:
+            x.Conv = nn.Conv1d
+            x.BatchNorm = nn.BatchNorm1d
+            x.MaxPool = nn.MaxPool1d
+        else:
+            raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
+        return x
 
 
 class _BiFPN_Level(nn.Module):
@@ -31,6 +35,7 @@ class _BiFPN_Level(nn.Module):
         self,
         num_channels: int,
         conv: Optional[Callable[[int], nn.Module]] = None,
+        pool: Optional[Callable[[int], nn.Module]] = None,
         epsilon: float = 1e-4,
         scale_factor: int = 2,
         weight_2_count: int = 3,
@@ -38,9 +43,6 @@ class _BiFPN_Level(nn.Module):
         super(_BiFPN_Level, self).__init__()
 
         self.epsilon = float(epsilon)
-
-        if conv is None:
-            conv = DefaultConvBlock
 
         self.conv_up = conv(num_channels)
         self.conv_down = conv(num_channels)
@@ -53,7 +55,7 @@ class _BiFPN_Level(nn.Module):
 
         # Feature scaling layers
         self.feature_up = nn.Upsample(scale_factor=scale_factor, mode="nearest")
-        self.feature_down = nn.MaxPool2d(kernel_size=scale_factor)
+        self.feature_down = pool(kernel_size=scale_factor)
 
         self.weight_1 = nn.Parameter(torch.ones(2))
         self.weight_2 = nn.Parameter(torch.ones(weight_2_count))
@@ -92,9 +94,64 @@ class _BiFPN_Level(nn.Module):
         return output
 
 
-class BiFPN(nn.Module):
+class _BiFPN(nn.Module):
+    __constants__ = ["levels"]
+
+    def __init__(
+        self, num_channels: int, levels: int, conv: Optional[Callable[[int], nn.Module]] = None, epsilon: float = 1e-4
+    ):
+        super().__init__()
+        if float(epsilon) <= 0.0:
+            raise ValueError(f"epsilon must be float > 0, found {epsilon}")
+        if int(num_channels) < 1:
+            raise ValueError(f"num_channels must be int > 0, found {num_channels}")
+        if int(levels) < 1:
+            raise ValueError(f"levels must be int > 0, found {levels}")
+        if conv is not None and not callable(conv):
+            raise ValueError(f"conv must be callable, found {conv}")
+
+        self.levels = levels
+
+        if conv is None:
+
+            def conv(num_channels):
+                return nn.Sequential(
+                    self.Conv(
+                        num_channels, num_channels, kernel_size=3, stride=1, padding=1, groups=num_channels, bias=False
+                    ),
+                    self.Conv(num_channels, num_channels, kernel_size=1, stride=1, padding=0, bias=False),
+                    self.BatchNorm(num_features=num_channels, momentum=0.9997, eps=4e-5),
+                    nn.ReLU(),
+                )
+
+        level_modules = []
+        for i in range(levels):
+            3 if i > 0 else 2
+            level_modules.append(_BiFPN_Level(num_channels, conv, self.MaxPool, epsilon))
+        self.bifpn = nn.ModuleList(level_modules)
+
+    def forward(self, inputs: List[Tensor]) -> List[Tensor]:
+        """"""
+        outputs: List[Tensor] = []
+
+        for i, layer in enumerate(self.bifpn):
+            current_level = inputs[i]
+            previous_level = inputs[i - 1] if i > 0 else None
+            next_level = inputs[i + 1] if i < len(inputs) - 1 else None
+            outputs.append(layer(current_level, previous_level, next_level))
+
+        return outputs
+
+
+class BiFPN1d(_BiFPN, metaclass=_BiFPNMeta):
+    pass
+
+
+class BiFPN2d(_BiFPN, metaclass=_BiFPNMeta):
     r"""A bi-directional feature pyramid network (BiFPN) used in the EfficientDet implementation
-    (`EfficientDet Scalable and Efficient Object Detection`_).
+    (`EfficientDet Scalable and Efficient Object Detection`_). The bi-directional FPN mixes features
+    at different resolution, while also capturing (via learnable weights) that features at different
+    resolutions can contribute unequally to the desired output.
 
     The structure of the block is as follows:
 
@@ -115,12 +172,13 @@ class BiFPN(nn.Module):
             have ``num_channels`` channels, and outputs :math:`P_i'` will have ``num_channels`` channels.
 
         levels (int):
-            The number of levels in the feature pyramid.
+            The number of levels in the feature pyramid. Must have ``levels > 1``.
 
         conv (callable or torch.nn.Module, optional):
             A function used to override the convolutional layer used. Function must accept one parameter,
             an int equal to ``num_channels``, and return a convolutional layer.
-            Default convolutional layer is a separable 2d convolution with batch normalization and relu activation.
+            Default convolutional layer is a depthwise + pointwise convolution with batch normalization and
+            relu activation.
 
         epsilon (float, optional):
             Small value used for numerical stability when normalizing weights.
@@ -134,40 +192,19 @@ class BiFPN(nn.Module):
     .. _EfficientDet Scalable and Efficient Object Detection:
         https://arxiv.org/abs/1911.09070
     """
-    __constants__ = ["levels"]
 
-    def __init__(
-        self, num_channels: int, levels: int, conv: Optional[Callable[[int], nn.Module]] = None, epsilon: float = 1e-4
-    ):
-        super(BiFPN, self).__init__()
-        if float(epsilon) <= 0.0:
-            raise ValueError(f"epsilon must be float > 0, found {epsilon}")
-        if int(num_channels) < 1:
-            raise ValueError(f"num_channels must be int > 0, found {num_channels}")
-        if int(levels) < 1:
-            raise ValueError(f"levels must be int > 0, found {levels}")
-        if conv is not None and not callable(conv):
-            raise ValueError(f"conv must be callable, found {conv}")
 
-        self.levels = levels
+class BiFPN(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self._bifpn = BiFPN2d(*args, **kwargs)
+        import warnings
 
-        if conv is None:
-            conv = DefaultConvBlock
-
-        level_modules = []
-        for i in range(levels):
-            3 if i > 0 else 2
-            level_modules.append(_BiFPN_Level(num_channels, conv, epsilon))
-        self.bifpn = nn.ModuleList(level_modules)
+        warnings.warn("BiFPN is deprecated, please use BiFPN2d instead", category=DeprecationWarning)
 
     def forward(self, inputs: List[Tensor]) -> List[Tensor]:
-        """"""
-        outputs: List[Tensor] = []
+        return self._bifpn(inputs)
 
-        for i, layer in enumerate(self.bifpn):
-            current_level = inputs[i]
-            previous_level = inputs[i - 1] if i > 0 else None
-            next_level = inputs[i + 1] if i < len(inputs) - 1 else None
-            outputs.append(layer(current_level, previous_level, next_level))
 
-        return outputs
+class BiFPN3d(_BiFPN, metaclass=_BiFPNMeta):
+    pass

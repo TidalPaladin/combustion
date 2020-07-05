@@ -51,10 +51,24 @@ Dropout Layers
 Larger Modules
 ----------------------------------
 
-.. autoclass:: combustion.nn.BiFPN
+.. autoclass:: combustion.nn.BiFPN2d
     :members: 
     :undoc-members: forward
 
+.. class:: combustion.nn.BiFPN
+
+  Alias for :class:`combustion.nn.BiFPN2d`
+
+  .. warning::
+    This class is deprecated. Please use :class:`combustion.nn.BiFPN2d` instead
+
+.. class:: combustion.nn.BiFPN1d
+
+  1d variant of :class:`combustion.nn.BiFPN2d`
+
+.. class:: combustion.nn.BiFPN3d
+
+  3d variant of :class:`combustion.nn.BiFPN2d`
 
 .. autoclass:: combustion.nn.MobileNetConvBlock2d
 
