@@ -53,6 +53,8 @@ Dropout Layers
 Larger Modules
 ----------------------------------
 
+BiFPN
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. autoclass:: combustion.nn.BiFPN2d
     :members: 
     :undoc-members: forward
@@ -72,6 +74,9 @@ Larger Modules
 
   3d variant of :class:`combustion.nn.BiFPN2d`
 
+MobileNetV3 Inverted Bottleneck
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: combustion.nn.MobileNetConvBlock2d
 
 .. class:: combustion.nn.MobileNetConvBlock1d
@@ -82,15 +87,34 @@ Larger Modules
 
   3d version of :class:`combustion.nn.MobileNetConvBlock2d`.
 
+Squeeze and Excitation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: combustion.nn.SqueezeExcite1d
 .. autoclass:: combustion.nn.SqueezeExcite2d
 .. autoclass:: combustion.nn.SqueezeExcite3d
 
+Reduced Atrous Spatial Pyramid Pooling (R-ASPP Lite)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. autoclass:: combustion.nn.RASPPLite2d
+
+.. class:: combustion.nn.RASPPLite1d
+
+  1d version of :class:`combustion.nn.RASPPLite2d`.
+
+.. class:: combustion.nn.RASPPLite3d
+
+  3d version of :class:`combustion.nn.RASPPLite2d`.
 
 Loss Functions
 ----------------------------------
 
+.. autoclass:: combustion.nn.CenterNetLoss
+    :members:
+
+Focal Loss 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. autofunction:: combustion.nn.focal_loss_with_logits
 .. autofunction:: combustion.nn.focal_loss
 
@@ -100,8 +124,6 @@ Loss Functions
 .. autoclass:: combustion.nn.FocalLossWithLogits
     :members:
 
-.. autoclass:: combustion.nn.CenterNetLoss
-    :members:
 
 
 Utilities

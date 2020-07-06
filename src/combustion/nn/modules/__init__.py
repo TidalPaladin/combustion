@@ -8,6 +8,7 @@ from .dropconnect import DropConnect
 from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
 from .mobilenet import MobileNetBlockConfig, MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d
 from .preprocessing import Standardize
+from .raspp import RASPPLite1d, RASPPLite2d, RASPPLite3d
 from .squeeze_excite import SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
 
 
@@ -39,4 +40,7 @@ __all__ = [
     "SqueezeExcite1d",
     "SqueezeExcite2d",
     "SqueezeExcite3d",
+    "RASPPLite1d",
+    "RASPPLite2d",
+    "RASPPLite3d",
 ]

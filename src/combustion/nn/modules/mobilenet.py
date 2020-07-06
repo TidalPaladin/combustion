@@ -174,6 +174,10 @@ class MobileNetConvBlock2d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
             Epsilon for batch normalization layers. See :class:`torch.nn.BatchNorm2d` for
             more details.
 
+        activation (:class:`torch.nn.Module`):
+            Choice of activation function. Typically this will either be ReLU or Hard Swish
+            depending on where the block is located in the network.
+
         squeeze_excite_ratio (float):
             Ratio by which channels will be squeezed in the squeeze/excitation layer.
             See :class:`combustion.nn.SqueezeExcite2d` for more details.
@@ -188,7 +192,7 @@ class MobileNetConvBlock2d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
             Drop probability for DropConnect layer. Defaults to ``0.0``, i.e. no
             DropConnect layer will be used.
 
-        padding_mode: str = "zeros"
+        padding_mode (str):
             Padding mode to use for all non-pointwise convolution layers.
             See :class:`torch.nn.Conv2d` for more details.
 
