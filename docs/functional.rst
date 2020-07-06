@@ -17,3 +17,4 @@ Activation Functions
 
 .. autofunction:: combustion.nn.functional.swish
 .. autofunction:: combustion.nn.functional.hard_swish
+.. autofunction:: combustion.nn.functional.hard_sigmoid

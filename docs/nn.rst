@@ -20,6 +20,8 @@ Activation Functions
 
 .. autoclass:: combustion.nn.HardSwish
 
+.. autoclass:: combustion.nn.HardSigmoid
+
 Convolution Layers
 ----------------------------------
 

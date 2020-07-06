@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .activations import HardSwish, Swish
+from .activations import HardSigmoid, HardSwish, Swish
 from .loss import CenterNetLoss, FocalLoss, FocalLossWithLogits, focal_loss, focal_loss_with_logits
 from .modules import (
     BiFPN,
@@ -65,6 +65,7 @@ __all__ = [
     "SqueezeExcite3d",
     "Swish",
     "HardSwish",
+    "HardSigmoid",
     "MobileNetConvBlock1d",
     "MobileNetConvBlock2d",
     "MobileNetConvBlock3d",
