@@ -7,8 +7,9 @@ from typing import Optional, Tuple, Union
 import torch.nn as nn
 from torch import Tensor
 
+from ..activations import HardSwish
 from .dropconnect import DropConnect
-from .squeeze_excite import HardSwish, SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
+from .squeeze_excite import SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
 
 
 class _MobileNetMeta(type):
@@ -40,6 +41,7 @@ class _MobileNetConvBlockNd(nn.Module):
         stride: Union[int, Tuple[int]] = 1,
         bn_momentum: float = 0.1,
         bn_epsilon: float = 1e-5,
+        activation: nn.Module = HardSwish(),
         squeeze_excite_ratio: Optional[float] = 1,
         expand_ratio: float = 1,
         use_skipconn: bool = True,
@@ -53,6 +55,7 @@ class _MobileNetConvBlockNd(nn.Module):
         self._stride = stride
         self._bn_momentum = float(bn_momentum)
         self._bn_epsilon = float(bn_epsilon)
+        self._activation = activation
         self._se_ratio = abs(float(squeeze_excite_ratio))
         self._expand_ratio = float(expand_ratio)
         self._use_skipconn = bool(use_skipconn)
@@ -65,6 +68,7 @@ class _MobileNetConvBlockNd(nn.Module):
             self.expand = nn.Sequential(
                 self.Conv(in_filter, out_filter, kernel_size=1, bias=False, padding_mode=padding_mode),
                 self.BatchNorm(out_filter, momentum=self._bn_momentum, eps=self._bn_epsilon),
+                self._activation,
             )
         else:
             self.expand = None
@@ -81,7 +85,7 @@ class _MobileNetConvBlockNd(nn.Module):
             padding_mode=padding_mode,
         )
         self.depthwise_conv = nn.Sequential(
-            depthwise, self.BatchNorm(out_filter, momentum=self._bn_momentum, eps=self._bn_epsilon)
+            depthwise, self.BatchNorm(out_filter, momentum=self._bn_momentum, eps=self._bn_epsilon), self._activation
         )
 
         # Squeeze and Excitation layer, if desired

@@ -6,7 +6,7 @@ from typing import Optional
 import torch.nn as nn
 from torch import Tensor
 
-from combustion.nn import HardSwish
+from combustion.nn import HardSigmoid
 
 
 class _SqueezeExcite(nn.Module):
@@ -16,7 +16,7 @@ class _SqueezeExcite(nn.Module):
         squeeze_ratio: float,
         out_channels: Optional[int] = None,
         first_activation: nn.Module = nn.ReLU(),
-        second_activation: nn.Module = HardSwish(),
+        second_activation: nn.Module = HardSigmoid(),
     ):
         super().__init__()
         self.in_channels = abs(int(in_channels))
