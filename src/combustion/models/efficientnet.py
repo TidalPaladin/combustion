@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import math
+import warnings
 from copy import deepcopy
 from typing import List, Optional
 
@@ -57,8 +58,6 @@ class _EfficientNet(nn.Module):
             has_non_unit_stride = has_non_unit_stride or config.stride > 1
 
         if not has_non_unit_stride:
-            import warnings
-
             warnings.warn(
                 "No levels have a non-unit stride. "
                 "Unless return_all is True, no extracted features will be returned."
