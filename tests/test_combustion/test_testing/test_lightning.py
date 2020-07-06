@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import gc
+
 import pytest
 import pytorch_lightning as pl
 import torch
@@ -96,7 +98,8 @@ class TestLightningModuleTest(LightningModuleTest):
 
     @pytest.fixture
     def model(self):
-        return Model(1, 10, 3)
+        yield Model(1, 10, 3)
+        gc.collect()
 
     @pytest.fixture
     def data(self):
@@ -108,7 +111,8 @@ class TestMinimalLightningModuleTest(LightningModuleTest):
 
     @pytest.fixture
     def model(self):
-        return MinimalModel(1, 10, 3)
+        yield MinimalModel(1, 10, 3)
+        gc.collect()
 
     @pytest.fixture
     def data(self):
@@ -118,7 +122,8 @@ class TestMinimalLightningModuleTest(LightningModuleTest):
 class TestDistributedLightningModuleTest(LightningModuleTest):
     @pytest.fixture(params=[True, False])
     def model(self, request):
-        return Model(1, 10, 3)
+        yield Model(1, 10, 3)
+        gc.collect()
 
     @pytest.fixture
     def data(self):
