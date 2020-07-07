@@ -41,8 +41,9 @@ class _EfficientDet(_EfficientNet):
     def __init__(
         self,
         block_configs: List[MobileNetBlockConfig],
-        fpn_filters: int,
-        fpn_levels: List[int],
+        fpn_levels: List[int] = [3, 4, 5, 6, 7],
+        fpn_filters: int = 64,
+        fpn_repeats: int = 3,
         width_coeff: float = 1.0,
         depth_coeff: float = 1.0,
         width_divisor: float = 8.0,
@@ -66,7 +67,7 @@ class _EfficientDet(_EfficientNet):
 
         # convolutions mapping backbone feature maps to constant number of channels
         fpn_convs = []
-        output_filters = self.round_filters(fpn_filters, width_coeff, width_divisor, min_width)
+        output_filters = self.round_filters(fpn_filters, 1.0, width_divisor, min_width)
         for i, config in enumerate(block_configs):
             input_filters = config.output_filters
             conv = self.Conv(input_filters, output_filters, kernel_size=1)
@@ -74,7 +75,6 @@ class _EfficientDet(_EfficientNet):
         self.fpn_convs = nn.ModuleList(fpn_convs)
 
         bifpn_layers = []
-        fpn_repeats = self.round_repeats(depth_coeff, len(fpn_levels) + 1)
         for i in range(fpn_repeats):
             bifpn = self.BiFPN(output_filters, levels=len(fpn_levels))
             bifpn_layers.append(bifpn)
@@ -135,6 +135,46 @@ class _EfficientDet(_EfficientNet):
 
         return output
 
+    @classmethod
+    def from_predefined(cls, compound_coeff: int, **kwargs) -> "_EfficientNet":
+        r"""Creates an EfficientDet model using one of the parameterizations defined in the
+        `EfficientDet paper`_.
+
+        Args:
+            compund_coeff (int):
+                Compound scaling parameter :math:`\phi`. For example, to construct EfficientNet-B0, set
+                ``compound_coeff=0``.
+
+            kwargs:
+                Additional parameters/overrides for model constructor.
+
+        .. _EfficientNet paper:
+            https://arxiv.org/abs/1905.11946
+        """
+        # from paper
+        alpha = 1.2
+        beta = 1.1
+        width_divisor = 8.0
+
+        depth_coeff = alpha ** compound_coeff
+        width_coeff = beta ** compound_coeff
+
+        fpn_filters = int(64 * 1.35 ** compound_coeff)
+        fpn_repeats = 3 + compound_coeff
+        fpn_levels = [3, 4, 5, 6, 7]
+
+        final_kwargs = {
+            "block_configs": cls.DEFAULT_BLOCKS,
+            "width_coeff": width_coeff,
+            "depth_coeff": depth_coeff,
+            "width_divisor": width_divisor,
+            "fpn_filters": fpn_filters,
+            "fpn_repeats": fpn_repeats,
+            "fpn_levels": fpn_levels,
+        }
+        final_kwargs.update(kwargs)
+        return cls(**final_kwargs)
+
 
 class EfficientDet1d(_EfficientDet, metaclass=_EfficientDetMeta):
     pass
@@ -153,6 +193,20 @@ class EfficientDet2d(_EfficientDet, metaclass=_EfficientDetMeta):
         :height: 300px
         :alt: Diagram of EfficientDet
 
+    The authors of EfficientDet used the default EfficientNet scaling parameters for the backbone:
+
+    .. math::
+        \alpha = 1.2 \\
+        \beta = 1.1 \\
+        \gamma = 1.15
+
+
+    The BiFPN was scaled as follows:
+
+    .. math::
+        W_\text{bifpn} = 64 \cdot \big(1.35^\phi\big) \\
+        D_\text{bifpn} = 3 + \phi
+
     .. note::
         Currently, DropConnect ratios are not scaled based on depth of the given block.
         This is a deviation from the true EfficientNet implementation.
@@ -166,11 +220,16 @@ class EfficientDet2d(_EfficientDet, metaclass=_EfficientDetMeta):
             Configs for each of the :class:`combustion.nn.MobileNetConvBlock2d` blocks
             used in the model.
 
-        fpn_filters (int):
-            Base number of filters to use for the BiFPN before width scaling.
-
         fpn_levels (list of ints):
             Indicies of EfficientNet feature levels to include in the BiFPN, starting at index 1.
+
+        fpn_filters (int):
+            Number of filters to use for the BiFPN. The filter count given here should be the desired
+            number of filters after width scaling.
+
+        fpn_repeats (int):
+            Number of repeats to use for the BiFPN. The repeat count given here should be the desired
+            number of repeats after depth scaling.
 
         width_coeff (float):
             The width scaling coefficient. Increasing this increases the width of the model.

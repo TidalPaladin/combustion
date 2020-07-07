@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import gc
+
 import pytest
 import torch
 from torch import Tensor
@@ -24,13 +26,17 @@ class EfficientDetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         block1 = MobileNetBlockConfig(4, 8, 3, num_repeats=2, stride=2)
         block2 = MobileNetBlockConfig(8, 16, 3, num_repeats=1, stride=2)
         blocks = [block1, block2]
-        return model_type(blocks, 8, [1, 2], 1.0, 1.0)
+        model = model_type(blocks, [1, 2])
+        yield model
+        del model
+        gc.collect()
 
     def test_construct(self, model_type):
         block1 = MobileNetBlockConfig(4, 8, 3, num_repeats=2)
         block2 = MobileNetBlockConfig(8, 16, 3, num_repeats=1)
         blocks = [block1, block2]
-        return model_type(blocks, 8, [1, 2], 1.0, 1.0)
+        model_type(blocks, [1, 2])
+        gc.collect()
 
     def test_forward(self, model, data):
         output = model(data)
@@ -45,6 +51,12 @@ class EfficientDetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         flat = torch.cat([x.flatten() for x in output], dim=-1)
         scalar = flat.sum()
         scalar.backward()
+
+    @pytest.mark.parametrize("compound_coeff", [0, 1, 2])
+    def test_from_predefined(self, model_type, compound_coeff):
+        model = model_type.from_predefined(compound_coeff)
+        assert isinstance(model, model_type)
+        del model
 
 
 class TestEfficientDet1d(EfficientDetBaseTest):

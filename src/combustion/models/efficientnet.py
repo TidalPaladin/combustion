@@ -36,6 +36,79 @@ class _EfficientNetMeta(type):
 
 
 class _EfficientNet(nn.Module):
+    DEFAULT_BLOCKS = [
+        MobileNetBlockConfig(
+            kernel_size=3,
+            num_repeats=1,
+            input_filters=32,
+            output_filters=16,
+            expand_ratio=1,
+            use_skipconn=True,
+            stride=1,
+            squeeze_excite_ratio=0.25,
+        ),
+        MobileNetBlockConfig(
+            kernel_size=3,
+            num_repeats=2,
+            input_filters=16,
+            output_filters=24,
+            expand_ratio=6,
+            use_skipconn=True,
+            stride=2,
+            squeeze_excite_ratio=0.25,
+        ),
+        MobileNetBlockConfig(
+            kernel_size=5,
+            num_repeats=2,
+            input_filters=24,
+            output_filters=40,
+            expand_ratio=6,
+            use_skipconn=True,
+            stride=2,
+            squeeze_excite_ratio=0.25,
+        ),
+        MobileNetBlockConfig(
+            kernel_size=3,
+            num_repeats=3,
+            input_filters=40,
+            output_filters=80,
+            expand_ratio=6,
+            use_skipconn=True,
+            stride=2,
+            squeeze_excite_ratio=0.25,
+        ),
+        MobileNetBlockConfig(
+            kernel_size=5,
+            num_repeats=3,
+            input_filters=80,
+            output_filters=112,
+            expand_ratio=6,
+            use_skipconn=True,
+            stride=1,
+            squeeze_excite_ratio=0.25,
+        ),
+        MobileNetBlockConfig(
+            kernel_size=5,
+            num_repeats=4,
+            input_filters=112,
+            output_filters=192,
+            expand_ratio=6,
+            use_skipconn=True,
+            stride=2,
+            squeeze_excite_ratio=0.25,
+        ),
+        MobileNetBlockConfig(
+            kernel_size=3,
+            num_repeats=1,
+            input_filters=192,
+            output_filters=320,
+            expand_ratio=6,
+            use_skipconn=True,
+            stride=1,
+            squeeze_excite_ratio=0.25,
+        ),
+    ]
+
     def __init__(
         self,
         block_configs: List[MobileNetBlockConfig],
@@ -188,86 +261,13 @@ class _EfficientNet(nn.Module):
         depth_coeff = alpha ** compound_coeff
         width_coeff = beta ** compound_coeff
 
-        block_1 = MobileNetBlockConfig(
-            kernel_size=3,
-            num_repeats=1,
-            input_filters=32,
-            output_filters=16,
-            expand_ratio=1,
-            use_skipconn=True,
-            stride=1,
-            squeeze_excite_ratio=0.25,
-        )
-        block_2 = MobileNetBlockConfig(
-            kernel_size=3,
-            num_repeats=2,
-            input_filters=16,
-            output_filters=24,
-            expand_ratio=6,
-            use_skipconn=True,
-            stride=2,
-            squeeze_excite_ratio=0.25,
-        )
-        block_3 = MobileNetBlockConfig(
-            kernel_size=5,
-            num_repeats=2,
-            input_filters=24,
-            output_filters=40,
-            expand_ratio=6,
-            use_skipconn=True,
-            stride=2,
-            squeeze_excite_ratio=0.25,
-        )
-        block_4 = MobileNetBlockConfig(
-            kernel_size=3,
-            num_repeats=3,
-            input_filters=40,
-            output_filters=80,
-            expand_ratio=6,
-            use_skipconn=True,
-            stride=2,
-            squeeze_excite_ratio=0.25,
-        )
-        block_5 = MobileNetBlockConfig(
-            kernel_size=5,
-            num_repeats=3,
-            input_filters=80,
-            output_filters=112,
-            expand_ratio=6,
-            use_skipconn=True,
-            stride=1,
-            squeeze_excite_ratio=0.25,
-        )
-        block_6 = MobileNetBlockConfig(
-            kernel_size=5,
-            num_repeats=4,
-            input_filters=112,
-            output_filters=192,
-            expand_ratio=6,
-            use_skipconn=True,
-            stride=2,
-            squeeze_excite_ratio=0.25,
-        )
-        block_7 = MobileNetBlockConfig(
-            kernel_size=3,
-            num_repeats=1,
-            input_filters=192,
-            output_filters=320,
-            expand_ratio=6,
-            use_skipconn=True,
-            stride=1,
-            squeeze_excite_ratio=0.25,
-        )
-        block_configs = [block_1, block_2, block_3, block_4, block_5, block_6, block_7]
         final_kwargs = {
-            "block_configs": block_configs,
+            "block_configs": cls.DEFAULT_BLOCKS,
             "width_coeff": width_coeff,
             "depth_coeff": depth_coeff,
             "width_divisor": width_divisor,
         }
         final_kwargs.update(kwargs)
-
-        # block_configs = final_kwargs.pop("block_configs")
         return cls(**final_kwargs)
 
 
@@ -299,6 +299,7 @@ class EfficientNet2d(_EfficientNet, metaclass=_EfficientNetMeta):
     how finite computational resources should be distributed amongst depth, width, and resolution
     scaling. The parameter :math:`\phi` is a user controllable compound scaling coefficient such that
     for a new :math:`\phi`, FLOPS will increase by approximately :math:`2^\phi`.
+
 
     The authors of EfficientNet selected the following scaling parameters:
 
