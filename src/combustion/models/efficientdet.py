@@ -147,6 +147,12 @@ class EfficientDet2d(_EfficientDet, metaclass=_EfficientDetMeta):
     bidirectional feature pyramid network (see :class:`combustion.nn.BiFPN2d`), which
     mixes information across the various feature maps produced by the EfficientNet backbone.
 
+    .. image:: ./efficientdet.png
+        :width: 800px
+        :align: center
+        :height: 300px
+        :alt: Diagram of EfficientDet
+
     .. note::
         Currently, DropConnect ratios are not scaled based on depth of the given block.
         This is a deviation from the true EfficientNet implementation.
