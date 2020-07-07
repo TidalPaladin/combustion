@@ -46,6 +46,12 @@ class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         scalar = flat.sum()
         scalar.backward()
 
+    @pytest.mark.parametrize("compound_coeff", [0, 1, 2])
+    def test_from_predefined(self, model_type, compound_coeff):
+        model = model_type.from_predefined(compound_coeff)
+        assert isinstance(model, model_type)
+        del model
+
 
 class TestEfficientNet1d(EfficientNetBaseTest):
     @pytest.fixture

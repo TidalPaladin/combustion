@@ -130,6 +130,41 @@ class _MobileNetConvBlockNd(nn.Module):
             x = x + inputs  # skip connection
         return x
 
+    @classmethod
+    def from_config(cls, config: "MobileNetBlockConfig") -> Union[nn.Sequential, "_MobileNetConvBlockNd"]:
+        r"""Constructs a MobileNetConvBlock using a MobileNetBlockConfig dataclass.
+
+        Args:
+            config (:class:`combustion.nn.MobileNetBlockConfig`):
+                Configuration for the block to construct
+        """
+        attrs = [
+            "input_filters",
+            "output_filters",
+            "kernel_size",
+            "stride",
+            "bn_momentum",
+            "bn_epsilon",
+            "squeeze_excite_ratio",
+            "expand_ratio",
+            "use_skipconn",
+            "drop_connect_rate",
+            "padding_mode",
+        ]
+        kwargs = {attr: getattr(config, attr) for attr in attrs}
+
+        # construct first block
+        first_block = cls(**kwargs)
+
+        if config.num_repeats == 1:
+            return first_block
+
+        # for multiple repetitions, override filters/stride of blocks 2-N
+        kwargs["input_filters"] = config.output_filters
+        kwargs["stride"] = 1
+        blocks = [first_block] + [cls(**kwargs) for i in range(config.num_repeats - 1)]
+        return nn.Sequential(*blocks)
+
 
 class MobileNetConvBlock1d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
     pass
@@ -209,22 +244,54 @@ class MobileNetConvBlock3d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
 @dataclass
 class MobileNetBlockConfig:
     r"""Data class that groups parameters for MobileNet inverted bottleneck blocks
-    (:class:`MobileNetConvBlock1d`, :class:`MobileNetConvBlock2d`, :class:`MobileNetConvBlock3d`).
+    (:class:`MobileNetConvBlock1d`, :class:`MobileNetConvBlock2d`, :class:`MobileNetConvBlock4d`).
 
-    Attributes:
-        * :attr:`input_filters`
-        * :attr:`output_filters`
-        * :attr:`kernel_size`
-        * :attr:`stride`
-        * :attr:`bn_momentum`
-        * :attr:`bn_epsilon`
-        * :attr:`squeeze_excite_ratio`
-        * :attr:`expand_ratio`
-        * :attr:`use_skipconn`
-        * :attr:`dropconnect_rate`
-        * :attr:`padding_mode`
-        * :attr:`num_repeats`
+    Args:
+        input_filters (int):
+            The number of input channels, :math:`C_i`
+            See :class:`torch.nn.Conv2d` for more details.
 
+        output_filters (int):
+            Number of output channels, :math:`C_o`
+            See :class:`torch.nn.Conv2d` for more details.
+
+        kernel_size (int or tuple of ints):
+            Kernel size for the depthwise (spatial) convolutions
+            See :class:`torch.nn.Conv2d` for more details.
+
+        stride (int or tuple of ints):
+            Stride for the depthwise (spatial) convolutions. See :class:`torch.nn.Conv2d`
+            for more details.
+
+        bn_momentum (float):
+            Momentum for batch normalization layers. See :class:`torch.nn.BatchNorm2d` for
+            more details.
+
+        bn_epsilon (float):
+            Epsilon for batch normalization layers. See :class:`torch.nn.BatchNorm2d` for
+            more details.
+
+        activation (:class:`torch.nn.Module`):
+            Choice of activation function. Typically this will either be ReLU or Hard Swish
+            depending on where the block is located in the network.
+
+        squeeze_excite_ratio (float):
+            Ratio by which channels will be squeezed in the squeeze/excitation layer.
+            See :class:`combustion.nn.SqueezeExcite2d` for more details.
+
+        expand_ratio (float):
+            Ratio by which channels will be expanded in the inverted bottleneck.
+
+        use_skipconn (bool):
+            Whether or not to use skip connections.
+
+        drop_connect_rate (float):
+            Drop probability for DropConnect layer. Defaults to ``0.0``, i.e. no
+            DropConnect layer will be used.
+
+        padding_mode (str):
+            Padding mode to use for all non-pointwise convolution layers.
+            See :class:`torch.nn.Conv2d` for more details.
 
     """
     input_filters: int
@@ -242,38 +309,10 @@ class MobileNetBlockConfig:
     num_repeats: int = 1
 
     def get_1d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock1d, nn.Sequential]:
-        return self._get_blocks(MobileNetConvBlock1d, repeated)
+        return MobileNetConvBlock1d.from_config(self)
 
     def get_2d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock2d, nn.Sequential]:
-        return self._get_blocks(MobileNetConvBlock2d, repeated)
+        return MobileNetConvBlock2d.from_config(self)
 
     def get_3d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock3d, nn.Sequential]:
-        return self._get_blocks(MobileNetConvBlock3d, repeated)
-
-    def _get_blocks(self, cls, repeated):
-        attrs = [
-            "input_filters",
-            "output_filters",
-            "kernel_size",
-            "stride",
-            "bn_momentum",
-            "bn_epsilon",
-            "squeeze_excite_ratio",
-            "expand_ratio",
-            "use_skipconn",
-            "drop_connect_rate",
-            "padding_mode",
-        ]
-        kwargs = {attr: getattr(self, attr) for attr in attrs}
-
-        # construct first block
-        first_block = cls(**kwargs)
-
-        if not repeated or self.num_repeats == 1:
-            return first_block
-
-        # for multiple repetitions, override filters/stride of blocks 2-N
-        kwargs["input_filters"] = self.output_filters
-        kwargs["stride"] = 1
-        blocks = [first_block] + [cls(**kwargs) for i in range(self.num_repeats - 1)]
-        return nn.Sequential(*blocks)
+        return MobileNetConvBlock3d.from_config(self)

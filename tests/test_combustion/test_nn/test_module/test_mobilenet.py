@@ -54,6 +54,20 @@ class TestMobileNetConvBlock1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         scalar = output.sum()
         scalar.backward()
 
+    def test_from_config(self, model_type):
+        config = MobileNetBlockConfig(
+            input_filters=4,
+            output_filters=4,
+            kernel_size=3,
+            stride=1,
+            drop_connect_rate=0.0,
+            squeeze_excite_ratio=2,
+            expand_ratio=4,
+            use_skipconn=True,
+        )
+        model = model_type.from_config(config)
+        assert isinstance(model, model_type)
+
 
 class TestMobileNetConvBlock2d(TestMobileNetConvBlock1d):
     @pytest.fixture

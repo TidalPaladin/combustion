@@ -78,6 +78,9 @@ MobileNetV3 Inverted Bottleneck
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: combustion.nn.MobileNetConvBlock2d
+  :members: from_config
+
+.. autoclass:: combustion.nn.MobileNetBlockConfig
 
 .. class:: combustion.nn.MobileNetConvBlock1d
 
