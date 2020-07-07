@@ -139,6 +139,19 @@ def test_instantiate_with_hydra(cfg, hydra):
     assert isinstance(model, Subclass)
 
 
+def test_instantiate_recursive(hydra):
+    cfg = {
+        "target": "torch.nn.Sequential",
+        "params": [
+            {"target": "torch.nn.Linear", "params": {"in_features": 10, "out_features": 10,}},
+            {"target": "torch.nn.Linear", "params": {"in_features": 10, "out_features": 10,}},
+        ],
+    }
+
+    model = HydraMixin.instantiate(cfg)
+    assert isinstance(model, torch.nn.Sequential)
+
+
 @pytest.mark.parametrize("scheduled", [True, False])
 def test_configure_optimizer(torch, cfg, hydra, scheduled):
     hparams = cfg["model"]["params"]

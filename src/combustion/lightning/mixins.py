@@ -9,7 +9,7 @@ from typing import Any, Optional, Union
 import pytorch_lightning as pl
 import torch
 from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from torch.utils.data import DataLoader, Dataset, random_split
 
@@ -322,24 +322,47 @@ class HydraMixin:
                 The config to recursively instantiate from.
 
         """
+        # NOTE this method is really ugly, but it's coming in Hydra 1.1 so no reason
+        # to rewrite it
+
         # deepcopy so we can modify config
         config = deepcopy(config)
         if isinstance(config, DictConfig):
             OmegaConf.set_struct(config, False)
-        params = dict(config.get("params")) if "params" in config.keys() else {}
+
+        if "params" in config.keys():
+            if isinstance(config.get("params"), (dict, DictConfig)):
+                params = dict(config.get("params"))
+            elif isinstance(config.get("params"), (list, ListConfig)):
+                params = list(config.get("params"))
+        else:
+            params = {}
 
         def is_subclass(d):
-            return isinstance(d, (dict, DictConfig)) and ("cls" in d.keys() or "target" in d.keys())
+            if isinstance(d, (dict, DictConfig)):
+                return "cls" in d.keys() or "target" in d.keys()
+            elif isinstance(d, (list, ListConfig)):
+                return any(["target" in x.keys() or "cls" in x.keys() for x in d if isinstance(x, (dict, DictConfig))])
+            return False
 
-        subclasses = {key: subconfig for key, subconfig in params.items() if is_subclass(subconfig)}
+        if isinstance(params, list):
+            for i, subconfig in enumerate(params):
+                if isinstance(subconfig, (dict, DictConfig)) and "params" not in subconfig.keys():
+                    subconfig["params"] = {}
+                params[i] = HydraMixin.instantiate(subconfig)
+            del config["params"]
+            return instantiate(DictConfig(config), *params, *args, **kwargs)
 
-        # instantiate recursively, remove those keys from config used in hydra instantiate call
-        for key, subconfig in subclasses.items():
-            # avoid issues when cls given without params
-            if "params" not in subconfig:
-                subconfig["params"] = {}
-            subclasses[key] = HydraMixin.instantiate(subconfig)
-            del config.get("params")[key]
+        else:
+            subclasses = {key: subconfig for key, subconfig in params.items() if is_subclass(subconfig)}
 
-        subclasses.update(kwargs)
-        return instantiate(config, *args, **subclasses)
+            # instantiate recursively, remove those keys from config used in hydra instantiate call
+            for key, subconfig in subclasses.items():
+                # avoid issues when cls given without params
+                if "params" not in subconfig:
+                    subconfig["params"] = {}
+                subclasses[key] = HydraMixin.instantiate(subconfig)
+                del config.get("params")[key]
+
+            subclasses.update(kwargs)
+            return instantiate(DictConfig(config), *args, **subclasses)
