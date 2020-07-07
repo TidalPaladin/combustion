@@ -243,11 +243,11 @@ class _EfficientNet(nn.Module):
         `EfficientNet paper`_.
 
         Args:
-            compund_coeff (int):
+            compound_coeff (int):
                 Compound scaling parameter :math:`\phi`. For example, to construct EfficientNet-B0, set
                 ``compound_coeff=0``.
 
-            kwargs:
+            **kwargs:
                 Additional parameters/overrides for model constructor.
 
         .. _EfficientNet paper:

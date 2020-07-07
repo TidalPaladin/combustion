@@ -136,16 +136,16 @@ class _EfficientDet(_EfficientNet):
         return output
 
     @classmethod
-    def from_predefined(cls, compound_coeff: int, **kwargs) -> "_EfficientNet":
+    def from_predefined(cls, compound_coeff: int, **kwargs) -> "_EfficientDet":
         r"""Creates an EfficientDet model using one of the parameterizations defined in the
         `EfficientDet paper`_.
 
         Args:
-            compund_coeff (int):
-                Compound scaling parameter :math:`\phi`. For example, to construct EfficientNet-B0, set
+            compound_coeff (int):
+                Compound scaling parameter :math:`\phi`. For example, to construct EfficientDet-D0, set
                 ``compound_coeff=0``.
 
-            kwargs:
+            **kwargs:
                 Additional parameters/overrides for model constructor.
 
         .. _EfficientNet paper:

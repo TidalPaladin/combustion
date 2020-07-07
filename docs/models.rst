@@ -20,7 +20,7 @@ EfficientNet
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: combustion.models.EfficientNet2d
-    :members: extract_features,forward
+    :members: extract_features,forward, from_predefined
 
 .. class:: combustion.models.EfficientNet1d
 
@@ -34,7 +34,7 @@ EfficientDet
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: combustion.models.EfficientDet2d
-    :members: extract_features,forward
+    :members: extract_features,forward, from_predefined
 
 .. class:: combustion.models.EfficientDet3d
 
