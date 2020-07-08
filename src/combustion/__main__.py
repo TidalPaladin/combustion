@@ -17,6 +17,10 @@ log = logging.getLogger(__name__)
 _exceptions = []
 
 
+class MultiRunError(RuntimeError):
+    pass
+
+
 def _log_versions():
     import torch
 
@@ -39,8 +43,33 @@ def _log_versions():
 
 
 def check_exceptions():
-    for x in _exceptions:
-        raise x
+    r"""Checks if exceptions have been raised over the course of a multirun.
+    Most exceptions are ignored by :func:`combustion.main` to prevent a failed run
+    from killing an entire hyperparameter search. However, one may still want to
+    raise an exception at the conclusion of a multirun (i.e. for testing purposes).
+    This method checks if any exceptions were raised, and if so will raise a
+    :class:`combustion.MultiRunError`.
+
+    Example::
+
+        >>> @hydra.main(config_path="./conf", config_name="config")
+        >>> def main(cfg):
+        >>>     combustion.main(cfg)
+        >>>
+        >>> if __name__ == "__main__":
+        >>>     main()
+        >>>     combustion.check_exceptions()
+
+    """
+    global _exceptions
+    if _exceptions:
+        log.warn("One or more runs raised an exception")
+        raise MultiRunError(f"Exceptions: {_exceptions}")
+
+
+def clear_exceptions():
+    global _exceptions
+    _exceptions = []
 
 
 def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:

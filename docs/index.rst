@@ -27,6 +27,7 @@ Training Helpers
 ----------------------------------
 
 .. autofunction:: combustion.main
+.. autofunction:: combustion.check_exceptions
 .. autofunction:: combustion.auto_lr_find
 
 
