@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import math
-import warnings
 from copy import deepcopy
 from typing import List, Optional
 
@@ -122,19 +121,11 @@ class _EfficientNet(nn.Module):
         super().__init__()
         block_configs = deepcopy(block_configs)
 
-        has_non_unit_stride = False
         for config in block_configs:
             # update config according to scale coefficients
             config.input_filters = self.round_filters(config.input_filters, width_coeff, width_divisor, min_width)
             config.output_filters = self.round_filters(config.output_filters, width_coeff, width_divisor, min_width)
             config.num_repeats = self.round_repeats(depth_coeff, config.num_repeats)
-            has_non_unit_stride = has_non_unit_stride or config.stride > 1
-
-        if not has_non_unit_stride:
-            warnings.warn(
-                "No levels have a non-unit stride. "
-                "Unless return_all is True, no extracted features will be returned."
-            )
 
         # Conv stem (default stem used if none given)
         if stem is not None:
