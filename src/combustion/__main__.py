@@ -138,7 +138,8 @@ def main(cfg: DictConfig) -> None:
 
     This method is robust to exceptions (other than :class:`SystemExit` or :class:`KeyboardInterrupt`),
     making it useful when using Hydra's multirun feature. If one combination of hyperparameters results in
-    an exception, other combinations will still be attempted.
+    an exception, other combinations will still be attempted. This behavior can be overriden by providing
+    a ``check_exceptions`` bool value under ``config.trainer``. Such an override is useful when writing tests.
 
     Automatic learning rate selection is handled automatically using :func:`auto_lr_find`.
 
@@ -151,13 +152,13 @@ def main(cfg: DictConfig) -> None:
 
     Example::
 
-        # define main method as per Hydra that calls combustion.main()
-        @hydra.main(config_path="./conf", config_name="config")
-        def main(cfg):
-            combustion.main(cfg)
-
-        if __name__ == "__main__":
-            main()
+        >>> # define main method as per Hydra that calls combustion.main()
+        >>> @hydra.main(config_path="./conf", config_name="config")
+        >>> def main(cfg):
+        >>>     combustion.main(cfg)
+        >>>
+        >>> if __name__ == "__main__":
+        >>>     main()
     """
     try:
         _log_versions()
@@ -197,8 +198,12 @@ def main(cfg: DictConfig) -> None:
     # guard to continue when using Hydra multiruns
     # SystemExit/KeyboardInterrupt are not caught and will trigger shutdown
     except Exception as err:
-        log.exception(err)
-        _exceptions.append(err)
+        catch_exceptions = cfg.trainer.get("catch_exceptions", True)
+        if catch_exceptions:
+            log.exception(err)
+            _exceptions.append(err)
+        else:
+            raise err
 
 
 if __name__ == "__main__":

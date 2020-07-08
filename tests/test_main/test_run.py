@@ -18,7 +18,7 @@ def set_caplog(caplog):
 
 
 def test_fast_dev_run():
-    sys.argv = [sys.argv[0], "trainer=test"]
+    sys.argv = [sys.argv[0], "trainer=test", "trainer.catch_exceptions=False"]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 

@@ -1,6 +1,7 @@
 # @package _global_
 # https://pytorch-lightning.readthedocs.io/en/stable/trainer.html#trainer-flags
 trainer:
+  catch_exceptions: true
   target: pytorch_lightning.Trainer
   params:
     max_epochs: 2
