@@ -7,6 +7,8 @@ from typing import Optional, Tuple, Union
 import torch.nn as nn
 from torch import Tensor
 
+from combustion.util import double, single, triple
+
 from ..activations import HardSwish
 from .dropconnect import DropConnect
 from .squeeze_excite import SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
@@ -19,14 +21,17 @@ class _MobileNetMeta(type):
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
             x.SqueezeExcite = SqueezeExcite3d
+            x.Tuple = staticmethod(triple)
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
             x.SqueezeExcite = SqueezeExcite2d
+            x.Tuple = staticmethod(double)
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x.SqueezeExcite = SqueezeExcite1d
+            x.Tuple = staticmethod(single)
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
         return x
@@ -49,6 +54,9 @@ class _MobileNetConvBlockNd(nn.Module):
         padding_mode: str = "zeros",
     ):
         super().__init__()
+        kernel_size = self.Tuple(kernel_size)
+        stride = self.Tuple(stride)
+
         self._input_filters = int(input_filters)
         self._output_filters = int(output_filters)
         self._kernel_size = kernel_size
@@ -60,7 +68,7 @@ class _MobileNetConvBlockNd(nn.Module):
         self._expand_ratio = float(expand_ratio)
         self._use_skipconn = bool(use_skipconn)
 
-        padding = (kernel_size - 1) // 2
+        padding = tuple([(kernel - 1) // 2 for kernel in kernel_size])
 
         # Expansion phase (Inverted Bottleneck)
         in_filter, out_filter = self._input_filters, int(self._input_filters * self._expand_ratio)

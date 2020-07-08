@@ -44,7 +44,7 @@ class TestMobileNetConvBlock1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         output = model(data)
         assert isinstance(output, torch.Tensor)
         assert output.shape[:2] == data.shape[:2]
-        if model._stride == 1:
+        if all([x == 1 for x in model._stride]):
             assert output.shape == data.shape
         else:
             assert list(output.shape[2:]) == [x // 2 for x in data.shape[2:]]
