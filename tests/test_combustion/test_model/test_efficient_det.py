@@ -26,7 +26,7 @@ class EfficientDetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         block1 = MobileNetBlockConfig(4, 8, 3, num_repeats=2, stride=2)
         block2 = MobileNetBlockConfig(8, 16, 3, num_repeats=1, stride=2)
         blocks = [block1, block2]
-        model = model_type(blocks, [1, 2])
+        model = model_type(blocks, [1, 2, 3, 4])
         yield model
         del model
         gc.collect()
@@ -53,9 +53,17 @@ class EfficientDetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         scalar.backward()
 
     @pytest.mark.parametrize("compound_coeff", [0, 1, 2])
-    def test_from_predefined(self, model_type, compound_coeff):
+    def test_from_predefined(self, model_type, compound_coeff, data):
         model = model_type.from_predefined(compound_coeff)
         assert isinstance(model, model_type)
+
+        output = model(data)
+        assert isinstance(output, list)
+        assert all([isinstance(x, Tensor) for x in output])
+        for out in output:
+            assert out.ndim == data.ndim
+            assert out.shape[0] == 1
+
         del model
 
 
@@ -67,7 +75,7 @@ class TestEfficientDet1d(EfficientDetBaseTest):
     @pytest.fixture
     def data(self):
         torch.random.manual_seed(42)
-        return torch.rand(1, 3, 32, requires_grad=True)
+        return torch.rand(1, 3, 256, requires_grad=True)
 
 
 class TestEfficientDet2d(EfficientDetBaseTest):
@@ -78,7 +86,7 @@ class TestEfficientDet2d(EfficientDetBaseTest):
     @pytest.fixture
     def data(self):
         torch.random.manual_seed(42)
-        return torch.rand(1, 3, 32, 32, requires_grad=True)
+        return torch.rand(1, 3, 256, 256, requires_grad=True)
 
 
 class TestEfficientDet3d(EfficientDetBaseTest):
@@ -87,6 +95,30 @@ class TestEfficientDet3d(EfficientDetBaseTest):
         return EfficientDet3d
 
     @pytest.fixture
+    def model(self, model_type):
+        block1 = MobileNetBlockConfig(4, 8, (3, 3, 3), num_repeats=2, stride=(1, 2, 2))
+        block2 = MobileNetBlockConfig(8, 16, (3, 3, 3), num_repeats=1, stride=(1, 2, 2))
+        blocks = [block1, block2]
+        model = model_type(blocks, [1, 2, 3, 4], fpn_kwargs={"stride": (1, 2, 2)})
+        yield model
+        del model
+        gc.collect()
+
+    @pytest.fixture
     def data(self):
         torch.random.manual_seed(42)
-        return torch.rand(1, 3, 32, 32, 32, requires_grad=True)
+        return torch.rand(1, 3, 3, 256, 256, requires_grad=True)
+
+    @pytest.mark.parametrize("compound_coeff", [0, 1, 2])
+    def test_from_predefined(self, model_type, compound_coeff, data):
+        model = model_type.from_predefined(compound_coeff, fpn_kwargs={"stride": (1, 2, 2)})
+        assert isinstance(model, model_type)
+
+        output = model(data)
+        assert isinstance(output, list)
+        assert all([isinstance(x, Tensor) for x in output])
+        for out in output:
+            assert out.ndim == data.ndim
+            assert out.shape[0] == 1
+
+        del model

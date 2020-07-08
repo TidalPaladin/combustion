@@ -41,7 +41,7 @@ class _EfficientDet(_EfficientNet):
     def __init__(
         self,
         block_configs: List[MobileNetBlockConfig],
-        fpn_levels: List[int] = [3, 4, 5, 6, 7],
+        fpn_levels: List[int] = [3, 5, 7, 8, 9],
         fpn_filters: int = 64,
         fpn_repeats: int = 3,
         width_coeff: float = 1.0,
@@ -50,33 +50,44 @@ class _EfficientDet(_EfficientNet):
         min_width: Optional[int] = None,
         stem: Optional[nn.Module] = None,
         head: Optional[nn.Module] = None,
+        fpn_kwargs: dict = {},
     ):
         super(_EfficientDet, self).__init__(
-            block_configs, width_coeff, depth_coeff, width_divisor, min_width, stem, head=None
+            block_configs, width_coeff, depth_coeff, width_divisor, min_width, stem, head
         )
         self.fpn_levels = fpn_levels
         block_configs = deepcopy(block_configs)
 
-        has_non_unit_stride = False
         for config in block_configs:
             # update config according to scale coefficients
             config.input_filters = self.round_filters(config.input_filters, width_coeff, width_divisor, min_width)
             config.output_filters = self.round_filters(config.output_filters, width_coeff, width_divisor, min_width)
             config.num_repeats = self.round_repeats(depth_coeff, config.num_repeats)
-            has_non_unit_stride = has_non_unit_stride or config.stride > 1
 
         # convolutions mapping backbone feature maps to constant number of channels
         fpn_convs = []
         output_filters = self.round_filters(fpn_filters, 1.0, width_divisor, min_width)
         for i, config in enumerate(block_configs):
-            input_filters = config.output_filters
-            conv = self.Conv(input_filters, output_filters, kernel_size=1)
-            fpn_convs.append(conv)
+            if i + 1 in fpn_levels:
+                input_filters = config.output_filters
+                conv = self.Conv(input_filters, output_filters, kernel_size=1)
+                fpn_convs.append(conv)
+
+        for i in fpn_levels:
+            if i == len(block_configs) + 1:
+                input_filters = block_configs[-1].output_filters
+                conv = self.Conv(input_filters, output_filters, kernel_size=3, stride=2, padding=1)
+                fpn_convs.append(conv)
+            elif i > len(block_configs) + 1:
+                input_filters = output_filters
+                conv = self.Conv(input_filters, output_filters, kernel_size=3, stride=2, padding=1)
+                fpn_convs.append(nn.Sequential(nn.ReLU(), conv))
+
         self.fpn_convs = nn.ModuleList(fpn_convs)
 
         bifpn_layers = []
         for i in range(fpn_repeats):
-            bifpn = self.BiFPN(output_filters, levels=len(fpn_levels))
+            bifpn = self.BiFPN(output_filters, levels=len(fpn_levels), **fpn_kwargs)
             bifpn_layers.append(bifpn)
         self.bifpn_layers = nn.ModuleList(bifpn_layers)
 
@@ -100,11 +111,19 @@ class _EfficientDet(_EfficientNet):
             prev_x = x
 
         # pull out feature maps to be used in BiFPN
-        captured_features: List[Tensor] = [backbone_features[i - 1] for c, i in enumerate(self.fpn_levels)]
+        captured_features: List[Tensor] = []
+
+        for i in self.fpn_levels:
+            if i - 1 < len(backbone_features):
+                captured_features.append(backbone_features[i - 1])
 
         # map to constant channel number using trivial convs
         for i, conv in enumerate(self.fpn_convs):
-            captured_features[i] = conv(captured_features[i])
+            if i < len(captured_features):
+                captured_features[i] = conv(captured_features[i])
+            else:
+                prev_x = conv(prev_x)
+                captured_features.append(prev_x)
 
         for bifpn in self.bifpn_layers:
             captured_features = bifpn(captured_features)
@@ -161,7 +180,7 @@ class _EfficientDet(_EfficientNet):
 
         fpn_filters = int(64 * 1.35 ** compound_coeff)
         fpn_repeats = 3 + compound_coeff
-        fpn_levels = [3, 4, 5, 6, 7]
+        fpn_levels = [3, 5, 7, 8, 9]
 
         final_kwargs = {
             "block_configs": cls.DEFAULT_BLOCKS,
@@ -207,13 +226,13 @@ class EfficientDet2d(_EfficientDet, metaclass=_EfficientDetMeta):
         W_\text{bifpn} = 64 \cdot \big(1.35^\phi\big) \\
         D_\text{bifpn} = 3 + \phi
 
+    In the original EfficientDet implementation, the authors extract feature maps from levels
+    3, 5, and 7 of the backbone. Two additional coarse levels are created by performing additional
+    strided convolutions to the final level in the backbone, for a total of 5 levels in the BiFPN.
+
     .. note::
         Currently, DropConnect ratios are not scaled based on depth of the given block.
         This is a deviation from the true EfficientNet implementation.
-
-    .. note::
-        The number of BiFPN layers prior to depth scaling is chosen to be ``len(fpn_levels) - 1``
-        such that information in the BiFPN will pass across all feature maps.
 
     Args:
         block_configs (list of :class:`combustion.nn.MobileNetBlockConfig`)
@@ -222,6 +241,9 @@ class EfficientDet2d(_EfficientDet, metaclass=_EfficientDetMeta):
 
         fpn_levels (list of ints):
             Indicies of EfficientNet feature levels to include in the BiFPN, starting at index 1.
+            Values in ``fpn_levels`` greater than the total number of blocks in the backbone denote
+            levels that should be created by applying additional strided convolutions to the final
+            level in the backbone.
 
         fpn_filters (int):
             Number of filters to use for the BiFPN. The filter count given here should be the desired
@@ -251,6 +273,9 @@ class EfficientDet2d(_EfficientDet, metaclass=_EfficientDetMeta):
         head (:class:`torch.nn.Module`):
             An optional head to use for the model. By default, no head will be used
             and ``forward`` will return a list of tensors containing extracted features.
+
+        fpn_kwargs (dict):
+            Keyword args to be passed to all :class:`combustion.nn.BiFPN2d` layers.
 
     Shapes
         * Input: :math:`(N, C, H, W)`
