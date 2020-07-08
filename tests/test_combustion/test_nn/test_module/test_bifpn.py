@@ -5,14 +5,13 @@ import gc
 
 import pytest
 import torch
-import torch.nn as nn
 from torch import Tensor
 
 from combustion.nn import BiFPN, BiFPN1d, BiFPN2d, BiFPN3d
 from combustion.testing import TorchScriptTestMixin, cuda_or_skip
 
 
-class BiFPNBaseTest(TorchScriptTestMixin):
+class BiFPNBaseTest:
     @pytest.fixture
     def model_class(self):
         raise NotImplementedError()
@@ -22,43 +21,38 @@ class BiFPNBaseTest(TorchScriptTestMixin):
         raise NotImplementedError()
 
     @pytest.fixture
-    def conv(self):
-        raise NotImplementedError()
-
-    @pytest.fixture
-    def model(self, model_class, num_channels, levels, conv):
-        model = model_class(num_channels, levels, conv)
+    def model(self, model_class, num_channels, levels):
+        model = model_class(num_channels, levels)
         yield model
         del model
         gc.collect()
 
-    @pytest.fixture(params=[3, 2])
+    @pytest.fixture(params=[2, 3])
     def levels(self, request):
         return request.param
 
-    @pytest.fixture(params=[4, 8, 16])
+    @pytest.fixture(params=[4, 8])
     def num_channels(self, request):
         return request.param
 
-    def test_init(self, levels, num_channels, conv):
-        model = BiFPN(num_channels, levels, conv)
+    def test_init(self, levels, num_channels):
+        model = BiFPN(num_channels, levels)
         del model
         gc.collect()
 
     @pytest.mark.parametrize(
-        "levels,num_channels,conv,epsilon",
+        "levels,num_channels,kernel_size,stride,epsilon",
         [
-            pytest.param(0, 32, None, 1e-4, id="levels=0"),
-            pytest.param(1, 0, None, 1e-4, id="num_channels=0"),
-            pytest.param(2, 32, 20, 1e-4, id="conv_uncallable"),
-            pytest.param(2, 32, None, 0.0, id="epsilon=0"),
+            pytest.param(0, 32, 3, 2, 1e-4, id="levels=0"),
+            pytest.param(1, 0, 3, 2, 1e-4, id="num_channels=0"),
+            pytest.param(2, 32, 3, 2, 0.0, id="epsilon=0"),
         ],
     )
-    def test_validation(self, model_class, levels, num_channels, conv, epsilon):
+    def test_validation(self, model_class, levels, num_channels, kernel_size, stride, epsilon):
         with pytest.raises(ValueError):
-            model_class(num_channels, levels, conv, epsilon)
+            model_class(num_channels, levels, kernel_size, stride, epsilon)
 
-    def test_forward(self, model, levels, num_channels, conv, data):
+    def test_forward(self, model, levels, num_channels, data):
         inputs = data
         # if torch.cuda.is_available():
         #    layer = model.cuda()
@@ -73,7 +67,7 @@ class BiFPNBaseTest(TorchScriptTestMixin):
             assert out_item.shape == in_item.shape
             assert out_item.requires_grad
 
-    def test_backward(self, model, levels, num_channels, conv, data):
+    def test_backward(self, model, levels, num_channels, data):
         inputs = data
         for x in inputs:
             x.requires_grad = True
@@ -94,9 +88,9 @@ class TestBiFPN2d(BiFPNBaseTest):
     def model_class(self, request):
         return request.param
 
-    @pytest.fixture(params=[1, 4])
-    def data(self, request, levels, num_channels):
-        batch_size = request.param
+    @pytest.fixture
+    def data(self, levels, num_channels):
+        batch_size = 1
         base_size = 8
         result = []
         for i in range(levels):
@@ -104,17 +98,6 @@ class TestBiFPN2d(BiFPNBaseTest):
             t = torch.rand(batch_size, num_channels, height, width)
             result.append(t)
         return list(reversed(result))
-
-    @pytest.fixture(params=[None, "custom"])
-    def conv(self, request):
-        if request.param is None:
-            return None
-        else:
-
-            def conv(x):
-                return nn.Sequential(nn.Conv2d(x, x, 3, padding=1), nn.ReLU())
-
-            return conv
 
     @cuda_or_skip
     def test_known_input(self, model_class):
@@ -140,9 +123,9 @@ class TestBiFPN1d(BiFPNBaseTest):
     def model_class(self):
         return BiFPN1d
 
-    @pytest.fixture(params=[1, 4])
-    def data(self, request, levels, num_channels):
-        batch_size = request.param
+    @pytest.fixture
+    def data(self, levels, num_channels):
+        batch_size = 1
         base_size = 2
         result = []
         for i in range(levels):
@@ -150,17 +133,6 @@ class TestBiFPN1d(BiFPNBaseTest):
             t = torch.rand(batch_size, num_channels, height)
             result.append(t)
         return list(reversed(result))
-
-    @pytest.fixture(params=[None, "custom"])
-    def conv(self, request):
-        if request.param is None:
-            return None
-        else:
-
-            def conv(x):
-                return nn.Sequential(nn.Conv1d(x, x, 3, padding=1), nn.ReLU())
-
-            return conv
 
     @cuda_or_skip
     def test_known_input(self, model_class):
@@ -187,9 +159,9 @@ class TestBiFPN3d(BiFPNBaseTest):
     def model_class(self):
         return BiFPN3d
 
-    @pytest.fixture(params=[1, 4])
-    def data(self, request, levels, num_channels):
-        batch_size = request.param
+    @pytest.fixture
+    def data(self, levels, num_channels):
+        batch_size = 1
         base_size = 8
         result = []
         for i in range(levels):
@@ -197,17 +169,6 @@ class TestBiFPN3d(BiFPNBaseTest):
             t = torch.rand(batch_size, num_channels, depth, height, width)
             result.append(t)
         return list(reversed(result))
-
-    @pytest.fixture(params=[None, "custom"])
-    def conv(self, request):
-        if request.param is None:
-            return None
-        else:
-
-            def conv(x):
-                return nn.Sequential(nn.Conv3d(x, x, 3, padding=1), nn.ReLU())
-
-            return conv
 
     @cuda_or_skip
     def test_known_input(self, model_class):
@@ -227,3 +188,75 @@ class TestBiFPN3d(BiFPNBaseTest):
 
         for level, (expected, actual) in enumerate(zip(expected_output_sum, output_sum)):
             assert torch.allclose(expected, actual, rtol=0.1)
+
+
+class BiFPNScriptBaseTest(TorchScriptTestMixin):
+    @pytest.fixture
+    def model_class(self):
+        raise NotImplementedError()
+
+    @pytest.fixture
+    def data(self):
+        raise NotImplementedError()
+
+    @pytest.fixture
+    def model(self, model_class):
+        yield model_class(8, 2)
+        gc.collect()
+
+
+class TestBiFPN2dScript(BiFPNScriptBaseTest):
+    @pytest.fixture
+    def model_class(self):
+        return BiFPN2d
+
+    @pytest.fixture
+    def data(self):
+        batch_size = 1
+        base_size = 8
+        levels = 2
+        num_channels = 8
+        result = []
+        for i in range(levels):
+            height, width = (base_size * 2 ** i,) * 2
+            t = torch.rand(batch_size, num_channels, height, width)
+            result.append(t)
+        return list(reversed(result))
+
+
+class TestBiFPN1dScript(BiFPNScriptBaseTest):
+    @pytest.fixture
+    def model_class(self):
+        return BiFPN1d
+
+    @pytest.fixture
+    def data(self):
+        batch_size = 1
+        base_size = 8
+        levels = 2
+        num_channels = 8
+        result = []
+        for i in range(levels):
+            height, width = (base_size * 2 ** i,) * 2
+            t = torch.rand(batch_size, num_channels, height)
+            result.append(t)
+        return list(reversed(result))
+
+
+class TestBiFPN3dScript(BiFPNScriptBaseTest):
+    @pytest.fixture
+    def model_class(self):
+        return BiFPN3d
+
+    @pytest.fixture
+    def data(self):
+        batch_size = 1
+        base_size = 8
+        levels = 2
+        num_channels = 8
+        result = []
+        for i in range(levels):
+            height, width, depth = (base_size * 2 ** i,) * 3
+            t = torch.rand(batch_size, num_channels, depth, height, width)
+            result.append(t)
+        return list(reversed(result))

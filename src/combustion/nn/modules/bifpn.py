@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from torch import Tensor
+
+from combustion.util import double, single, triple
 
 
 class _BiFPNMeta(type):
@@ -15,14 +17,17 @@ class _BiFPNMeta(type):
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
             x.MaxPool = nn.MaxPool3d
+            x.Tuple = staticmethod(triple)
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
             x.MaxPool = nn.MaxPool2d
+            x.Tuple = staticmethod(double)
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x.MaxPool = nn.MaxPool1d
+            x.Tuple = staticmethod(single)
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
         return x
@@ -37,7 +42,7 @@ class _BiFPN_Level(nn.Module):
         conv: Optional[Callable[[int], nn.Module]] = None,
         pool: Optional[Callable[[int], nn.Module]] = None,
         epsilon: float = 1e-4,
-        scale_factor: int = 2,
+        scale_factor: Union[int, Tuple[int, ...]] = 2,
         weight_2_count: int = 3,
     ):
         super(_BiFPN_Level, self).__init__()
@@ -47,7 +52,7 @@ class _BiFPN_Level(nn.Module):
         self.conv_up = conv(num_channels)
         self.conv_down = conv(num_channels)
 
-        self.feature_up = nn.Upsample(scale_factor=2, mode="nearest")
+        self.feature_up = nn.Upsample(scale_factor=scale_factor, mode="nearest")
 
         # Conv layers
         self.conv_up = conv(num_channels)
@@ -98,7 +103,15 @@ class _BiFPN(nn.Module):
     __constants__ = ["levels"]
 
     def __init__(
-        self, num_channels: int, levels: int, conv: Optional[Callable[[int], nn.Module]] = None, epsilon: float = 1e-4
+        self,
+        num_channels: int,
+        levels: int,
+        kernel_size: Union[int, Tuple[int, ...]] = 3,
+        stride: Union[int, Tuple[int, ...]] = 2,
+        epsilon: float = 1e-4,
+        bn_momentum: float = 0.9997,
+        bn_epsilon: float = 4e-5,
+        activation: nn.Module = torch.nn.ReLU(),
     ):
         super().__init__()
         if float(epsilon) <= 0.0:
@@ -107,27 +120,24 @@ class _BiFPN(nn.Module):
             raise ValueError(f"num_channels must be int > 0, found {num_channels}")
         if int(levels) < 1:
             raise ValueError(f"levels must be int > 0, found {levels}")
-        if conv is not None and not callable(conv):
-            raise ValueError(f"conv must be callable, found {conv}")
 
         self.levels = levels
+        kernel_size = self.Tuple(kernel_size)
+        stride = self.Tuple(stride)
+        padding = tuple([(kernel - 1) // 2 for kernel in kernel_size])
 
-        if conv is None:
-
-            def conv(num_channels):
-                return nn.Sequential(
-                    self.Conv(
-                        num_channels, num_channels, kernel_size=3, stride=1, padding=1, groups=num_channels, bias=False
-                    ),
-                    self.Conv(num_channels, num_channels, kernel_size=1, stride=1, padding=0, bias=False),
-                    self.BatchNorm(num_features=num_channels, momentum=0.9997, eps=4e-5),
-                    nn.ReLU(),
-                )
+        def conv(num_channels):
+            return nn.Sequential(
+                self.Conv(num_channels, num_channels, kernel_size, padding=padding, groups=num_channels, bias=False),
+                self.Conv(num_channels, num_channels, kernel_size=1, bias=False),
+                self.BatchNorm(num_features=num_channels, momentum=bn_momentum, eps=bn_epsilon),
+                activation,
+            )
 
         level_modules = []
         for i in range(levels):
-            3 if i > 0 else 2
-            level_modules.append(_BiFPN_Level(num_channels, conv, self.MaxPool, epsilon))
+            weight_2_count = 3 if i > 0 else 2
+            level_modules.append(_BiFPN_Level(num_channels, conv, self.MaxPool, epsilon, stride, weight_2_count))
         self.bifpn = nn.ModuleList(level_modules)
 
     def forward(self, inputs: List[Tensor]) -> List[Tensor]:
@@ -153,6 +163,15 @@ class BiFPN2d(_BiFPN, metaclass=_BiFPNMeta):
     at different resolution, while also capturing (via learnable weights) that features at different
     resolutions can contribute unequally to the desired output.
 
+    Weights controlling the contribution of each FPN level are normalized using fast normalized fusion,
+    which the authors note is more efficient than a softmax based fusion. It is ensured that for all
+    weights, :math:`w_i > 0` by applying ReLU to each weight.
+
+    The weight normalization is as follows
+
+    .. math::
+        O = \sum_{i}\frac{w_i}{\epsilon + \sum_{j} w_j} \cdot I_i
+
     The structure of the block is as follows:
 
     .. image:: https://miro.medium.com/max/1000/1*qH6d0kBU2cRxOkWUsfgDgg.png
@@ -161,12 +180,8 @@ class BiFPN2d(_BiFPN, metaclass=_BiFPNMeta):
         :height: 400px
         :alt: Diagram of BiFPN layer
 
-    Note:
-
-        It is assumed that adjacent levels in the feature pyramid differ in spatial resolution by
-        a factor of 2.
-
     Args:
+
         num_channels (int):
             The number of channels in each feature pyramid level. All inputs :math:`P_i` should
             have ``num_channels`` channels, and outputs :math:`P_i'` will have ``num_channels`` channels.
@@ -174,18 +189,28 @@ class BiFPN2d(_BiFPN, metaclass=_BiFPNMeta):
         levels (int):
             The number of levels in the feature pyramid. Must have ``levels > 1``.
 
-        conv (callable or torch.nn.Module, optional):
-            A function used to override the convolutional layer used. Function must accept one parameter,
-            an int equal to ``num_channels``, and return a convolutional layer.
-            Default convolutional layer is a depthwise + pointwise convolution with batch normalization and
-            relu activation.
+        kernel_size (int or tuple of ints):
+            Choice of kernel size
+
+        stride (int or tuple of ints):
+            Controls the scaling used to upsample/downsample adjacent levels in the BiFPN. This stride
+            is passed to :class:`torch.nn.MaxPool2d` and :class:`torch.nn.Upsample`.
 
         epsilon (float, optional):
-            Small value used for numerical stability when normalizing weights.
+            Small value used for numerical stability when normalizing weights via fast normalized fusion.
             Default ``1e-4``.
 
+        bn_momentum (float, optional):
+            Momentum for batch norm layers.
+
+        bn_epsilon (float, optional):
+            Epsilon for batch norm layers.
+
+        activation (:class:`torch.nn.Module`):
+            Activation function to use on convolution layers.
+
     Shape:
-        - Inputs: Tensor of shape :math:`(N, *C, *H, *W)` where :math:`*C, *H, *W` indicates
+        - Inputs: List of Tensors of shape :math:`(N, *C, *H, *W)` where :math:`*C, *H, *W` indicates
           variable channel/height/width at each level of downsapling.
         - Output: Same shape as input.
 
