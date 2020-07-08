@@ -187,7 +187,8 @@ class HydraMixin:
               # as a random split from training set by fraction
               # test: 0.1
         """
-        dataset_cfg = self.config.dataset
+        dataset_cfg = self.config.get("dataset")
+
         train_ds: Optional[Dataset] = (
             HydraMixin.instantiate(dataset_cfg["train"]) if "train" in dataset_cfg.keys() else None
         )
@@ -324,6 +325,10 @@ class HydraMixin:
         """
         # NOTE this method is really ugly, but it's coming in Hydra 1.1 so no reason
         # to rewrite it
+        if isinstance(config, dict):
+            config = DictConfig(config)
+        elif isinstance(config, list):
+            config = ListConfig(config)
 
         # deepcopy so we can modify config
         config = deepcopy(config)
@@ -347,22 +352,26 @@ class HydraMixin:
 
         if isinstance(params, list):
             for i, subconfig in enumerate(params):
+                subconfig = DictConfig(subconfig)
                 if isinstance(subconfig, (dict, DictConfig)) and "params" not in subconfig.keys():
                     subconfig["params"] = {}
+                subconfig._set_parent(config)
                 params[i] = HydraMixin.instantiate(subconfig)
             del config["params"]
-            return instantiate(DictConfig(config), *params, *args, **kwargs)
+            return instantiate(config, *params, *args, **kwargs)
 
         else:
             subclasses = {key: subconfig for key, subconfig in params.items() if is_subclass(subconfig)}
 
             # instantiate recursively, remove those keys from config used in hydra instantiate call
             for key, subconfig in subclasses.items():
+                subconfig = DictConfig(subconfig)
                 # avoid issues when cls given without params
                 if "params" not in subconfig:
                     subconfig["params"] = {}
+                subconfig._set_parent(config)
                 subclasses[key] = HydraMixin.instantiate(subconfig)
                 del config.get("params")[key]
 
             subclasses.update(kwargs)
-            return instantiate(DictConfig(config), *args, **subclasses)
+            return instantiate(config, *args, **subclasses)

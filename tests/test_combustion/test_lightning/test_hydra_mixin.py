@@ -5,6 +5,7 @@ import pytest
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+from omegaconf import OmegaConf
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 
 from combustion.lightning import HydraMixin
@@ -221,6 +222,30 @@ def test_recursive_instantiate_preserves_cfg(cfg):
     model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
     assert "test" in model.config["model"]["params"].keys()
     assert model.config["model"]["params"]["test"] == key
+
+
+def test_recursive_instantiate_interpolated():
+    yaml = r"""
+    model:
+        in_channels: 4
+        out_channels: 8
+        kernel_size: 3
+        target: torch.nn.Sequential
+        params:
+            - target: torch.nn.Conv2d
+              params:
+                in_channels: ${model.in_channels}
+                out_channels: ${model.out_channels}
+                kernel_size: ${model.kernel_size}
+            - target: torch.nn.Conv2d
+              params:
+                in_channels: ${model.in_channels}
+                out_channels: ${model.out_channels}
+                kernel_size: ${model.kernel_size}
+    """
+    cfg = OmegaConf.create(yaml)
+    model = HydraMixin.instantiate(cfg.model)
+    assert isinstance(model, torch.nn.Module)
 
 
 @pytest.mark.parametrize("check", ["train_ds", "val_ds", "test_ds"])

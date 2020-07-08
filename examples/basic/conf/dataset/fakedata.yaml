@@ -14,7 +14,7 @@ dataset:
     target: torchvision.datasets.FakeData
     params:
       size: 100
-      image_size: ${dataset.train.image_size}
+      image_size: ${dataset.train.params.image_size}
       transform:
         target: torchvision.transforms.ToTensor
 
@@ -22,6 +22,6 @@ dataset:
     target: torchvision.datasets.FakeData
     params:
       size: 100
-      image_size: ${dataset.train.image_size}
+      image_size: ${dataset.train.params.image_size}
       transform:
         target: torchvision.transforms.ToTensor
