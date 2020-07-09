@@ -164,6 +164,11 @@ def main(cfg: DictConfig) -> None:
         _log_versions()
         log.info("Configuration: \n%s", cfg.pretty())
 
+        if "deterministic" in cfg.trainer.params.keys():
+            seed_val = 42
+            log.info("Determinstic training requested, seeding everything with %d", seed_val)
+            pl.seed_everything(seed_val)
+
         # instantiate model (and optimizer) selected in yaml
         # see pytorch lightning docs: https://pytorch-lightning.rtfd.io/en/latest
         model: pl.LightningModule = HydraMixin.instantiate(cfg.model, cfg)
