@@ -133,7 +133,7 @@ class HydraMixin:
 
         return result
 
-    def prepare_data(self) -> None:
+    def prepare_data(self, force: bool = False) -> None:
         r"""Override for :class:`pytorch_lightning.LightningModule` that automatically prepares
         any datasets based on a `Hydra <https://hydra.cc/>`_ configuration.
         The Hydra config should have an ``dataset`` section, and optionally a ``schedule`` section
@@ -155,6 +155,12 @@ class HydraMixin:
         .. note::
             Training set statistics will be computed and attached when :func:`prepare_data` the first time.
             Subsequent calls will not alter the attached statistics.
+
+        Args:
+
+            force (bool):
+                By default, training datasets will only be loaded once. When ``force=True``, datasets
+                will always be reloaded.
 
         Sample Hydra Config
 
@@ -187,6 +193,9 @@ class HydraMixin:
               # as a random split from training set by fraction
               # test: 0.1
         """
+        if not force and self.train_ds is not None:
+            return
+
         dataset_cfg = self.config.get("dataset")
 
         train_ds: Optional[Dataset] = (

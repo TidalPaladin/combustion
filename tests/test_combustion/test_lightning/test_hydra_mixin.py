@@ -256,6 +256,20 @@ def test_prepare_data(cfg, check):
     assert isinstance(getattr(model, check), torch.utils.data.Dataset)
 
 
+@pytest.mark.parametrize("force", [True, False])
+def test_prepare_data_forced(cfg, force, mocker):
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    mock = mocker.MagicMock(spec_set=bool, name="train_ds")
+    model.train_ds = mock
+    model.prepare_data(force=force)
+    model.train_ds
+
+    if force:
+        assert model.train_ds != mock
+    else:
+        assert model.train_ds == mock
+
+
 @pytest.mark.parametrize(
     "missing, present",
     [
