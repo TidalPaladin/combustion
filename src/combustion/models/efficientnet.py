@@ -5,6 +5,7 @@ import math
 from copy import deepcopy
 from typing import List, Optional
 
+import torch
 import torch.nn as nn
 from torch import Tensor
 
@@ -117,8 +118,10 @@ class _EfficientNet(nn.Module):
         min_width: Optional[int] = None,
         stem: Optional[nn.Module] = None,
         head: Optional[nn.Module] = None,
+        checkpoint: bool = False,
     ):
         super().__init__()
+        self._checkpoint = checkpoint
         block_configs = deepcopy(block_configs)
 
         for config in block_configs:
@@ -166,6 +169,28 @@ class _EfficientNet(nn.Module):
                 be returned. If ``return_all=True``, return features extracted from every
                 block group in the model.
         """
+        if not self.training or not self._checkpoint:
+            return self._extract_features_no_checkpoint(inputs, return_all)
+        else:
+            return self._extract_features_checkpointed(inputs, return_all)
+
+    def _extract_features_no_checkpoint(self, inputs: Tensor, return_all: bool) -> List[Tensor]:
+        outputs: List[Tensor] = []
+        x = self.stem(inputs)
+        prev_x = x
+
+        for block in self.blocks:
+            x = block(prev_x)
+
+            if return_all or prev_x.shape[-1] > x.shape[-1]:
+                outputs.append(x)
+
+            prev_x = x
+
+        return outputs
+
+    @torch.jit.unused
+    def _extract_features_checkpointed(self, inputs: Tensor, return_all: bool) -> List[Tensor]:
         outputs: List[Tensor] = []
         x = self.stem(inputs)
         prev_x = x
@@ -328,6 +353,11 @@ class EfficientNet2d(_EfficientNet, metaclass=_EfficientNetMeta):
         head (:class:`torch.nn.Module`):
             An optional head to use for the model. By default, no head will be used
             and ``forward`` will return a list of tensors containing extracted features.
+
+        checkpoint (bool):
+            If true, use checkpointing on each block in the backbone.
+            Checkpointing saves memory at the cost of added compute.
+            See :func:`torch.utils.checkpoint.checkpoint` for more details.
 
     Shapes
         * Input: :math:`(N, C, H, W)`
