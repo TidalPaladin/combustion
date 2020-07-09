@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from enum import IntEnum
-from typing import Tuple, Union
+from typing import Iterable, Tuple, Union
 
 from decorator import decorator
 
@@ -38,11 +38,11 @@ def replace_tuple(tup, pos, new):
 
 def ntuple(count: int):
     def func(arg):
-        if not isinstance(arg, tuple):
+        if not isinstance(arg, Iterable):
             arg = (arg,) * count
         elif len(arg) != count:
             raise ValueError(f"expected {count}-tuple but found {arg}")
-        return arg
+        return tuple(arg)
 
     return func
 
