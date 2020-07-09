@@ -7,8 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-
 # from combustion.nn import HardSigmoid
+from combustion.util import double, single, triple
 
 
 class _RASPPMeta(type):
@@ -18,14 +18,17 @@ class _RASPPMeta(type):
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
             x.AvgPool = nn.AvgPool3d
+            x.Tuple = staticmethod(triple)
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
             x.AvgPool = nn.AvgPool2d
+            x.Tuple = staticmethod(double)
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x.AvgPool = nn.AvgPool1d
+            x.Tuple = staticmethod(single)
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
         return x
@@ -48,6 +51,9 @@ class _RASPPLite(nn.Module):
         final_upsample: int = 1,
     ):
         super().__init__()
+        pool_kernel = self.Tuple(pool_kernel)
+        pool_stride = self.Tuple(pool_stride)
+        dilation = self.Tuple(dilation)
 
         self.pooled = nn.Sequential(
             self.AvgPool(pool_kernel, stride=pool_stride),
@@ -69,7 +75,7 @@ class _RASPPLite(nn.Module):
             upsample.append(nn.ConvTranspose2d(num_classes, num_classes, kernel_size=2, stride=2))
 
         if upsample:
-            self.final_upsample = nn.ModuleList(upsample)
+            self.final_upsample = nn.ModuleList(*upsample)
         else:
             self.final_upsample = None
 
