@@ -33,6 +33,11 @@ def test_multirun():
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
+def test_multirun_from_yaml():
+    sys.argv = [sys.argv[0], "-m", "trainer=test", "sweeper=sweep1"]
+    runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
+
+
 def test_multirun_handles_exception():
     sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.batch_size=-1, 8"]
     with pytest.raises(MultiRunError):

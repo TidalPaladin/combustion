@@ -26,6 +26,7 @@ Combustion is a collection of useful PyTorch utilities.
 Training Helpers
 ----------------------------------
 
+.. autofunction:: combustion.initialize
 .. autofunction:: combustion.main
 .. autofunction:: combustion.check_exceptions
 .. autofunction:: combustion.auto_lr_find

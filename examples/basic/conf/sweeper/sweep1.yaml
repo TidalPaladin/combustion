@@ -1,0 +1,3 @@
+# @package _global_
+sweeper:
+  model.params.batch_size: 16,32
