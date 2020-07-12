@@ -135,7 +135,7 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
     return lr
 
 
-def initialize(config_path: str, config_name: str) -> None:
+def initialize(config_path: str, config_name: str, caller_stack_depth: int = 1) -> None:
     r"""Performs initialization needed for configuring multiruns / parameter sweeps via
     a YAML config file. Currently this is only needed if multirun configuration via a YAML
     file is desired. Otherwise, :func:`combustion.main` can be used without calling ``initialize``.
@@ -155,6 +155,9 @@ def initialize(config_path: str, config_name: str) -> None:
         config_name (str):
             Name of the main configuration file. See :func:`hydra.main` for more details.
 
+        caller_stack_depth (int):
+            Stack depth when calling :func:`initialize`. Defaults to 1 (direct caller).
+
 
     Sample sweeper Hydra config
         .. code-block:: yaml
@@ -163,6 +166,9 @@ def initialize(config_path: str, config_name: str) -> None:
               model.params.batch_size: 8,16,32
               optimizer.params.lr: 0.001,0.002,0.0003
     """
+    assert caller_stack_depth >= 1
+    caller_stack_depth += 1
+
     gh = GlobalHydra.instance()
     if GlobalHydra().is_initialized():
         gh.clear()
@@ -177,7 +183,7 @@ def initialize(config_path: str, config_name: str) -> None:
         overrides_dict[key] = value
 
     # use compose api to inspect multirun values
-    with hydra.experimental.initialize(config_path, caller_stack_depth=2):
+    with hydra.experimental.initialize(config_path, caller_stack_depth=caller_stack_depth):
         assert gh.hydra is not None
         cfg = gh.hydra.compose_config(config_name=config_name, overrides=overrides, run_mode=RunMode.MULTIRUN,)
         assert isinstance(cfg, DictConfig)
