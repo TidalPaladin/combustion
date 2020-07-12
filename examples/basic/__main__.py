@@ -71,7 +71,7 @@ class FakeModel(HydraMixin, pl.LightningModule):
         return {"avg_test_loss": avg_loss, "log": logs, "progress_bar": logs}
 
 
-combustion.initialize(config_path="../../examples/basic/conf", config_name="config")
+combustion.initialize(config_path="./conf", config_name="config")
 
 
 @hydra.main(config_path="./conf", config_name="config")

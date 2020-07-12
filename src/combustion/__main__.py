@@ -177,7 +177,7 @@ def initialize(config_path: str, config_name: str) -> None:
         overrides_dict[key] = value
 
     # use compose api to inspect multirun values
-    with hydra.experimental.initialize(config_path):
+    with hydra.experimental.initialize(config_path, caller_stack_depth=2):
         assert gh.hydra is not None
         cfg = gh.hydra.compose_config(config_name=config_name, overrides=overrides, run_mode=RunMode.MULTIRUN,)
         assert isinstance(cfg, DictConfig)
