@@ -365,9 +365,11 @@ def test_dataloader_from_subset(cfg, subset, split):
         pytest.param(-1, marks=pytest.mark.xfail(raises=MisconfigurationException, strict=True)),
     ],
 )
-def test_get_train_ds_statistics(cfg, dim, num_examples):
+@pytest.mark.parametrize("index", [0, -2])
+def test_get_train_ds_statistics(cfg, dim, num_examples, index):
     cfg.dataset["stats_sample_size"] = num_examples
     cfg.dataset["stats_dim"] = dim
+    cfg.dataset["stats_index"] = index
 
     model = HydraMixin.instantiate(cfg.model, cfg)
     model.prepare_data()

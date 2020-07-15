@@ -144,6 +144,11 @@ class HydraMixin:
               or ``"all"`` to use the entire training set.
 
             * ``stats_dim`` - dimension that will not be reduced when computing statistics.
+              This is typically used when examples have more items than a simple ``(input, target)``
+              tuple, such as when working with masks.
+              Defaults to ``0``.
+
+            * ``stats_index`` - tuple index of the data to compute statistics for.
               Defaults to ``0``.
 
         The following statistics will be computed and attached as attributes if ``stats_sample_size`` is set
@@ -169,6 +174,7 @@ class HydraMixin:
             dataset:
               stats_sample_size: 100    # compute training set statistics using 100 examples
               stats_dim: 0              # channel dimension to compute statistics for
+              stats_index: 0            # tuple index to select from yielded example
               train:
                 # passed to DataLoader
                 num_workers: 1
@@ -247,11 +253,12 @@ class HydraMixin:
                 raise MisconfigurationException(f"Unexpected value for dataset.stats_sample_size: {num_examples}")
 
             dim = int(dataset_cfg["stats_dim"]) if "stats_dim" in dataset_cfg.keys() else 0
+            index = int(dataset_cfg["stats_index"]) if "stats_index" in dataset_cfg.keys() else 0
 
             if num_examples < 0:
                 raise MisconfigurationException(f"Expected dataset.stats_sample_size >= 0, found {num_examples}")
             elif num_examples > 0:
-                self._inspect_dataset(train_ds, num_examples, dim)
+                self._inspect_dataset(train_ds, num_examples, dim, index)
             else:
                 warnings.warn("dataset.stats_sample_size = 0, not collecting dataset staistics")
 
@@ -296,12 +303,12 @@ class HydraMixin:
         else:
             return None
 
-    def _inspect_dataset(self, dataset: Dataset, sample_size: int, dim: int = 0) -> None:
+    def _inspect_dataset(self, dataset: Dataset, sample_size: int, dim: int = 0, index: int = 0) -> None:
         if self._has_inspected:
             return
 
         # get order of permuted dimensions such that the channel dim is at index 0
-        _ = dataset[0][0]
+        _ = dataset[0][index]
         num_channels = _.shape[dim]
         ndims = _.ndim
         if dim < 0:
@@ -310,7 +317,7 @@ class HydraMixin:
 
         # draw sample_size examples from the given dataset
         examples = torch.cat(
-            [x[0].permute(*permuted_dims).view(num_channels, -1) for x in islice(iter(dataset), sample_size)], -1
+            [x[index].permute(*permuted_dims).view(num_channels, -1) for x in islice(iter(dataset), sample_size)], -1
         )
 
         # compute sample statistics and attach to self as a buffer
