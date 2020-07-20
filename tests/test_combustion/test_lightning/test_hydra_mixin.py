@@ -354,18 +354,16 @@ def test_dataloader_from_subset(cfg, subset, split):
         assert getattr(dataloader, key) == getattr(train_dl, key)
 
 
-@pytest.mark.parametrize("dim", [0, -3])
+@pytest.mark.parametrize("dim", [pytest.param(0, id="dim=0"), pytest.param(-3, id="dim=-3"),])
 @pytest.mark.parametrize(
     "num_examples",
     [
-        pytest.param(100),
-        pytest.param(0),
-        pytest.param("all"),
-        pytest.param("BAD", marks=pytest.mark.xfail(raises=MisconfigurationException, strict=True)),
-        pytest.param(-1, marks=pytest.mark.xfail(raises=MisconfigurationException, strict=True)),
+        pytest.param(100, id="num_examples=100"),
+        pytest.param(0, id="num_examples=0"),
+        pytest.param("all", id="num_examples=all"),
     ],
 )
-@pytest.mark.parametrize("index", [0, -2])
+@pytest.mark.parametrize("index", [pytest.param(0, id="index=0"), pytest.param(-2, id="index=-2"),])
 def test_get_train_ds_statistics(cfg, dim, num_examples, index):
     cfg.dataset["stats_sample_size"] = num_examples
     cfg.dataset["stats_dim"] = dim
@@ -383,6 +381,32 @@ def test_get_train_ds_statistics(cfg, dim, num_examples, index):
             assert x.shape[0] == num_channels
         else:
             assert not hasattr(model, attr)
+
+
+@pytest.mark.parametrize("index", [pytest.param(10), pytest.param(4), pytest.param(-4),])
+def test_get_train_ds_statistics_index_error_handling(cfg, index):
+    cfg.dataset["stats_index"] = index
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    with pytest.raises(MisconfigurationException):
+        model.prepare_data()
+
+
+@pytest.mark.parametrize("dim", [pytest.param(10), pytest.param(-10),])
+def test_get_train_ds_statistics_dim_error_handling(cfg, dim):
+    cfg.dataset["stats_dim"] = dim
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    with pytest.raises(MisconfigurationException):
+        model.prepare_data()
+
+
+@pytest.mark.parametrize(
+    "num_examples", [pytest.param("BAD"), pytest.param(-1),],
+)
+def test_get_train_ds_statistics_num_examples_error_handling(cfg, num_examples):
+    cfg.dataset["stats_sample_size"] = num_examples
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    with pytest.raises(MisconfigurationException):
+        model.prepare_data()
 
 
 def test_statistics_set_only_once(cfg, mocker):

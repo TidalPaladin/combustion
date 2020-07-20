@@ -4,7 +4,7 @@
 import warnings
 from copy import deepcopy
 from itertools import islice
-from typing import Any, Optional, Union
+from typing import Any, Iterable, Optional, Union
 
 import pytorch_lightning as pl
 import torch
@@ -307,15 +307,38 @@ class HydraMixin:
         if self._has_inspected:
             return
 
-        # get order of permuted dimensions such that the channel dim is at index 0
-        _ = dataset[0][index]
-        num_channels = _.shape[dim]
+        # get an example from dataset and ensure it is an iterable
+        try:
+            _ = dataset[0]
+            if not isinstance(_, Iterable):
+                _ = (_,)
+        except RuntimeError:
+            raise MisconfigurationException("Failed to get training example for statistics collection")
+
+        # get the tensor requested by `index`
+        try:
+            _ = _[index]
+        except IndexError:
+            raise MisconfigurationException(
+                f"Statistics requested for index {index}, but example had only {len(_)} elements"
+            )
+
+        # convert reverse (negative) indexing to forward indexing
         ndims = _.ndim
+        original_dim = dim
         if dim < 0:
             dim = ndims + dim
+
+        # get permutation such that the non-reduced dimension is first
         permuted_dims = [dim] + list(set(range(ndims)) - set([dim]))
 
-        # draw sample_size examples from the given dataset
+        if dim >= ndims or dim < 0:
+            raise MisconfigurationException(
+                f"Statistics requested over dimension {original_dim}, but only {ndims} dims are present"
+            )
+        num_channels = _.shape[dim]
+
+        # randomly draw sample_size examples from the given dataset and permute
         examples = torch.cat(
             [x[index].permute(*permuted_dims).view(num_channels, -1) for x in islice(iter(dataset), sample_size)], -1
         )
