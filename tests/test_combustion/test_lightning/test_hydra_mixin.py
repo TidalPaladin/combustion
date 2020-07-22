@@ -424,6 +424,26 @@ def test_statistics_set_only_once(cfg, mocker):
     assert torch.allclose(old_mean, new_mean)
 
 
+@pytest.mark.parametrize("subset", ["test", "validate"])
+def test_dataloader_override_batch_size(cfg, subset):
+    model_batch_size = cfg.model["params"]["batch_size"]
+    new_batch_size = model_batch_size + 1
+
+    cfg.dataset[subset]["batch_size"] = new_batch_size
+
+    model = HydraMixin.instantiate(cfg.model, cfg)
+    model.prepare_data()
+
+    if subset == "test":
+        dataloader = model.test_dataloader()
+    else:
+        dataloader = model.val_dataloader()
+    train_dl = model.train_dataloader()
+
+    assert train_dl.batch_size == model_batch_size
+    assert dataloader.batch_size == new_batch_size
+
+
 class TestRuntimeBehavior:
     @pytest.fixture(autouse=True, params=[TrainOnlyModel, TrainAndValidateModel, TrainTestValidateModel])
     def model(self, request, cfg):
