@@ -12,6 +12,7 @@ import pytorch_lightning as pl
 from hydra.core.global_hydra import GlobalHydra
 from hydra.types import RunMode
 from omegaconf import DictConfig
+from packaging import version
 
 from combustion.lightning import HydraMixin
 
@@ -168,6 +169,9 @@ def initialize(config_path: str, config_name: str, caller_stack_depth: int = 1) 
     """
     assert caller_stack_depth >= 1
     caller_stack_depth += 1
+
+    if version.parse(hydra.__version__) < version.parse("1.0.0rc2"):
+        raise ImportError(f"Sweeping requires hydra>=1.0.0rc2, but you have {hydra.__version__}")
 
     gh = GlobalHydra.instance()
     if GlobalHydra().is_initialized():

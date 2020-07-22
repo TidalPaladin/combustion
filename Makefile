@@ -93,6 +93,6 @@ $(VENV)/bin/activate: setup.py
 	test -d $(VENV) || virtualenv $(VENV)
 	$(PYTHON) -m pip install -U pip
 	$(PYTHON) -m pip install -e .[dev]
-	$(PYTHON) -m pip install --pre -U git+https://github.com/facebookresearch/hydra.git
+	$(PYTHON) -m pip install --pre -U "hydra-core>=1.0.0rc2"
 	$(PYTHON) -m pip install git+https://github.com/pytorch/pytorch_sphinx_theme.git
 	touch $(VENV)/bin/activate

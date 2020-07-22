@@ -28,6 +28,13 @@ def test_fast_dev_run(deterministic):
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
+def test_initialize_checks_hydra_version(mocker):
+    mocker.patch("hydra.__version__", new="1.0.0rc1")
+    sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.batch_size=8,32"]
+    with pytest.raises(ImportError):
+        runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
+
+
 def test_multirun():
     sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.batch_size=8,32"]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
