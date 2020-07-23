@@ -15,6 +15,16 @@ export SPHINXOPTS
 LINE_LEN=120
 DOC_LEN=120
 
+ci-test: venv
+	$(PYTHON) -m pytest \
+		-rs \
+		--cov=./src \
+		--cov-report=xml \
+		-s -v \
+		-m "not ci_skip" \
+		./tests/
+
+
 docs:
 	#$(VENV)/bin/sphinx-apidoc -d 1 -E --implicit-namespaces -o docs src/combustion
 	cd docs && make html 

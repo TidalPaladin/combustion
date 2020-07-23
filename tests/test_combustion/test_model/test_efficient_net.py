@@ -10,6 +10,7 @@ from combustion.nn import MobileNetBlockConfig
 from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
+@pytest.mark.ci_skip
 class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     @pytest.fixture
     def model_type(self):
