@@ -4,3 +4,4 @@ defaults:
   - optimizer: adam
   - trainer: local
   - schedule: one_cycle
+  - sweeper: no_sweep
