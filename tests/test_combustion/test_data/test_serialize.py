@@ -181,7 +181,7 @@ class TestSerialize:
         ds = dataset.__class__.load(path)
         assert len(ds) == 10
 
-    @pytest.mark.skip(reason="Unreliable in CI environment")
+    @pytest.mark.ci_skip
     @pytest.mark.parametrize(
         "num_workers", [pytest.param(1), pytest.param(4, marks=pytest.mark.xfail(reason="parallel hdf5")),],
     )
