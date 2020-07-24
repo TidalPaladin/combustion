@@ -292,6 +292,7 @@ class HydraMixin:
             drop_last = dataset_config.get("drop_last", False)
             shuffle = dataset_config.get("shuffle", False)
             batch_size = dataset_config.get("batch_size", self.hparams["batch_size"])
+            collate_fn = dataset_config.get("collate_fn", None)
 
             return DataLoader(
                 dataset,
@@ -300,6 +301,7 @@ class HydraMixin:
                 shuffle=shuffle,
                 pin_memory=pin_memory,
                 drop_last=drop_last,
+                collate_fn=collate_fn,
             )
         else:
             return None
