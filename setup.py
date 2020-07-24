@@ -39,6 +39,7 @@ extras["docs"] = [
     "sphinx",
     "sphinx-markdown-tables",
     "sphinxcontrib.katex",
+    "pytorch_sphinx_theme @ git+https://github.com/pytorch/pytorch_sphinx_theme.git",
 ]
 extras["quality"] = [
     "black",
@@ -54,6 +55,7 @@ extras["vision"] = ["kornia", "opencv-python", "torchvision", "Pillow-SIMD"]
 extras["dev"] = (
     extras["docs"] + extras["testing"] + extras["quality"] + extras["macs"] + extras["hdf5"] + extras["vision"]
 )
+
 
 setup(
     name="combustion",
@@ -73,6 +75,7 @@ setup(
         "pytorch-lightning>=0.7.5",
         "hydra-core>=1.0.0rc2",
         "torch>=1.5.0,<=2.0.0",
+        "packaging",
         "pynvml",
     ],
     extras_require=extras,
