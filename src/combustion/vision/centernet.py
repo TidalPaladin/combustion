@@ -4,8 +4,19 @@
 from typing import Optional, Tuple
 
 import torch
-from kornia.feature import non_maxima_suppression2d
 from torch import Tensor
+
+
+try:
+    from kornia.feature import non_maxima_suppression2d
+except ImportError:
+
+    def non_maxima_suppression2d(*args, **kwargs):
+        raise ImportError(
+            "PointsToAnchors requires kornia. "
+            "Please install combustion with 'vision' extras using "
+            "pip install combustion [vision]"
+        )
 
 
 class AnchorsToPoints:

@@ -23,19 +23,30 @@ def cuda(torch):
 
 def pytest_report_header(config):
     import torch
-    import torchvision
     import hydra
     import pytorch_lightning
-    import kornia
-    import h5py
 
     s = "Version Information: \n"
     s += f"torch: {torch.__version__}\n"
-    s += f"torchvision: {torchvision.__version__}\n"
     s += f"pytorch_lightning: {pytorch_lightning.__version__}\n"
     s += f"hydra: {hydra.__version__}\n"
-    s += f"kornia: {kornia.__version__}\n"
-    s += f"h5py: {h5py.__version__}"
+
+    try:
+        import torchvision
+        import kornia
+
+        s += f"torchvision: {torchvision.__version__}\n"
+        s += f"kornia: {kornia.__version__}\n"
+    except ImportError:
+        pass
+
+    try:
+        import h5py
+
+        s += f"h5py: {h5py.__version__}"
+    except ImportError:
+        pass
+
     return s
 
 

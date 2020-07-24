@@ -53,6 +53,7 @@ def hydra():
 
 @pytest.fixture
 def cfg(torch):
+    pytest.importorskip("torchvision")
     omegaconf = pytest.importorskip("omegaconf")
     cfg = {
         "optimizer": {"name": "adam", "target": "torch.optim.Adam", "params": {"lr": 0.002,},},

@@ -33,8 +33,6 @@ from setuptools import find_packages, setup
 
 extras = {}
 
-extras["sklearn"] = ["scikit-learn"]
-
 extras["testing"] = ["pytest", "pytest-mock", "pytest-cov", "pytest-xdist"]
 extras["docs"] = [
     "recommonmark",
@@ -49,7 +47,13 @@ extras["quality"] = [
     "pre-commit",
 ]
 
-extras["dev"] = extras["docs"] + extras["testing"] + extras["quality"] + ["scikit-learn", "torch"]
+extras["macs"] = ["thop"]
+extras["hdf5"] = ["h5py"]
+extras["vision"] = ["kornia", "opencv-python", "torchvision", "Pillow-SIMD"]
+
+extras["dev"] = (
+    extras["docs"] + extras["testing"] + extras["quality"] + extras["macs"] + extras["hdf5"] + extras["vision"]
+)
 
 setup(
     name="combustion",
@@ -63,29 +67,13 @@ setup(
     package_dir={"": "src"},
     packages=find_packages("src"),
     install_requires=[
-        # helper for defining decorators
         "decorator",
         "matplotlib",
         "numpy",
-        # progress bars in model download and training scripts
-        # "tqdm >= 4.27",
-        # high level training api
         "pytorch-lightning>=0.7.5",
-        # hparams
-        "hydra-core",
-        "torchvision",
-        # visualizing models
-        # "torchviz",
+        "hydra-core>=1.0.0rc2",
         "torch>=1.5.0,<=2.0.0",
-        "scipy",
         "pynvml",
-        "kornia",
-        "opencv-python",
-        # "sklearn",
-        "h5py",
-        "Pillow-SIMD",
-        "thop",  # for model FLOP summary. TODO put this in an optional group
-        # "pytorch-model-summary",
     ],
     extras_require=extras,
     python_requires=">=3.7.0",

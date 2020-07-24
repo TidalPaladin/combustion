@@ -11,8 +11,22 @@ from torch import Tensor
 try:
     import cv2
 except ImportError:
-    print("combustion.visualization requires the cv2 module")
-    raise
+
+    class cv2:
+        def __getattr__(self, attr):
+            raise ImportError(
+                "Bounding box visualization requires cv2. "
+                "Please install combustion with 'vision' extras using "
+                "pip install combustion [vision]"
+            )
+
+        def __setattr__(self, attr):
+            raise ImportError(
+                "Bounding box visualization requires cv2. "
+                "Please install combustion with 'vision' extras using "
+                "pip install combustion [vision]"
+            )
+
 
 CORRECT_BOX_COLOR = BOX_COLOR = (255, 0, 0)
 TEXT_COLOR = (255, 255, 255)

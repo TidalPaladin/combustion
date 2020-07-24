@@ -12,9 +12,16 @@ from torch.jit import ScriptModule
 
 
 try:
-    import thop
+    from thop import profile
 except ImportError:
-    thop = None
+
+    def profile(*args, **kwargs):
+        raise ImportError(
+            "CountMACs requires thop. "
+            "Please install combustion with 'macs' extras using "
+            "pip install combustion [macs]"
+        )
+
 
 log = logging.getLogger(__name__)
 
@@ -143,8 +150,6 @@ class CountMACs(Callback):
     """
 
     def __init__(self, sample_input: Optional[Tuple[Any]] = None, custom_ops: Optional[Dict[type, Callable]] = None):
-        if thop is None:
-            raise ImportError("CountMACs requires thop. Please install it with " "pip install thop")
         self.custom_ops = custom_ops
         self.sample_input = sample_input
 
@@ -172,7 +177,7 @@ class CountMACs(Callback):
         else:
             inputs = self.sample_input
 
-        macs, params = thop.profile(pl_module, inputs=inputs, custom_ops=self.custom_ops)
+        macs, params = profile(pl_module, inputs=inputs, custom_ops=self.custom_ops)
         macs, params = int(macs), int(params)
         log.info("Model MACs: %d", macs)
         log.info("Model Parameters: %d", params)

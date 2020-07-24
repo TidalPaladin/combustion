@@ -5,7 +5,18 @@ from typing import Tuple
 
 import torch
 from torch import Tensor
-from torchvision.ops import nms as nms_torch
+
+
+try:
+    from torchvision.ops import nms as nms_torch
+except ImportError:
+
+    def nms_torch(*args, **kwargs):
+        raise ImportError(
+            "nms requires kornia. "
+            "Please install combustion with 'vision' extras using "
+            "pip install combustion [vision]"
+        )
 
 
 def nms(boxes: Tensor, scores: Tensor, iou_threshold: float) -> Tuple[Tensor, Tuple]:

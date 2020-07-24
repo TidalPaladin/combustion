@@ -105,6 +105,10 @@ class TestTorchScriptCallback:
 
 
 class TestCountMACs:
+    @pytest.fixture(autouse=True, scope="class")
+    def check_import(self):
+        pytest.importorskip("thop", reason="test requires thop")
+
     @pytest.fixture
     def model(self):
         return Model(10, 10, 3)

@@ -10,6 +10,9 @@ import pytest
 from combustion import MultiRunError
 
 
+pytest.importorskip("torchvision", reason="test requires torchvision")
+
+
 @pytest.fixture(autouse=False)
 def set_caplog(caplog):
     caplog.set_level(logging.CRITICAL, logger="__main__")

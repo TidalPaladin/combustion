@@ -16,7 +16,6 @@ from torch.utils.data import Dataset
 try:
     import h5py
 except ImportError:
-    warnings.warn('Serialization to HDF5 requires h5py, please install it with "pip install h5py"')
     h5py = None
 
 
@@ -57,6 +56,7 @@ def save_hdf5(
             Must be a positive int.
         verbose (bool, optional): If False, do not print progress updates during saving.
     """
+    _check_h5py()
     if num_shards is not None and shard_size is not None:
         raise ValueError("num_shards is incompatible with shard_size, please use one or the other")
     if num_shards is not None and num_shards <= 0:
@@ -242,6 +242,7 @@ class HDF5Dataset(Dataset, SerializeMixin):
         transform: Optional[Callable[[Tensor], Any]] = None,
         target_transform: Optional[Callable[[Tensor], Any]] = None,
     ):
+        _check_h5py()
 
         # ensure private vars to avoid conflicts when loading keys from dataset
         self._hdf5_file = h5py.File(path, "r")
@@ -417,6 +418,15 @@ def _finalize_master(dataset, path, files):
                     pass
 
     return path
+
+
+def _check_h5py():
+    if h5py is None:
+        raise ImportError(
+            "HDF5 operations require h5py. "
+            "Please install combustion with 'hdf5' extras using "
+            "pip install combustion [hdf5]"
+        )
 
 
 __all__ = ["save_hdf5", "save_torch", "SerializeMixin", "HDF5Dataset", "TorchDataset"]
