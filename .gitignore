@@ -137,3 +137,5 @@ multirun/
 
 coverage.xml
 .coverage
+
+src/combustion/version.py

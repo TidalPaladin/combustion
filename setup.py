@@ -29,6 +29,8 @@ To create the package for pypi.
 
 
 from setuptools import find_packages, setup
+import os
+import subprocess
 
 
 extras = {}
@@ -56,10 +58,29 @@ extras["dev"] = (
     extras["docs"] + extras["testing"] + extras["quality"] + extras["macs"] + extras["hdf5"] + extras["vision"]
 )
 
+# get version
+cwd = os.getcwd()
+version = open("version.txt", "r").read().strip()
+
+sha = "Unknown"
+try:
+    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=cwd).decode("ascii").strip()
+except Exception:
+    pass
+
+if os.getenv("COMBUSTION_BUILD_VERSION"):
+    version = os.getenv("COMBUSTION_BUILD_VERSION")
+elif sha != "Unknown":
+    version += "+" + sha[:7]
+
+version_path = os.path.join(cwd, "src", "combustion", "version.py")
+with open(version_path, "w") as f:
+    f.write("__version__ = '{}'\n".format(version))
+    f.write("git_version = {}\n".format(repr(sha)))
 
 setup(
     name="combustion",
-    version="1.0.0",
+    version=version,
     author="Scott Chase Waggener",
     author_email="tidalpaladin@gmail.com",
     description="Helpers for PyTorch model training/testing",
