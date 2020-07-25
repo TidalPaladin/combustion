@@ -14,6 +14,7 @@ from hydra.types import RunMode
 from omegaconf import DictConfig
 from packaging import version
 
+import combustion
 from combustion.lightning import HydraMixin
 
 
@@ -30,6 +31,7 @@ def _log_versions():
     import torch
 
     log.info("Versions:")
+    log.info("\tcombustion: %s", combustion.__version__)
     log.info("\ttorch: %s", torch.__version__)
     log.info("\tpytorch_lightning: %s", pl.__version__)
     log.info("\thydra: %s", hydra.__version__)
