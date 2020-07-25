@@ -41,7 +41,7 @@ extras["docs"] = [
     "sphinx",
     "sphinx-markdown-tables",
     "sphinxcontrib.katex",
-    "pytorch_sphinx_theme @ git+https://github.com/pytorch/pytorch_sphinx_theme.git",
+    "pytorch_sphinx_theme",
 ]
 extras["quality"] = [
     "black",

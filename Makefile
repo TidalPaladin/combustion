@@ -15,6 +15,8 @@ export SPHINXOPTS
 LINE_LEN=120
 DOC_LEN=120
 
+VERSION := $(shell cat version.txt)
+
 ci-test: venv
 	$(PYTHON) -m pytest \
 		-rs \
@@ -50,10 +52,15 @@ clean:
 	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
 	cd docs && make clean
 	rm -rf docs/api docs/generated
-
+	rm -rf dist
 
 clean-venv:
 	rm -rf $(VENV)
+
+package: 
+	rm -rf dist
+	$(PYTHON) -m pip install --upgrade setuptools wheel
+	export COMBUSTION_BUILD_VERSION=$(VERSION) && $(PYTHON) setup.py sdist bdist_wheel
 
 pre-commit: venv
 	pre-commit install
@@ -83,6 +90,9 @@ style:
 	autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
 	black --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
 
+tag-version: 
+	git tag -a "$(VERSION)"
+
 test: venv
 	$(PYTHON) -m pytest \
 		-rs \
@@ -97,12 +107,19 @@ test-%: venv
 test-pdb-%: venv
 	$(PYTHON) -m pytest -rs --pdb -k $* -s -v ./tests/ 
 
+upload: package
+	$(PYTHON) -m pip install --upgrade twine
+	$(PYTHON) -m twine upload --repository pypi dist/*
+
+upload-test: package
+	$(PYTHON) -m pip install --upgrade twine
+	$(PYTHON) -m twine upload --repository testpypi dist/*
+
 venv: $(VENV)/bin/activate
 
 $(VENV)/bin/activate: setup.py 
 	test -d $(VENV) || virtualenv $(VENV)
 	$(PYTHON) -m pip install -U pip
 	$(PYTHON) -m pip install -e .[dev]
-	#$(PYTHON) -m pip install --pre -U "hydra-core>=1.0.0rc2"
-	#$(PYTHON) -m pip install git+https://github.com/pytorch/pytorch_sphinx_theme.git
+	$(PYTHON) -m pip install git+https://github.com/pytorch/pytorch_sphinx_theme.git
 	touch $(VENV)/bin/activate
