@@ -21,6 +21,13 @@ Transforms
 
     Rotates a collection of points using rotation values in radians or degrees.
     See :class:`combustion.points.Rotate` for more details.
+
+.. autoclass:: combustion.points.CenterCrop
+
+.. function:: combustion.points.center_crop
+
+    Crops a point cloud to a given size about the origin.
+    See :class:`combustion.points.CenterCrop` for more details.
     
 
 Randomized Transforms
