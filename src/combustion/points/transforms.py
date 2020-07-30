@@ -10,7 +10,9 @@ from torch import Tensor
 
 
 @torch.jit.script
-def rotate(coords: Tensor, x: float = 0.0, y: float = 0.0, z: float = 0.0, degrees: bool = False) -> Tensor:
+def rotate(
+    coords: Tensor, x: float = 0.0, y: float = 0.0, z: float = 0.0, degrees: bool = False, return_matrix: bool = False
+) -> Tensor:
     # validate inputs
     if coords.ndim > 3 or coords.ndim < 2:
         raise ValueError(f"Expected 2 <= coords.ndim <= 3 but coords.ndim == {coords.ndim}")
@@ -36,6 +38,9 @@ def rotate(coords: Tensor, x: float = 0.0, y: float = 0.0, z: float = 0.0, degre
     rotation_matrix = torch.chain_matmul(rot_z, rot_x, rot_y).unsqueeze_(0)
     assert rotation_matrix.ndim == 3
     assert rotation_matrix.size() == torch.Size((1, 3, 3))
+
+    if return_matrix:
+        return rotation_matrix
 
     # perform rotation
     torch.bmm(coords, rotation_matrix, out=output)
@@ -89,6 +94,7 @@ def random_rotate(
     y: Tuple[float, float] = (0.0, 0.0),
     z: Tuple[float, float] = (0.0, 0.0),
     degrees: bool = False,
+    return_matrix: bool = False,
 ) -> Tensor:
     for var, s in zip((x, y, z), ("x", "y", "z")):
         if not isinstance(var, Iterable):
@@ -105,7 +111,7 @@ def random_rotate(
     rots = torch.rand_like(highs)
     rots.mul_(highs - lows).add_(lows)
 
-    return rotate(coords, rots[0], rots[1], rots[2], degrees)
+    return rotate(coords, rots[0], rots[1], rots[2], degrees, return_matrix)
 
 
 class RandomRotate(nn.Module):

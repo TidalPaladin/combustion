@@ -53,9 +53,17 @@ extras["quality"] = [
 extras["macs"] = ["thop"]
 extras["hdf5"] = ["h5py"]
 extras["vision"] = ["kornia", "opencv-python", "torchvision", "Pillow-SIMD"]
+extras["points"] = ["torch-scatter"]
+
 
 extras["dev"] = (
-    extras["docs"] + extras["testing"] + extras["quality"] + extras["macs"] + extras["hdf5"] + extras["vision"]
+    extras["docs"]
+    + extras["testing"]
+    + extras["quality"]
+    + extras["macs"]
+    + extras["hdf5"]
+    + extras["vision"]
+    + extras["points"]
 )
 
 # get version
