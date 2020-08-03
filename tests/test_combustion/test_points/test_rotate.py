@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import timeit
 from math import radians
 
 import pytest
@@ -66,6 +67,27 @@ class TestRotateFunctional:
 
         output = rotate(coords, x, y, z)
         assert torch.allclose(coords, output)
+
+    @pytest.mark.parametrize("cuda", [True, False])
+    def test_runtime(self, cuda):
+        if cuda and not torch.cuda.is_available():
+            pytest.skip(reason="CUDA not available")
+
+        torch.random.manual_seed(42)
+        coords = torch.randint(0, 1000, (10000000, 3)).float()
+        coords = coords.cuda() if cuda else coords
+
+        rotate(coords, 1.0, 1.0, 1.0)
+
+        def func():
+            rotate(coords, 1.0, 1.0, 1.0)
+
+        number = 50
+        t = timeit.timeit(func, number=number) / number
+        assert t <= 0.1
+
+        s = "CUDA" if cuda else "CPU"
+        print(f"{s} Time: {t}")
 
 
 class TestRotateModule:

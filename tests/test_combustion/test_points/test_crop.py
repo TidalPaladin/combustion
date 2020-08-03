@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import timeit
+
 import pytest
 import torch
 
@@ -49,6 +51,25 @@ class TestFunctionalCrop:
         assert mask[0]
         assert not mask[1]
         assert mask[2]
+
+    @pytest.mark.parametrize("cuda", [True, False])
+    def test_runtime(self, cuda):
+        if cuda and not torch.cuda.is_available():
+            pytest.skip(reason="CUDA not available")
+
+        torch.random.manual_seed(42)
+        coords = torch.randint(0, 1000, (1000000, 3)).float()
+        coords = coords.cuda() if cuda else coords
+
+        def func():
+            center_crop(coords, (500, 500, None))
+
+        number = 10
+        t = timeit.timeit(func, number=number) / number
+        assert t <= 0.01
+
+        s = "CUDA" if cuda else "CPU"
+        print(f"{s} Time: {t}")
 
 
 class TestModuleCrop:
