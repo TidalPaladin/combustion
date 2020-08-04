@@ -97,7 +97,7 @@ class CenterNetLoss(nn.Module):
         reg_loss[~box_indices] = 0
 
         if self.reduction == "mean":
-            num_boxes = box_indices.sum().div_(4).clamp_(min=1)
+            num_boxes = box_indices.sum().floor_divide_(4).clamp_(min=1)
             cls_loss = cls_loss.sum().div_(num_boxes)
             reg_loss = reg_loss.sum().div_(num_boxes)
         elif self.reduction == "sum":
