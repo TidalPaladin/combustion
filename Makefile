@@ -120,6 +120,7 @@ venv: $(VENV)/bin/activate
 $(VENV)/bin/activate: setup.py 
 	test -d $(VENV) || virtualenv $(VENV)
 	$(PYTHON) -m pip install -U pip
+	$(PYTHON) -m pip install -e .					# avoids dependency issues
 	$(PYTHON) -m pip install -e .[dev]
 	$(PYTHON) -m pip install git+https://github.com/pytorch/pytorch_sphinx_theme.git
 	touch $(VENV)/bin/activate
