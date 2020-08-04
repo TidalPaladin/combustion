@@ -1,7 +1,7 @@
 .PHONY: docs docker docker-dev clean clean-venv pre-commit quality run style test venv 
 
 PY_VER=py37
-QUALITY_DIRS=src tests
+QUALITY_DIRS=src tests setup.py
 CLEAN_DIRS=src tests
 VENV=$(shell pwd)/venv
 PYTHON=$(VENV)/bin/python3
