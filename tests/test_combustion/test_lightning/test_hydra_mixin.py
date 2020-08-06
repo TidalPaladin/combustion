@@ -154,6 +154,19 @@ def test_instantiate_recursive(hydra):
     assert isinstance(model, torch.nn.Sequential)
 
 
+@pytest.mark.parametrize(
+    ["target", "exception"],
+    [
+        pytest.param("combustion.nn.NonExistantClass", ModuleNotFoundError),
+        pytest.param("torch.nn.NonExistantClass", ModuleNotFoundError),
+    ],
+)
+def test_instantiate_report_error(hydra, target, exception):
+    cfg = {"target": target}
+    with pytest.raises(exception):
+        HydraMixin.instantiate(cfg)
+
+
 @pytest.mark.parametrize("scheduled", [True, False])
 def test_configure_optimizer(torch, cfg, hydra, scheduled):
     hparams = cfg["model"]["params"]

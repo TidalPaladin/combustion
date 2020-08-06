@@ -8,6 +8,7 @@ from typing import Any, Iterable, Optional, Union
 
 import pytorch_lightning as pl
 import torch
+from hydra.errors import HydraException
 from hydra.utils import instantiate
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
@@ -416,4 +417,22 @@ class HydraMixin:
                 del config.get("params")[key]
 
             subclasses.update(kwargs)
-            return instantiate(config, *args, **subclasses)
+
+            # direct call to hydra instantiate
+            try:
+                return instantiate(config, *args, **subclasses)
+
+            # hydra gives poor exception info
+            # try a manual import of failed target and report the real error
+            except HydraException as ex:
+                import re
+
+                msg = str(ex)
+                target_name = re.search(r"'\S+'", msg).group().replace("'", "")
+                try:
+                    __import__(target_name)
+                except RuntimeError:
+                    raise
+
+                # raise the original exception if import works
+                raise
