@@ -17,6 +17,10 @@ DOC_LEN=120
 
 VERSION := $(shell cat version.txt)
 
+ci-quality: 
+	black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
+	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
+
 ci-test: venv
 	$(PYTHON) -m pytest \
 		-rs \
@@ -26,6 +30,11 @@ ci-test: venv
 		-m "not ci_skip" \
 		./tests/
 
+ci-venv: setup.py
+	test -d $(VENV) || virtualenv $(VENV)
+	$(PYTHON) -m pip install -U pip && \
+		$(PYTHON) -m pip install -e .[dev] && \
+		touch $(VENV)/bin/activate
 
 docs:
 	#$(VENV)/bin/sphinx-apidoc -d 1 -E --implicit-namespaces -o docs src/combustion
