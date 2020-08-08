@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 """
 Simple check list from AllenNLP repo: https://github.com/allenai/allennlp/blob/master/setup.py
 To create the package for pypi.
@@ -43,9 +44,12 @@ extras["docs"] = [
     "sphinx",
     "sphinx-markdown-tables",
     "sphinxcontrib.katex",
-    "pytorch_sphinx_theme",
+    "pytorch_sphinx_theme @ git+https://github.com/pytorch/pytorch_sphinx_theme.git",
 ]
+
 extras["quality"] = [
+    "autoflake",
+    "autopep8",
     "black",
     "isort",
     "flake8",
@@ -54,18 +58,12 @@ extras["quality"] = [
 
 extras["macs"] = ["thop"]
 extras["hdf5"] = ["h5py"]
-extras["vision"] = ["kornia", "opencv-python", "torchvision", "Pillow-SIMD"]
-extras["points"] = ["torch-scatter"]
+extras["vision"] = ["kornia<=0.3.1", "opencv-python", "torchvision", "Pillow-SIMD"]
+extras["points"] = ["torch-scatter<2.0.5"]
 
 
 extras["dev"] = (
-    extras["docs"]
-    + extras["testing"]
-    + extras["quality"]
-    + extras["macs"]
-    + extras["hdf5"]
-    + extras["vision"]
-    + extras["points"]
+    extras["docs"] + extras["testing"] + extras["quality"] + extras["macs"] + extras["hdf5"] + extras["vision"]
 )
 
 

@@ -66,8 +66,8 @@ pre-commit: venv
 	pre-commit install
 
 quality: 
-	black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
-	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
+	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
+	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
 DATA_PATH=$(shell pwd)/examples/basic/data
 CONF_PATH=$(shell pwd)/examples/basic/conf
@@ -85,10 +85,10 @@ run: docker
 		-c "python examples/basic"
 
 style: 
-	autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
-	isort --recursive $(QUALITY_DIRS)
-	autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
-	black --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
+	$(PYTHON) -m autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
+	$(PYTHON) -m isort --recursive $(QUALITY_DIRS)
+	$(PYTHON) -m autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
+	$(PYTHON) -m black --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
 
 tag-version: 
 	git tag -a "$(VERSION)"
@@ -119,8 +119,7 @@ venv: $(VENV)/bin/activate
 
 $(VENV)/bin/activate: setup.py 
 	test -d $(VENV) || virtualenv $(VENV)
-	$(PYTHON) -m pip install -U pip
-	$(PYTHON) -m pip install -e .					# avoids dependency issues
-	$(PYTHON) -m pip install -e .[dev]
-	$(PYTHON) -m pip install git+https://github.com/pytorch/pytorch_sphinx_theme.git
-	touch $(VENV)/bin/activate
+	$(PYTHON) -m pip install -U pip && \
+		$(PYTHON) -m pip install -e .[dev] && \
+		touch $(VENV)/bin/activate
+	$(PYTHON) -m pip install -e .[points]

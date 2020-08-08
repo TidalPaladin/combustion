@@ -22,9 +22,9 @@ def cuda(torch):
 
 
 def pytest_report_header(config):
-    import torch
     import hydra
     import pytorch_lightning
+    import torch
 
     s = "Version Information: \n"
     s += f"torch: {torch.__version__}\n"
@@ -32,8 +32,8 @@ def pytest_report_header(config):
     s += f"hydra: {hydra.__version__}\n"
 
     try:
-        import torchvision
         import kornia
+        import torchvision
 
         s += f"torchvision: {torchvision.__version__}\n"
         s += f"kornia: {kornia.__version__}\n"
