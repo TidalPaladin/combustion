@@ -19,7 +19,7 @@ jobs:
                 command: sudo pip install black flake8
             - run: 
                 name: Run quality tests
-                command: make quality
+                command: make ci-quality
 
 
     run_tests:
@@ -31,7 +31,7 @@ jobs:
             - checkout
             - run: 
                 name: Install dependencies
-                command: make venv
+                command: make ci-venv
             - save_cache:
                 paths:
                   - ~/.cache/pip

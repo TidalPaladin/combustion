@@ -120,8 +120,8 @@ class TorchScriptCallback(Callback):
         elif hasattr(trainer, "default_save_path"):
             return trainer.default_save_path
         else:
-            import warnings
             import os
+            import warnings
 
             warnings.warn("Failed to find default path attribute on Trainer")
             return os.getcwd()

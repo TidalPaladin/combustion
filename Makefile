@@ -1,7 +1,7 @@
 .PHONY: docs docker docker-dev clean clean-venv pre-commit quality run style test venv 
 
 PY_VER=py37
-QUALITY_DIRS=src tests
+QUALITY_DIRS=src tests setup.py
 CLEAN_DIRS=src tests
 VENV=$(shell pwd)/venv
 PYTHON=$(VENV)/bin/python3
@@ -17,6 +17,10 @@ DOC_LEN=120
 
 VERSION := $(shell cat version.txt)
 
+ci-quality: 
+	black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
+	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
+
 ci-test: venv
 	$(PYTHON) -m pytest \
 		-rs \
@@ -26,6 +30,11 @@ ci-test: venv
 		-m "not ci_skip" \
 		./tests/
 
+ci-venv: setup.py
+	test -d $(VENV) || virtualenv $(VENV)
+	$(PYTHON) -m pip install -U pip && \
+		$(PYTHON) -m pip install -e .[dev] && \
+		touch $(VENV)/bin/activate
 
 docs:
 	#$(VENV)/bin/sphinx-apidoc -d 1 -E --implicit-namespaces -o docs src/combustion
@@ -66,8 +75,8 @@ pre-commit: venv
 	pre-commit install
 
 quality: 
-	black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
-	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
+	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
+	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
 DATA_PATH=$(shell pwd)/examples/basic/data
 CONF_PATH=$(shell pwd)/examples/basic/conf
@@ -85,10 +94,10 @@ run: docker
 		-c "python examples/basic"
 
 style: 
-	autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
-	isort --recursive $(QUALITY_DIRS)
-	autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
-	black --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
+	$(PYTHON) -m autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
+	$(PYTHON) -m isort --recursive $(QUALITY_DIRS)
+	$(PYTHON) -m autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
+	$(PYTHON) -m black --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
 
 tag-version: 
 	git tag -a "$(VERSION)"
@@ -119,7 +128,7 @@ venv: $(VENV)/bin/activate
 
 $(VENV)/bin/activate: setup.py 
 	test -d $(VENV) || virtualenv $(VENV)
-	$(PYTHON) -m pip install -U pip
-	$(PYTHON) -m pip install -e .[dev]
-	$(PYTHON) -m pip install git+https://github.com/pytorch/pytorch_sphinx_theme.git
-	touch $(VENV)/bin/activate
+	$(PYTHON) -m pip install -U pip && \
+		$(PYTHON) -m pip install -e .[dev] && \
+		touch $(VENV)/bin/activate
+	$(PYTHON) -m pip install -e .[points]
