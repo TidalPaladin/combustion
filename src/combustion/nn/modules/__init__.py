@@ -5,6 +5,7 @@ from .bifpn import BiFPN, BiFPN1d, BiFPN2d, BiFPN3d
 from .bottleneck import Bottleneck1d, Bottleneck2d, Bottleneck3d, BottleneckFactorized2d, BottleneckFactorized3d
 from .conv import DownSample3d, UpSample2d, UpSample3d
 from .dropconnect import DropConnect
+from .dynamic_pad import DynamicSamePad
 from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
 from .mobilenet import MobileNetBlockConfig, MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d
 from .preprocessing import Standardize
@@ -25,6 +26,7 @@ __all__ = [
     "ConvTranspose1d",
     "DownSample3d",
     "DropConnect",
+    "DynamicSamePad",
     "UpSample3d",
     "UpSample2d",
     "Bottleneck3d",

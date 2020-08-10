@@ -134,4 +134,6 @@ Utilities
 
 .. autoclass:: combustion.nn.Standardize
     :members: 
-    :undoc-members: forward
+
+.. autoclass:: combustion.nn.DynamicSamePad
+    :members: 

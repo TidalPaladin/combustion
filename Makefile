@@ -58,6 +58,7 @@ clean:
 	find $(CLEAN_DIRS) -path '*/__pycache__/*' -delete
 	find $(CLEAN_DIRS) -type d -name '__pycache__' -empty -delete
 	find $(CLEAN_DIRS) -name '*@neomake*' -type f -delete
+	find $(CLEAN_DIRS) -name '*.pyc' -type f -delete
 	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
 	cd docs && make clean
 	rm -rf docs/api docs/generated
@@ -131,4 +132,4 @@ $(VENV)/bin/activate: setup.py
 	$(PYTHON) -m pip install -U pip && \
 		$(PYTHON) -m pip install -e .[dev] && \
 		touch $(VENV)/bin/activate
-	$(PYTHON) -m pip install -e .[points]
+	#$(PYTHON) -m pip install -e .[points]
