@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from math import ceil, floor
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,9 +12,25 @@ from combustion.util import double, single, triple
 
 
 class DynamicSamePad(nn.Module):
-    r"""Wraps a :class:`torch.nn.Module` with ``kernel_size`` and ``stride`` attributes, dynamically padding
-    the input similar to TensorFlow's "same" padding. For non-unit strides, padding is applied such that the
-    padded input size is a multiple of the stride.
+    r"""Wraps a :class:`torch.nn.Module`, dynamically padding the input similar to TensorFlow's "same" padding.
+    For non-unit strides, padding is applied such that the padded input size is a multiple of the stride.
+
+    By default, ``kernel_size`` and ``stride`` are determined by accessing the corresponding attributes on
+    the :class:`torch.nn.Module`. When these attributes are not present, they can be passed explicitly
+    to this module's constructor.
+
+    This module is robust to modules of different dimensionalities (e.g. 1d, 2d, 3d). The dimensionality
+    is determined using the following precedence:
+        * If a ``kernel_size`` or ``stride`` override is passed with a tuple input, the length of the tuple
+          determines the dimensionality.
+
+        * If ``kernel_size`` and ``stride`` attributes on ``module`` are tuples, the length of these tuples
+          determines the dimensionality.
+
+        * The dimensionality is determined by comparing ``module.__class__.__name__.lower()`` against
+          ``['1d', '2d', '3d']``.
+
+        * No options remain, and ``ValueError`` is raised.
 
     Args:
         module (:class:`torch.nn.Module`):
@@ -26,18 +42,54 @@ class DynamicSamePad(nn.Module):
 
         pad_value (str):
             Fill value for ``'constant'`` padding.  Default ``0``
+
+        kernel_size (int or tuple of ints):
+            Explicit kernel size to use in padding calculation, overriding ``module.kernel_size`` if present.
+            By default, ``kernel_size`` is set using ``module.kernel_size``.
+
+        stride (int or tuple of ints):
+            Explicit stride to use in padding calculation, overriding ``module.kernel_size`` if present.
+            By default, ``stride`` is set using ``module.stride``.
+
+
+    Basic Example::
+
+        >>> conv = torch.nn.Conv2d(1, 1, kernel_size=3, stride=2)
+        >>> same_conv = DynamicSamePad(conv)
+        >>> inputs = torch.rand(1, 1, 11, 11)
+        >>> outputs = same_conv(inputs)
+        >>> print(outputs.shape)
+
+    Example Using Explicit Sizes::
+
+        >>> conv = torch.nn.Conv2d(1, 1, kernel_size=3, stride=2)
+        >>> # kernel_size / stride must be given if module doesn't have kernel_size/stride attributes
+        >>> same_conv = DynamicSamePad(conv, kernel_size=3, stride=(2, 2))
+        >>> inputs = torch.rand(1, 1, 11, 11)
+        >>> outputs = same_conv(inputs)
+        >>> print(outputs.shape)
     """
 
-    def __init__(self, module: nn.Module, padding_mode: str = "constant", pad_value: float = 0.0):
+    def __init__(
+        self,
+        module: nn.Module,
+        padding_mode: str = "constant",
+        pad_value: float = 0.0,
+        kernel_size: Optional[Union[Tuple[float], float]] = None,
+        stride: Optional[Union[Tuple[float], float]] = None,
+    ):
         super().__init__()
-        if not hasattr(module, "kernel_size"):
-            raise AttributeError(f"Expected {module.__class__.__name__} to have `kernel_size` attribute")
+        name = module.__class__.__name__
+        if not isinstance(module, nn.Module):
+            raise TypeError(f"Expected module to be nn.Module, but found {name}")
+        if kernel_size is None and not hasattr(module, "kernel_size"):
+            raise AttributeError(f"Expected {name} to have `kernel_size` attribute or `kernel_size` param to be given")
         if not hasattr(module, "stride"):
-            raise AttributeError(f"Expected {module.__class__.__name__} to have `stride` attribute")
+            raise AttributeError(f"Expected {name} to have `stride` attribute or `stride` param to be given")
 
         self._module = module
-        self._stride = self._to_tuple(module, module.stride)
-        self._kernel_size = self._to_tuple(module, module.kernel_size)
+        self._stride = self._to_tuple(module, stride if stride is not None else module.stride)
+        self._kernel_size = self._to_tuple(module, kernel_size if kernel_size is not None else module.kernel_size)
 
         padding_mode = str(padding_mode).lower()
         if padding_mode not in ["constant", "reflect", "replicate", "circular"]:
@@ -83,4 +135,6 @@ class DynamicSamePad(nn.Module):
         elif "3d" in module_name:
             return triple(val)
         else:
-            raise ValueError(f"Couldn't infer tuple size for class {module.__class__.__name__}")
+            raise ValueError(
+                f"Couldn't infer tuple size for class {module.__class__.__name__}. " "Please pass an explicit tuple."
+            )

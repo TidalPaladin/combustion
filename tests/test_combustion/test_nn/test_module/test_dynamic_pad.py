@@ -45,10 +45,18 @@ def test_construct(base_module, padding_mode):
     DynamicSamePad(base_module, padding_mode)
 
 
+def test_construct_overrides(base_module, padding_mode, kernel_size, stride):
+    DynamicSamePad(base_module, padding_mode, kernel_size=kernel_size, stride=stride)
+
+
 @pytest.mark.parametrize("shape", [(32, 32), (9, 9), (11, 11),])
-def test_forward(padding_mode, kernel_size, stride, shape):
+@pytest.mark.parametrize("override", [True, False])
+def test_forward(padding_mode, kernel_size, stride, shape, override):
     base_module = nn.Conv2d(1, 1, kernel_size, stride=stride)
-    layer = DynamicSamePad(base_module, padding_mode)
+    if not override:
+        layer = DynamicSamePad(base_module, padding_mode)
+    else:
+        layer = DynamicSamePad(base_module, padding_mode, kernel_size=kernel_size, stride=stride)
     inputs = torch.rand(1, 1, *shape, requires_grad=True)
 
     output = layer(inputs)
