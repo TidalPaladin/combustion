@@ -49,6 +49,21 @@ class TestProjectionMaskFunctional:
 
         projection_mask(coords, 1.0, (10, 10))
 
+    @pytest.mark.skip
+    @pytest.mark.parametrize(
+        "padding_mode", ["reflect", pytest.param("replicate", marks=pytest.mark.xfail(raises=NotImplementedError))]
+    )
+    def test_padding_value(self, padding_mode):
+        if padding_mode == "replicate":
+            pytest.skip("not implemented")
+        torch.random.manual_seed(42)
+        coords = torch.randint(-1, 2, (1000, 3)).float()
+        new = torch.tensor([[2, 1, 0], [1, 2, 0],]).type_as(coords)
+        coords = torch.cat([coords, new], dim=0)
+
+        mask = projection_mask(coords, 1.0, (5, 5), padding_mode=padding_mode)
+        assert (mask != -1).all()
+
     @pytest.mark.parametrize("cuda", [True, False])
     def test_runtime(self, cuda):
         if cuda and not torch.cuda.is_available():

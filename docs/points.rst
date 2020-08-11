@@ -29,6 +29,7 @@ Transforms
     Crops a point cloud to a given size about the origin.
     See :class:`combustion.points.CenterCrop` for more details.
 
+.. autofunction:: combustion.points.projection_mapping
 .. autofunction:: combustion.points.projection_mask
     
 

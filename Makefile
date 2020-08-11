@@ -96,7 +96,7 @@ run: docker
 
 style: 
 	$(PYTHON) -m autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
-	$(PYTHON) -m isort --recursive $(QUALITY_DIRS)
+	$(PYTHON) -m isort $(QUALITY_DIRS)
 	$(PYTHON) -m autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
 	$(PYTHON) -m black --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
 
