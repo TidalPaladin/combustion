@@ -136,4 +136,7 @@ Utilities
     :members: 
 
 .. autoclass:: combustion.nn.DynamicSamePad
-    :members: 
+    :exclude-members: forward, extra_repr
+
+.. autoclass:: combustion.nn.MatchShapes
+    :exclude-members: forward, extra_repr
