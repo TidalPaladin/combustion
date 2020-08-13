@@ -4,6 +4,7 @@
 from math import ceil, floor
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
@@ -152,11 +153,18 @@ class DynamicSamePad(nn.Module):
 
 
 class MatchShapes(nn.Module):
-    r"""Helper module that assists in checking and matching the spatial dimensions of two tensors.
+    r"""Helper module that assists in checking and matching the spatial dimensions of tensors.
+
+    When given a list of tensors, matches each spatial dimension according to the minimum or maximum size
+    among tensors, depending on whether padding or cropping is requested. When given an expicit shape, spatial
+    dimensions are padded / cropped to match the target shape.
 
     .. note::
-        This function cannot fix mismatches along the batch/channel dimensions, nor can it fix tensors
+        This function cannot fix mismatches along  the batch/channel dimensions, nor can it fix tensors
         with an unequal number of dimensions.
+
+    .. warning::
+        This module is compatible with TorchScript scripting, but may have incorrect behavior when traced.
 
     Args:
 
@@ -173,12 +181,25 @@ class MatchShapes(nn.Module):
             If true, mismatched spatial dimensions will not be fixed and instead raise an exception.
 
     Shapes:
-        * ``first`` - :math:`(B, C, *)`
-        * ``second`` - :math:`(B, C, *)`
+        * ``tensors`` - :math:`(B, C, *)`
+
+    Basic Example::
+
+        >>> t1 = torch.rand(1, 1, 10, 10)
+        >>> t2 = torch.rand(1, 1, 13, 13)
+        >>> layer = MatchShapes()
+        >>> pad1, pad2 = layer([t1, t2])
+
+    Explicit Shape Example::
+
+        >>> t1 = torch.rand(1, 1, 10, 10)
+        >>> t2 = torch.rand(1, 1, 13, 13)
+        >>> layer = MatchShapes()
+        >>> pad1, pad2 = layer([t1, t2], shape_override=(12, 12))
     """
 
     def __init__(
-        self, strategy: str = "pad", padding_mode: str = "constant", fill_value: float = 0.0, check_only: bool = False,
+        self, strategy: str = "pad", padding_mode: str = "constant", fill_value: float = 0.0, check_only: bool = False
     ):
         super().__init__()
         strategy = str(strategy).lower()
@@ -205,76 +226,141 @@ class MatchShapes(nn.Module):
             s += f"check_only={self._check_only}"
         return s
 
-    def forward(self, first: Tensor, second: Tensor) -> Tuple[Tensor, Tensor]:
-        if first.ndim != second.ndim:
-            raise RuntimeError(f"Expected first.ndim == second.ndim, but found {first.ndim}, {second.ndim}")
+    def forward(self, tensors: List[Tensor], shape_override: Optional[Tuple[int]] = None) -> List[Tensor]:
+        r"""Matches the shapes of all tensors in a list, with an optional explicit shape override
 
-        if first.shape[:2] != second.shape[:2]:
-            raise RuntimeError(f"Shape mismatch along batch/channel dimension: {first.shape} vs {second.shape}")
+        Args:
+            tensors (list of :class:`torch.Tensor`):
+                The tensors to match shapes of
 
-        first_shape = first.shape[2:]
-        second_shape = second.shape[2:]
-        if first_shape == second_shape:
-            return first, second
+            shape_override (iterable of ints, optional):
+                By default the target shape is chosen based on tensor sizes and the strategy (cropping/padding).
+                Setting ``shape_override`` sets an explicit output shape, and padding/cropping is chosen on a
+                per-dimension basis to satisfy this target shape. Overrides ``strategy``. Should only include
+                spatial dimensions (not batch/channel sizes).
 
-        if self._check_only:
-            raise RuntimeError(f"Shape mismatch: {first.shape} vs {second.shape}")
+        """
+        if isinstance(tensors, Tensor):
+            tensors = [
+                tensors,
+            ]
+        # check tensors has at least one element and extract the first tensor
+        if not len(tensors):
+            raise ValueError("`tensors` must be a non-empty list of tensors")
+        first_tensor = tensors[0]
 
-        if self._strategy == "pad":
-            return self._pad(first, second)
-        elif self._strategy == "crop":
-            return self._crop(first, second)
+        # use the explicit shape override if given, or use first tensor's shape as an initial target
+        if shape_override is not None:
+            new_shape_override = list(shape_override)
+            for i, val in enumerate(shape_override):
+                if not isinstance(val, (float, int)):
+                    raise TypeError(f"Expected float or int for shape_override at pos {i} but found {type(val)}")
+                new_shape_override[i] = int(val)
+            new_shape_override = list(first_tensor.shape[:2]) + new_shape_override
+            target_shape = list(new_shape_override)
+        elif len(tensors) < 2:
+            raise ValueError("`shape_override` must be specified when `tensors` contains only one tensor")
         else:
-            raise NotImplementedError("Strategy {self._strategy}")
+            target_shape = list(first_tensor.shape)
 
-    def _crop(self, first: Tensor, second: Tensor) -> Tuple[Tensor, Tensor]:
-        assert first.ndim == second.ndim
-        first_shape = first.shape[2:]
-        second_shape = second.shape[2:]
+        # validate required matches in ndim / batch / channel
+        for i, tensor in enumerate(tensors[1:]):
+            if tensor.ndim != len(target_shape):
+                raise RuntimeError(
+                    f"Expected tensor.ndim == {len(target_shape)} for all tensors, "
+                    f"but found {tensor.ndim} at position {i}"
+                )
+            if self._check_only and target_shape != tensor.shape:
+                raise RuntimeError(f"Shape mismatch at position {i}: expected {target_shape}, found {tensor.shape}")
+            if first_tensor.shape[:2] != tensor.shape[:2]:
+                raise RuntimeError(
+                    f"Expected batch, channel dimensions == {target_shape[:2]} for all tensors, "
+                    f"but found (B, C) = {tensor.shape[2:]} at position {i}"
+                )
 
-        for dim, (shape1, shape2) in enumerate(zip(first_shape, second_shape)):
+        # if explicit shape wasn't given, need to update spatial dims of target shape according to strategy
+        if shape_override is None:
+            for i in range(2, len(target_shape)):
+                biggest_size = 0
+                smallest_size = 2 ** 60
+                for tensor in tensors:
+                    biggest_size = max(tensor.shape[i], biggest_size)
+                    smallest_size = min(tensor.shape[i], smallest_size)
+
+                # when padding, pad to the largest size for dim i among all tensors
+                if self._strategy == "pad":
+                    target_shape[i] = int(biggest_size)
+                # when cropping, crop to the smallest size for dim i among all tensors
+                elif self._strategy == "crop":
+                    target_shape[i] = int(smallest_size)
+                else:
+                    raise NotImplementedError("Strategy {self._strategy}")
+
+        # pad/crop each tensor to the correct target shape
+        #
+        # since we might not satisfy shape_override using cropping/padding alone, try user specified strategy
+        # first then fallback to alternate strategy
+        for i, tensor in enumerate(tensors):
+            if self._strategy == "pad":
+                new_tensor = self._pad(tensor, target_shape)
+                if new_tensor.shape != target_shape:
+                    new_tensor = self._crop(new_tensor, target_shape)
+                tensors[i] = new_tensor
+            elif self._strategy == "crop":
+                new_tensor = self._crop(tensor, target_shape)
+                if new_tensor.shape != target_shape:
+                    new_tensor = self._pad(new_tensor, target_shape)
+                tensors[i] = new_tensor
+            else:
+                raise NotImplementedError("Strategy {self._strategy}")
+            assert tensors[i].shape == torch.Size(target_shape)
+
+        return tensors
+
+    def _crop(self, tensor: Tensor, shape: List[int]) -> Tensor:
+        assert tensor.ndim == len(shape)
+        tensor_shape = tensor.shape[2:]
+        spatial_shape = shape[2:]
+
+        for dim, (raw_shape, cropped_shape) in enumerate(zip(tensor_shape, spatial_shape)):
+            if raw_shape <= cropped_shape:
+                continue
+
             # skip over batch/channel dim
             dim = 2 + dim
 
             # get low/high crop indices
-            start = abs(shape1 - shape2) // 2
-            length = min(shape1, shape2)
+            start = abs(raw_shape - cropped_shape) // 2
+            length = min(raw_shape, cropped_shape)
 
-            # crop
-            if shape1 < shape2:
-                second = second.narrow(dim, start, length)
-            elif shape2 < shape1:
-                first = first.narrow(dim, start, length)
+            tensor = tensor.narrow(dim, start, length)
 
-        assert first.shape[2:] == second.shape[2:]
-        return first, second
+        return tensor
 
-    def _pad(self, first: Tensor, second: Tensor) -> Tuple[Tensor, Tensor]:
-        assert first.ndim == second.ndim
-        first_shape = first.shape[2:]
-        second_shape = second.shape[2:]
+    def _pad(self, tensor: Tensor, shape: List[int]) -> Tensor:
+        assert tensor.ndim == len(shape)
+        tensor_shape = tensor.shape[2:]
+        spatial_shape = shape[2:]
 
-        first_padding: List[int] = [0,] * (2 * len(first_shape))
-        second_padding: List[int] = [0,] * (2 * len(second_shape))
+        tensor_padding: List[int] = [0,] * (2 * len(tensor_shape))
+        second_padding: List[int] = [0,] * (2 * len(spatial_shape))
+        has_padding = False
 
-        for i, (shape1, shape2) in enumerate(zip(first_shape, second_shape)):
-            low = floor(float(abs(shape1 - shape2)) / 2)
-            high = ceil(float(abs(shape1 - shape2)) / 2)
+        for i, raw_shape in enumerate(tensor_shape):
+            padded_shape: int = spatial_shape[i]
+            if raw_shape >= padded_shape:
+                continue
 
-            if shape1 < shape2:
-                first_padding[2 * i] = low
-                first_padding[2 * i + 1] = high
-            elif shape2 < shape1:
-                second_padding[2 * i] = low
-                second_padding[2 * i + 1] = high
+            low = floor(float(abs(padded_shape - raw_shape)) / 2)
+            high = ceil(float(abs(padded_shape - raw_shape)) / 2)
+            tensor_padding[2 * i] = low
+            tensor_padding[2 * i + 1] = high
+            has_padding = True
 
-        # if sum(first_padding):
-        first = F.pad(first, first_padding, self._padding_mode, self._fill_value)
-        # if sum(second_padding):
-        second = F.pad(second, second_padding, self._padding_mode, self._fill_value)
+        if has_padding:
+            tensor = F.pad(tensor, tensor_padding, self._padding_mode, self._fill_value)
 
-        assert first.shape[2:] == second.shape[2:]
-        return first, second
+        return tensor
 
 
 PATCH_TYPES = [

@@ -139,4 +139,5 @@ Utilities
     :exclude-members: forward, extra_repr
 
 .. autoclass:: combustion.nn.MatchShapes
-    :exclude-members: forward, extra_repr
+    :members: forward
+    :exclude-members: extra_repr

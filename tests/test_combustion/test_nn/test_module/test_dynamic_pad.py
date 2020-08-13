@@ -113,20 +113,49 @@ class TestMatchShapes(TorchScriptTestMixin):
 
     @pytest.mark.parametrize("strategy", ["crop", "pad"])
     @pytest.mark.parametrize(
-        "shape1,shape2", [pytest.param((10, 10), (11, 11), id="case1"), pytest.param((9, 9), (13, 13), id="case2")]
+        "shape1,shape2",
+        [
+            pytest.param((10, 10), (11, 11), id="case1"),
+            pytest.param((9, 9), (13, 13), id="case2"),
+            pytest.param((9,), (13, 13), id="case3", marks=pytest.mark.xfail(raises=RuntimeError)),
+        ],
     )
     def test_match_shapes(self, shape1, shape2, strategy):
         torch.random.manual_seed(42)
         t1 = torch.rand(1, 1, *shape1)
         t2 = torch.rand(1, 1, *shape2)
         layer = MatchShapes(strategy=strategy)
-        t1, t2 = layer(t1, t2)
+        t1, t2 = layer([t1, t2])
 
         assert t1.shape == t2.shape
         if strategy == "crop":
             assert tuple(t2.shape[2:]) == shape1
         elif strategy == "pad":
             assert tuple(t1.shape[2:]) == shape2
+
+    @pytest.mark.parametrize(
+        "strategy,shape1,shape2,target",
+        [
+            pytest.param("crop", (10, 10), (12, 12), (9, 9), id="case1"),
+            pytest.param("pad", (10, 10), (12, 12), (12, 12), id="case2"),
+            pytest.param("pad", (10, 10), (12, 12), (13, 13), id="case3"),
+            pytest.param("crop", (10, 10), (12, 12), (10, 10), id="case4"),
+            pytest.param("crop", (10, 10), (12, 12), (10,), id="case5", marks=pytest.mark.xfail(raises=RuntimeError)),
+            pytest.param("crop", (10, 10), (12, 12), (13, 13), id="case6"),
+            pytest.param("pad", (10, 10), (12, 12), (9, 9), id="case7"),
+            pytest.param("pad", (10, 10), (12, 12), (11, 11), id="case8"),
+        ],
+    )
+    def test_explicit_shape(self, shape1, shape2, strategy, target):
+        torch.random.manual_seed(42)
+        t1 = torch.rand(1, 1, *shape1)
+        t2 = torch.rand(1, 1, *shape2)
+        layer = MatchShapes(strategy=strategy)
+        t1, t2 = layer([t1, t2], target)
+
+        assert t1.shape == t2.shape
+        assert tuple(t1.shape[2:]) == target
+        assert tuple(t2.shape[2:]) == target
 
     def test_repr(self):
         layer = MatchShapes("pad")
