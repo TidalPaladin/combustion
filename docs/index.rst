@@ -15,6 +15,7 @@ Combustion is a collection of useful PyTorch utilities.
    :caption: Python API
 
    data
+   exceptions
    lightning
    functional
    nn

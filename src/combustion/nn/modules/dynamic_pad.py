@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import warnings
 from math import ceil, floor
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
@@ -152,12 +153,18 @@ class DynamicSamePad(nn.Module):
             )
 
 
+class ShapeMismatchError(RuntimeError):
+    r"""Raised on failure of :class:`combustion.nn.MatchShapes`."""
+
+
 class MatchShapes(nn.Module):
     r"""Helper module that assists in checking and matching the spatial dimensions of tensors.
 
     When given a list of tensors, matches each spatial dimension according to the minimum or maximum size
     among tensors, depending on whether padding or cropping is requested. When given an expicit shape, spatial
     dimensions are padded / cropped to match the target shape.
+
+    Raises :class:`combustion.exceptions.ShapeMismatchError` when shapes cannot be matched.
 
     .. note::
         This function cannot fix mismatches along  the batch/channel dimensions, nor can it fix tensors
@@ -266,14 +273,16 @@ class MatchShapes(nn.Module):
         # validate required matches in ndim / batch / channel
         for i, tensor in enumerate(tensors[1:]):
             if tensor.ndim != len(target_shape):
-                raise RuntimeError(
+                raise ShapeMismatchError(
                     f"Expected tensor.ndim == {len(target_shape)} for all tensors, "
                     f"but found {tensor.ndim} at position {i}"
                 )
             if self._check_only and target_shape != tensor.shape:
-                raise RuntimeError(f"Shape mismatch at position {i}: expected {target_shape}, found {tensor.shape}")
+                raise ShapeMismatchError(
+                    f"Shape mismatch at position {i}: expected {target_shape}, found {tensor.shape}"
+                )
             if first_tensor.shape[:2] != tensor.shape[:2]:
-                raise RuntimeError(
+                raise ShapeMismatchError(
                     f"Expected batch, channel dimensions == {target_shape[:2]} for all tensors, "
                     f"but found (B, C) = {tensor.shape[2:]} at position {i}"
                 )
@@ -322,6 +331,7 @@ class MatchShapes(nn.Module):
         tensor_shape = tensor.shape[2:]
         spatial_shape = shape[2:]
 
+        self._warn_on_extreme_change(tensor, shape)
         for dim, (raw_shape, cropped_shape) in enumerate(zip(tensor_shape, spatial_shape)):
             if raw_shape <= cropped_shape:
                 continue
@@ -346,6 +356,7 @@ class MatchShapes(nn.Module):
         second_padding: List[int] = [0,] * (2 * len(spatial_shape))
         has_padding = False
 
+        self._warn_on_extreme_change(tensor, shape)
         for i, raw_shape in enumerate(tensor_shape):
             padded_shape: int = spatial_shape[i]
             if raw_shape >= padded_shape:
@@ -361,6 +372,12 @@ class MatchShapes(nn.Module):
             tensor = F.pad(tensor, tensor_padding, self._padding_mode, self._fill_value)
 
         return tensor
+
+    def _warn_on_extreme_change(self, tensor: Tensor, shape: List[int]) -> None:
+        for src, target in zip(tensor.shape, shape):
+            if src / target >= 2 or src / target <= 0.5:
+                warnings.warn("Resized a tensor dimension by >= 50% matching {tensor.shape} to tuple({shape})")
+                return
 
 
 PATCH_TYPES = [

@@ -118,6 +118,7 @@ class TestMatchShapes(TorchScriptTestMixin):
             pytest.param((10, 10), (11, 11), id="case1"),
             pytest.param((9, 9), (13, 13), id="case2"),
             pytest.param((9,), (13, 13), id="case3", marks=pytest.mark.xfail(raises=RuntimeError)),
+            pytest.param((5, 5), (10, 10), id="case4"),
         ],
     )
     def test_match_shapes(self, shape1, shape2, strategy):
@@ -132,6 +133,18 @@ class TestMatchShapes(TorchScriptTestMixin):
             assert tuple(t2.shape[2:]) == shape1
         elif strategy == "pad":
             assert tuple(t1.shape[2:]) == shape2
+
+    @pytest.mark.parametrize("strategy", ["crop", "pad"])
+    @pytest.mark.parametrize(
+        "shape1,shape2", [pytest.param((5, 5), (10, 10), id="case1"), pytest.param((10, 10), (5, 5), id="case2"),],
+    )
+    def test_warns_on_major_resize(self, shape1, shape2, strategy):
+        torch.random.manual_seed(42)
+        t1 = torch.rand(1, 1, *shape1)
+        t2 = torch.rand(1, 1, *shape2)
+        layer = MatchShapes(strategy=strategy)
+        with pytest.warns(UserWarning):
+            t1, t2 = layer([t1, t2])
 
     @pytest.mark.parametrize(
         "strategy,shape1,shape2,target",
