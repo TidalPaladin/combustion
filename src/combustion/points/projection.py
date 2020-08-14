@@ -64,8 +64,8 @@ def projection_mapping(
     assert width > 0
 
     # crop point cloud based on resolution and image size
-    crop_height = float(height * resolution)
-    crop_width = float(width * resolution)
+    crop_height = float(height)
+    crop_width = float(width)
     mask = center_crop(coords, crop_height, crop_width)
     assert mask.any()
     coords = coords[mask]
