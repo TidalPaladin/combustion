@@ -9,6 +9,8 @@ import warnings
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
+from progress.bar import ChargingBar
+from progress.spinner import Spinner
 from torch import Tensor
 from torch.utils.data import Dataset
 
@@ -83,12 +85,21 @@ def save_hdf5(
         f = _write_shard(path, iter(dataset), shard_size, verbose=verbose)
         files.add(f)
     else:
+        if verbose:
+            bar = ChargingBar(f"Writing to {path}", max=num_shards)
+        else:
+            bar = None
+
         # slice dataset iterator for multi-sharding
         slices = [(x * shard_size, (x + 1) * shard_size) for x in range(num_shards)]
         for shard_index, (low, high) in enumerate(slices, start=1):
             data = itertools.islice(iter(dataset), low, high)
-            f = _write_shard(path, data, shard_size, shard_index, verbose=verbose)
+            f = _write_shard(path, data, shard_size, shard_index, verbose=False)
             files.add(f)
+            if bar is not None:
+                bar.next()
+        if bar is not None:
+            bar.finish()
 
     _finalize_master(dataset, path, files)
     return path
@@ -111,13 +122,20 @@ def save_torch(dataset: Dataset, path: str, prefix: str = "example_", verbose: b
         os.mkdir(path)
 
     if verbose:
-        print(f"Writing to {path}", end="", flush=True)
+        if hasattr(dataset, "__len__"):
+            bar = ChargingBar(f"Writing to {path}", max=len(dataset))
+        else:
+            bar = Spinner(f"Writing to {path}")
+    else:
+        bar = None
 
     for i, example in enumerate(dataset):
         target = os.path.join(path, f"{prefix}{i}.pth")
         torch.save(example, target)
-        if verbose:
-            print(".", end="", flush=True)
+        if bar is not None:
+            bar.next()
+    if bar is not None:
+        bar.finish()
 
 
 class SerializeMixin:
