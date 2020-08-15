@@ -233,7 +233,7 @@ class MatchShapes(nn.Module):
             s += f"check_only={self._check_only}"
         return s
 
-    def forward(self, tensors: List[Tensor], shape_override: Optional[Tuple[int]] = None) -> List[Tensor]:
+    def forward(self, tensors: List[Tensor], shape_override: Optional[List[int]] = None) -> List[Tensor]:
         r"""Matches the shapes of all tensors in a list, with an optional explicit shape override
 
         Args:
@@ -376,7 +376,7 @@ class MatchShapes(nn.Module):
     def _warn_on_extreme_change(self, tensor: Tensor, shape: List[int]) -> None:
         for src, target in zip(tensor.shape, shape):
             if src / target >= 2 or src / target <= 0.5:
-                warnings.warn("Resized a tensor dimension by >= 50% matching {tensor.shape} to tuple({shape})")
+                warnings.warn(f"Resized a tensor dimension by >= 50% matching {tensor.shape} to tuple({shape})")
                 return
 
 

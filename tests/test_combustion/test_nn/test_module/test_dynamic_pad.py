@@ -157,18 +157,24 @@ class TestMatchShapes(TorchScriptTestMixin):
             pytest.param("crop", (10, 10), (12, 12), (13, 13), id="case6"),
             pytest.param("pad", (10, 10), (12, 12), (9, 9), id="case7"),
             pytest.param("pad", (10, 10), (12, 12), (11, 11), id="case8"),
+            pytest.param("crop", (58, 58), None, (57, 57), id="case9"),
+            pytest.param("pad", (58, 58), None, (57, 57), id="case10"),
         ],
     )
     def test_explicit_shape(self, shape1, shape2, strategy, target):
         torch.random.manual_seed(42)
-        t1 = torch.rand(1, 1, *shape1)
-        t2 = torch.rand(1, 1, *shape2)
         layer = MatchShapes(strategy=strategy)
-        t1, t2 = layer([t1, t2], target)
+        t1 = torch.rand(1, 1, *shape1)
+        if shape2 is not None:
+            t2 = torch.rand(1, 1, *shape2)
+            t1, t2 = layer([t1, t2], target)
+        else:
+            t1, t2 = layer([t1], target)[0], None
 
-        assert t1.shape == t2.shape
+        if shape2 is not None:
+            assert t1.shape == t2.shape
+            assert tuple(t2.shape[2:]) == target
         assert tuple(t1.shape[2:]) == target
-        assert tuple(t2.shape[2:]) == target
 
     def test_repr(self):
         layer = MatchShapes("pad")
