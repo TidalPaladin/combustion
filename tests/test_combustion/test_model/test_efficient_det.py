@@ -12,7 +12,6 @@ from combustion.nn import MobileNetBlockConfig
 from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
-@pytest.mark.ci_skip
 class EfficientDetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     @pytest.fixture
     def model_type(self):
@@ -79,6 +78,7 @@ class TestEfficientDet1d(EfficientDetBaseTest):
         return torch.rand(1, 3, 256, requires_grad=True)
 
 
+@pytest.mark.ci_skip
 class TestEfficientDet2d(EfficientDetBaseTest):
     @pytest.fixture
     def model_type(self):
@@ -90,6 +90,7 @@ class TestEfficientDet2d(EfficientDetBaseTest):
         return torch.rand(1, 3, 256, 256, requires_grad=True)
 
 
+@pytest.mark.ci_skip
 class TestEfficientDet3d(EfficientDetBaseTest):
     @pytest.fixture
     def model_type(self):
