@@ -256,6 +256,8 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
         >>>     combustion.check_exceptions()
     """
     train_results, test_results = None, None
+    model: Optional[pl.LightningModule] = None
+    trainer: Optional[pl.Trainer] = None
 
     try:
         _log_versions()
@@ -309,7 +311,20 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
         else:
             raise err
 
+    finally:
+        # flush logger to ensure free memory for next run
+        if trainer is not None:
+            experiment = trainer.logger.experiment
+            if experiment is not None and hasattr(experiment, "flush"):
+                experiment.flush()
+                log.debug("Flushed experiment to disk")
+            if experiment is not None and hasattr(experiment, "close"):
+                experiment.close()
+                log.debug("Closed experiment writer")
+
+    # postprocess results if desired (e.g. to scalars for bayesian optimization)
     if process_results_fn is not None:
+        log.debug("Running results postprocessing")
         output = process_results_fn(train_results, test_results)
     else:
         output = train_results, test_results
