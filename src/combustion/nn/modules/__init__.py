@@ -3,6 +3,7 @@
 
 from .bifpn import BiFPN, BiFPN1d, BiFPN2d, BiFPN3d
 from .bottleneck import Bottleneck1d, Bottleneck2d, Bottleneck3d, BottleneckFactorized2d, BottleneckFactorized3d
+from .clamp_normalize import ClampAndNormalize
 from .conv import DownSample3d, UpSample2d, UpSample3d
 from .dropconnect import DropConnect
 from .dynamic_pad import DynamicSamePad, MatchShapes, patch_dynamic_same_pad
@@ -24,6 +25,7 @@ __all__ = [
     "ConvTranspose2d",
     "Conv1d",
     "ConvTranspose1d",
+    "ClampAndNormalize",
     "DownSample3d",
     "DropConnect",
     "DynamicSamePad",
