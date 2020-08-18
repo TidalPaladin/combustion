@@ -22,3 +22,4 @@ Activation Functions
 Utilities
 ----------------------------------
 .. autofunction:: combustion.nn.functional.patch_dynamic_same_pad
+.. autofunction:: combustion.nn.functional.fill_normal
