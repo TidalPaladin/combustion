@@ -31,3 +31,7 @@ Ops
 .. autoclass:: combustion.vision.PointsToAnchors
     :members: 
 
+.. autofunction:: combustion.vision.relative_intensity
+.. autoclass:: combustion.vision.RelativeIntensity
+    :members: 
+
