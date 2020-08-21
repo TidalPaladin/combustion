@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from .decorators import input, output
+from .plot import apply_colormap
 from .util import Dim, double, ntuple, one_diff_tuple, replace_tuple, single, triple
 from .validation import (
     check_is_tensor,
@@ -14,6 +15,7 @@ from .validation import (
 
 
 __all__ = [
+    "apply_colormap",
     "check_is_tensor",
     "check_names",
     "check_names_match",

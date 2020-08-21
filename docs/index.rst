@@ -22,6 +22,7 @@ Combustion is a collection of useful PyTorch utilities.
    points
    models
    testing
+   util
    vision
 
 
