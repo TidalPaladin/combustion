@@ -10,4 +10,5 @@ Visualization
 ----------------------------------
 
 .. autofunction:: combustion.util.apply_colormap
+.. autofunction:: combustion.util.alpha_blend
 
