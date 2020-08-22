@@ -34,7 +34,7 @@ import os
 from setuptools import find_packages, setup
 
 
-TORCH = "torch>=1.5.0,<=2.0.0"
+TORCH = "torch>=1.6.0,<=2.0.0"
 
 extras = {}
 
