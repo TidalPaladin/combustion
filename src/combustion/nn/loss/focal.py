@@ -139,10 +139,15 @@ def focal_loss_with_logits(
     # Therefore one unified form for positive (z = 1) and negative (z = 0)
     # samples is:
     #      (1 - p_t)^r = exp(-r * z * x - r * log(1 + exp(-x))).
+    #
+    # Becuase logits are unbounded, log(1 + exp(-x)) must be computed using
+    # torch.logaddexp()
     neg_logits = input.neg()
 
     if gamma != 0:
-        focal_term = torch.exp(gamma * (target * neg_logits - neg_logits.exp().log1p()))
+        _ = torch.tensor([0.0], device=neg_logits.device).type_as(neg_logits)
+        _ = gamma * (target.floor() * neg_logits - torch.logaddexp(neg_logits, _))
+        focal_term = torch.exp(_)
         loss = focal_term * ce_loss
     else:
         loss = ce_loss
