@@ -121,7 +121,11 @@ class HydraMixin:
             if "monitor" not in schedule.keys():
                 warnings.warn("'monitor' missing from lr schedule config")
 
-            steps_per_epoch = len(self.train_dataloader())
+            # get number of optimizer steps per epoch, accounting for multiple batches per backward pass
+            accum_grad_batches = int(self.config.trainer["params"].get("accumulate_grad_batches", 1))
+            assert accum_grad_batches >= 1
+            steps_per_epoch = len(self.train_dataloader()) // accum_grad_batches
+
             schedule_dict = {
                 "interval": schedule.get("interval", "epoch"),
                 "monitor": schedule.get("monitor", "val_loss"),
