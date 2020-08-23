@@ -72,7 +72,8 @@ class TorchScriptCallback(Callback):
         """
         # check _device annotation is not ...
         # scripting will fail if _device type annotation is not overridden
-        if pl_module.__annotations__["_device"] == ...:
+        device = pl_module.__annotations__.get("_device")
+        if device is None or device == ...:
             raise RuntimeError(
                 "Please override type annotation for pl_module._device for scripting to work. "
                 "Using _deivce: torch.device seems to work."
