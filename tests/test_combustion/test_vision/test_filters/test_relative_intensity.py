@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import timeit
+
 import pytest
 import torch
 
-from combustion.vision import RelativeIntensity, relative_intensity
+from combustion.vision.filters import RelativeIntensity, relative_intensity
 
 
 @pytest.fixture
@@ -56,6 +58,18 @@ class TestRelativeIntensityFunctional:
             expected = torch.add(v1, v2)
 
         assert torch.allclose(actual, expected, atol=1e-4)
+
+    def test_time(self):
+        kernel = [(101, 101)]
+        sigma = [(50, 50)]
+        inputs = torch.rand(1, 1, 2048, 1024)
+
+        def func():
+            relative_intensity(inputs, kernel, sigma)
+
+        t = timeit.timeit(func, number=2)
+        print(f"Relative intensity runtime: {t}")
+        assert t <= 0.1
 
 
 class TestRelativeIntensityClass:

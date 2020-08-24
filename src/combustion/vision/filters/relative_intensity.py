@@ -4,8 +4,9 @@
 from typing import List, Tuple
 
 import torch
-from kornia.filters import GaussianBlur2d, gaussian_blur2d
 from torch import Tensor
+
+from combustion.vision.filters import GaussianBlur2d, gaussian_blur2d
 
 
 @torch.jit.script
@@ -14,11 +15,11 @@ def _combine_baselines(baselines: List[Tensor], combine: str) -> Tensor:
     for baseline in baselines[1:]:
         baseline = baseline.neg()
         if combine == "max":
-            torch.max(final_baseline, baseline, out=final_baseline)
+            final_baseline = torch.max(final_baseline, baseline)
         elif combine == "min":
-            torch.min(final_baseline, baseline, out=final_baseline)
+            final_baseline = torch.min(final_baseline, baseline)
         else:
-            torch.add(final_baseline, baseline, out=final_baseline)
+            final_baseline = torch.add(final_baseline, baseline)
 
     if combine == "mean":
         final_baseline.div_(len(baselines))
@@ -34,6 +35,10 @@ def relative_intensity(
 ) -> Tensor:
     r"""Computes relative intensity of a 2D input by subtracting the input from gaussian blur of the input.
     This operation attenuates low frequency components of the input.
+
+    .. note::
+        This function performs convolution via a multiplication in the frequency domain, making it efficient
+        for large kernel sizes.
 
     Args:
         inputs (:class:`torch.Tensor`):
@@ -71,7 +76,7 @@ def relative_intensity(
 
 
 class RelativeIntensity:
-    r"""See :class:`combustion.vision.relative_intensity`."""
+    r"""See :class:`combustion.vision.filters.relative_intensity`."""
 
     def __init__(
         self,

@@ -19,6 +19,10 @@ Activation Functions
 .. autofunction:: combustion.nn.functional.hard_swish
 .. autofunction:: combustion.nn.functional.hard_sigmoid
 
+Convolution
+----------------------------------
+.. autofunction:: combustion.nn.functional.fourier_conv2d
+
 Utilities
 ----------------------------------
 .. autofunction:: combustion.nn.functional.patch_dynamic_same_pad

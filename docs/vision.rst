@@ -18,6 +18,19 @@ Conversions
 
 .. autofunction:: combustion.vision.to_8bit
 
+Filters
+----------------------------------
+
+.. autofunction:: combustion.vision.filters.relative_intensity
+.. autoclass:: combustion.vision.filters.RelativeIntensity
+    :members: 
+    :exclude-members: extra_repr
+
+.. autofunction:: combustion.vision.filters.gaussian_blur2d
+.. autoclass:: combustion.vision.filters.GaussianBlur2d
+    :members: 
+    :exclude-members: extra_repr
+
 
 Ops
 ----------------------------------
@@ -29,9 +42,5 @@ Ops
     :members: 
 
 .. autoclass:: combustion.vision.PointsToAnchors
-    :members: 
-
-.. autofunction:: combustion.vision.relative_intensity
-.. autoclass:: combustion.vision.RelativeIntensity
     :members: 
 
