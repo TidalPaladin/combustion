@@ -122,10 +122,12 @@ class TestFunctionalFocalLossWithLogits(TestFunctionalFocalLoss):
 
     @pytest.mark.usefixtures("cuda")
     def test_half(self, fn):
-        x = torch.Tensor([140, -140]).cuda().half()
-        y = torch.Tensor([0.0, 1.0]).cuda()
-        loss = fn(x, y, gamma=2.0)
-        assert (loss <= 140).all()
+        x1 = torch.tensor([0.0, 140, -140], requires_grad=True).cuda().half()
+        x2 = x1.half()
+        y = torch.tensor([1.0, 0.0, 1.0]).cuda()
+        loss1 = fn(x1, y, gamma=2.0)
+        loss2 = fn(x2, y, gamma=2.0)
+        assert torch.allclose(loss1, loss2)
 
 
 class TestFocalLoss:
@@ -217,3 +219,21 @@ class TestFocalLossWithLogits(TestFocalLoss):
         true_loss = (pos_weight if pos_weight is not None else 1.0) * gamma_term * bce
         loss = cls(gamma=gamma, pos_weight=pos_weight)(x, y)
         assert torch.allclose(true_loss, loss)
+
+    def test_stability(self, cls):
+        x = torch.Tensor([140, -140])
+        y = torch.Tensor([0.0, 1.0])
+        criterion = cls(gamma=2.0)
+        loss = criterion(x, y)
+        assert (loss <= 140).all()
+
+    @pytest.mark.usefixtures("cuda")
+    def test_half(self, cls):
+        x1 = torch.tensor([0.0, 140, -140], requires_grad=True).cuda().half()
+        x2 = x1.half()
+        y = torch.tensor([1.0, 0.0, 1.0]).cuda()
+        criterion1 = cls(gamma=2.0)
+        criterion2 = cls(gamma=2.0)
+        loss1 = criterion1(x1, y)
+        loss2 = criterion1(x2, y)
+        assert torch.allclose(loss1, loss2)
