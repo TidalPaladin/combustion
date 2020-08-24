@@ -142,7 +142,7 @@ def focal_loss_with_logits(
     #
     # Becuase logits are unbounded, log(1 + exp(-x)) must be computed using
     # torch.logaddexp()
-    neg_logits = input.neg()
+    neg_logits = input.neg().float()
 
     if gamma != 0:
         _ = torch.tensor([0.0], device=neg_logits.device).type_as(neg_logits)

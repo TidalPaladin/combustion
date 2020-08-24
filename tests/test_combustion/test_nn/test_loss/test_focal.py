@@ -120,6 +120,13 @@ class TestFunctionalFocalLossWithLogits(TestFunctionalFocalLoss):
         loss = fn(x, y, gamma=2.0)
         assert (loss <= 140).all()
 
+    @pytest.mark.usefixtures("cuda")
+    def test_half(self, fn):
+        x = torch.Tensor([140, -140]).cuda().half()
+        y = torch.Tensor([0.0, 1.0]).cuda()
+        loss = fn(x, y, gamma=2.0)
+        assert (loss <= 140).all()
+
 
 class TestFocalLoss:
     @pytest.fixture
