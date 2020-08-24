@@ -9,7 +9,7 @@ import warnings
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
-from progress.bar import ChargingBar
+from progress.bar import Bar, ChargingBar
 from progress.spinner import Spinner
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -21,12 +21,17 @@ except ImportError:
     h5py = None
 
 
+class _DefaultBar(ChargingBar):
+    suffix = "%(index)d/%(max)d [%(elapsed_td)s < %(eta_td)s, %(avg).3f s/it]"
+
+
 def save_hdf5(
     dataset: Dataset,
     path: str,
     num_shards: Optional[int] = None,
     shard_size: Optional[int] = None,
     verbose: bool = True,
+    bar: Bar = _DefaultBar,
 ) -> None:
     r"""Saves the contents of the dataset to one or more HDF5 files.
 
@@ -57,6 +62,7 @@ def save_hdf5(
             each file contains ``shard_size`` examples. Exclusive with ``num_shards``.
             Must be a positive int.
         verbose (bool, optional): If False, do not print progress updates during saving.
+        bar (:class:`progress.bar.Bar`, optional): Progress bar class
     """
     _check_h5py()
     if num_shards is not None and shard_size is not None:
@@ -85,8 +91,8 @@ def save_hdf5(
         f = _write_shard(path, iter(dataset), shard_size, verbose=verbose)
         files.add(f)
     else:
-        if verbose:
-            bar = ChargingBar(f"Writing to {path}", max=num_shards)
+        if not verbose:
+            bar = bar(f"Writing to {path}", max=len(dataset))
         else:
             bar = None
 
@@ -105,7 +111,9 @@ def save_hdf5(
     return path
 
 
-def save_torch(dataset: Dataset, path: str, prefix: str = "example_", verbose: bool = True) -> None:
+def save_torch(
+    dataset: Dataset, path: str, prefix: str = "example_", verbose: bool = True, bar: Bar = _DefaultBar
+) -> None:
     r"""Saves the contents of the dataset to multiple files using :func:`torch.save`.
 
     .. note::
@@ -117,13 +125,14 @@ def save_torch(dataset: Dataset, path: str, prefix: str = "example_", verbose: b
         prefix (str, optional): A prefix to append to each ``.pth`` file. Output files will be of
             the form ``{path}/{prefix}{index}.pth``
         verbose (bool, optional): If False, do not print progress updates during saving.
+        bar (:class:`progress.bar.Bar`, optional): Progress bar class
     """
     if not os.path.exists(path):
         os.mkdir(path)
 
     if verbose:
         if hasattr(dataset, "__len__"):
-            bar = ChargingBar(f"Writing to {path}", max=len(dataset))
+            bar = bar(f"Writing to {path}", max=len(dataset))
         else:
             bar = Spinner(f"Writing to {path}")
     else:
@@ -387,13 +396,18 @@ class TorchDataset(Dataset, SerializeMixin):
         return tuple(tensors) if len(tensors) > 1 else tensors[0]
 
 
-def _write_shard(path, source, shard_size, shard_index=None, verbose=True):
+def _write_shard(path, source, shard_size, shard_index=None, verbose=True, bar=_DefaultBar):
     if shard_index is not None:
         path, ext = os.path.splitext(path)
         path = path + f"_{shard_index}" + ext
 
     if verbose:
-        print(f"Writing file {path}", end="", flush=True)
+        if hasattr(source, "__len__"):
+            bar = bar(f"Writing to {path}", max=len(source))
+        else:
+            bar = Spinner(f"Writing to {path} ")
+    else:
+        bar = None
 
     with h5py.File(path, "w") as f:
         for example_index, example in enumerate(source):
@@ -403,12 +417,15 @@ def _write_shard(path, source, shard_size, shard_index=None, verbose=True):
                 if key not in f.keys():
                     f.create_dataset(key, (shard_size, *tensor.shape))
                 f[key][example_index, ...] = tensor
+                if bar is not None:
+                    bar.next()
 
-            if verbose:
-                print(".", end="", flush=True)
+        if bar is not None:
+            bar.finish()
 
         if shard_index is not None:
             f.attrs["shard_index"] = int(shard_index)
+
     return path
 
 
