@@ -66,7 +66,7 @@ class TestFunctionalCrop:
 
         number = 10
         t = timeit.timeit(func, number=number) / number
-        assert t <= 0.01
+        assert t <= 0.02
 
         s = "CUDA" if cuda else "CPU"
         print(f"{s} Time: {t}")
