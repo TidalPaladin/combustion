@@ -84,3 +84,38 @@ class TestProjectionMaskFunctional:
 
         s = "CUDA" if cuda else "CPU"
         print(f"{s} Time: {t}")
+
+    @pytest.mark.parametrize("size", [4, 5])
+    def test_circular_projection(self, size):
+        torch.random.manual_seed(42)
+        coords = torch.randint(-2 * size, 2 * size + 1, (10000, 3)).float()
+        x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
+        outside_circle = x ** 2 + y ** 2 > size ** 2
+
+        grid_x, grid_y = torch.meshgrid(torch.arange(-size, size + 1), torch.arange(-size, size + 1))
+        expected_within_circle = grid_x ** 2 + grid_y ** 2 <= size ** 2
+
+        coords = coords[~outside_circle]
+        mask = projection_mask(coords, 1.0, (2 * size + 1, 2 * size + 1))
+        assert (expected_within_circle == (mask != -1)).all()
+
+    @pytest.mark.parametrize("resolution", [0.5, 1.0, 2.0])
+    def test_cropping(self, resolution):
+        torch.random.manual_seed(42)
+        size = 10
+        coords = torch.randint(-2 * size, 2 * size + 1, (10000, 3)).float()
+        x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
+
+        coords2 = coords.clone()
+        smaller = (x.abs() <= size / 2) & (y.abs() <= size / 2)
+        coords2 = coords2[smaller]
+
+        mask1 = projection_mask(coords, resolution, (size, size))
+        mask2 = projection_mask(coords2, resolution, (size, size))
+
+        out1 = coords[mask1]
+        out1[mask1 == -1] = 0
+        out2 = coords2[mask2]
+        out2[mask2 == -1] = 0
+
+        assert torch.allclose(out1, out2)

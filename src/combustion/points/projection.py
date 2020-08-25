@@ -68,8 +68,13 @@ def projection_mapping(
     crop_width = float(width)
     mask = center_crop(coords, crop_height, crop_width)
     assert mask.any()
+
     coords = coords[mask]
     x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
+
+    # recompute mins/maxes after cropping
+    mins = torch.min(coords[..., :2], dim=0).values
+    maxes = torch.max(coords[..., :2], dim=0).values
 
     # map each point to a height/width in the 2d grid
     x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
