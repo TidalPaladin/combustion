@@ -179,3 +179,11 @@ class TestMatchShapes(TorchScriptTestMixin):
     def test_repr(self):
         layer = MatchShapes("pad")
         print(layer)
+
+    def test_ignore_channels(self):
+        torch.random.manual_seed(42)
+        t1 = torch.rand(1, 3, 20, 20)
+        t2 = torch.rand(1, 1, 17, 17)
+        layer = MatchShapes(strategy="crop", ignore_channels=True)
+        t1, t2 = layer([t1, t2])
+        torch.cat([t1, t2], dim=1)

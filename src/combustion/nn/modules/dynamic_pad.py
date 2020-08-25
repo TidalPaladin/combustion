@@ -167,7 +167,7 @@ class MatchShapes(nn.Module):
     Raises :class:`combustion.exceptions.ShapeMismatchError` when shapes cannot be matched.
 
     .. note::
-        This function cannot fix mismatches along  the batch/channel dimensions, nor can it fix tensors
+        This function cannot fix mismatches along the batch/channel dimensions, nor can it fix tensors
         with an unequal number of dimensions.
 
     .. warning::
@@ -177,6 +177,9 @@ class MatchShapes(nn.Module):
 
         strategy (str):
             Approach to matching unequal dimensions. Should be one of ``pad``, ``crop``.
+
+        ignore_channels (bool):
+            If true, allow mismatch in channel dimension (e.g. for concatenation).
 
         padding_mode (str):
             See :func:`torch.nn.functional.pad`
@@ -188,7 +191,7 @@ class MatchShapes(nn.Module):
             If true, mismatched spatial dimensions will not be fixed and instead raise an exception.
 
     Shapes:
-        * ``tensors`` - :math:`(B, C, *)`
+        * ``tensors`` - :math:`(B, C_i, *)`
 
     Basic Example::
 
@@ -206,7 +209,12 @@ class MatchShapes(nn.Module):
     """
 
     def __init__(
-        self, strategy: str = "pad", padding_mode: str = "constant", fill_value: float = 0.0, check_only: bool = False
+        self,
+        strategy: str = "pad",
+        ignore_channels: bool = False,
+        padding_mode: str = "constant",
+        fill_value: float = 0.0,
+        check_only: bool = False,
     ):
         super().__init__()
         strategy = str(strategy).lower()
@@ -222,15 +230,18 @@ class MatchShapes(nn.Module):
         self._padding_mode = padding_mode
         self._fill_value = float(fill_value)
         self._check_only = bool(check_only)
+        self._ignore_channels = bool(ignore_channels)
 
     def extra_repr(self):
-        s = f"strategy={self._strategy}"
+        s = f"strategy='{self._strategy}'"
+        if self._ignore_channels:
+            s += "ignore_channels=True"
         if self._strategy == "pad":
-            s += ", padding_mode={self._padding_mode}"
+            s += f", padding_mode='{self._padding_mode}'"
             if self._padding_mode == "constant":
-                s += ", fill_value={self._fill_value}"
+                s += f", fill_value={self._fill_value}"
         if self._check_only:
-            s += f"check_only={self._check_only}"
+            s += "check_only=True"
         return s
 
     def forward(self, tensors: List[Tensor], shape_override: Optional[List[int]] = None) -> List[Tensor]:
@@ -277,14 +288,19 @@ class MatchShapes(nn.Module):
                     f"Expected tensor.ndim == {len(target_shape)} for all tensors, "
                     f"but found {tensor.ndim} at position {i}"
                 )
-            if self._check_only and target_shape != tensor.shape:
+            if self._check_only and not self._has_shape(tensor, target_shape):
                 raise ShapeMismatchError(
                     f"Shape mismatch at position {i}: expected {target_shape}, found {tensor.shape}"
                 )
-            if first_tensor.shape[:2] != tensor.shape[:2]:
+            if first_tensor.shape[0] != tensor.shape[0]:
                 raise ShapeMismatchError(
-                    f"Expected batch, channel dimensions == {target_shape[:2]} for all tensors, "
-                    f"but found (B, C) = {tensor.shape[2:]} at position {i}"
+                    f"Expected batch dimensions == {target_shape[0]} for all tensors, "
+                    f"but found B = {tensor.shape[0]} at position {i}"
+                )
+            if not self._ignore_channels and first_tensor.shape[1] != tensor.shape[1]:
+                raise ShapeMismatchError(
+                    f"Expected channel dimensions == {target_shape[1]} for all tensors, "
+                    f"but found C = {tensor.shape[1]} at position {i}"
                 )
 
         # if explicit shape wasn't given, need to update spatial dims of target shape according to strategy
@@ -322,7 +338,8 @@ class MatchShapes(nn.Module):
                 tensors[i] = new_tensor
             else:
                 raise NotImplementedError("Strategy {self._strategy}")
-            assert tensors[i].shape == torch.Size(target_shape)
+
+            assert (i == 1 and self._ignore_channels) or tensors[i].shape == torch.Size(target_shape)
 
         return tensors
 
@@ -378,6 +395,17 @@ class MatchShapes(nn.Module):
             if src / target >= 2 or src / target <= 0.5:
                 warnings.warn(f"Resized a tensor dimension by >= 50% matching {tensor.shape} to tuple({shape})")
                 return
+
+    def _has_shape(self, tensor: Tensor, shape: List[int]) -> bool:
+        if tensor.ndim != len(shape):
+            return False
+
+        for i, size in enumerate(shape):
+            if i == 1 and self._ignore_channels:
+                continue
+            if tensor.shape[i] != size:
+                return False
+        return True
 
 
 PATCH_TYPES = [
