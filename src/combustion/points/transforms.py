@@ -22,7 +22,9 @@ def rotate(
 
     # add batch dim if not present
     original_shape = coords.shape
-    coords = coords.view(-1, coords.shape[-2], coords.shape[-1]).float()
+    coords = coords.view(-1, coords.shape[-2], coords.shape[-1])
+    if not coords.is_floating_point():
+        coords = coords.float()
     output = torch.empty_like(coords)
 
     # degrees to radians if desired

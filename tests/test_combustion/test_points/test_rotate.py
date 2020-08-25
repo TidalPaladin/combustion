@@ -89,6 +89,12 @@ class TestRotateFunctional:
         s = "CUDA" if cuda else "CPU"
         print(f"{s} Time: {t}")
 
+    def test_dtype(self):
+        torch.random.manual_seed(42)
+        coords = torch.randint(0, 1000, (10000000, 3)).double()
+        output = rotate(coords, 1.0, 1.0, 1.0)
+        assert output.dtype == coords.dtype
+
 
 class TestRotateModule:
     def test_rotate_module(self):
