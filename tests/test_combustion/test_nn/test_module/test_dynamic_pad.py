@@ -186,4 +186,7 @@ class TestMatchShapes(TorchScriptTestMixin):
         t2 = torch.rand(1, 1, 17, 17)
         layer = MatchShapes(strategy="crop", ignore_channels=True)
         t1, t2 = layer([t1, t2])
-        torch.cat([t1, t2], dim=1)
+        assert t1.shape[0] == t2.shape[0]
+        assert t1.shape[1] == 3
+        assert t2.shape[1] == 1
+        assert t1.shape[2:] == t2.shape[2:]

@@ -391,7 +391,7 @@ class MatchShapes(nn.Module):
         return tensor
 
     def _warn_on_extreme_change(self, tensor: Tensor, shape: List[int]) -> None:
-        for src, target in zip(tensor.shape, shape):
+        for src, target in zip(tensor.shape[2:], shape[2:]):
             if src / target >= 2 or src / target <= 0.5:
                 warnings.warn(f"Resized a tensor dimension by >= 50% matching {tensor.shape} to tuple({shape})")
                 return
