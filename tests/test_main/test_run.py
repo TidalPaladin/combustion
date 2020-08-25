@@ -38,6 +38,20 @@ def test_initialize_checks_hydra_version(mocker):
         runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
+# NOTE: for some reason, this test needs to run before the multirun tests
+
+
+def test_lr_auto_find():
+    sys.argv = [
+        sys.argv[0],
+        "trainer=test",
+        "trainer.params.auto_lr_find=True",
+        "trainer.params.fast_dev_run=False",
+        "model.params.batch_size=8",
+    ]
+    runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
+
+
 def test_multirun():
     sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.batch_size=8,32"]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
@@ -60,12 +74,6 @@ def test_multirun_abort(mocker, ex):
     sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.batch_size=-1, 8"]
     with pytest.raises(ex):
         runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
-
-
-@pytest.mark.skip
-def test_lr_auto_find():
-    sys.argv = [sys.argv[0], "trainer=test", "trainer.params.auto_lr_find=True", "trainer.params.fast_dev_run=False"]
-    runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
 @pytest.mark.skip

@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional, Tuple
 
 import hydra
 import hydra.experimental
+import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from hydra.core.global_hydra import GlobalHydra
 from hydra.types import RunMode
@@ -121,7 +122,7 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
             fig = lr_finder.plot(suggest=True)
             log.info("Saving LR curve to %s", path)
             fig.savefig(path)
-            fig.close()
+            plt.close()
         except Exception as err:
             log.exception(err)
             log.info("No learning rate curve was saved")

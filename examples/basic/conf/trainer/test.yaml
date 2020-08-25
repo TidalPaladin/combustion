@@ -8,3 +8,4 @@ trainer:
     fast_dev_run: true
     auto_lr_find: false
     deterministic: false
+    limit_train_batches: 10
