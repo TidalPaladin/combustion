@@ -15,6 +15,8 @@ Operations for point clouds.
 Transforms
 ----------------------------------
 
+.. autofunction:: combustion.points.center
+
 .. autoclass:: combustion.points.Rotate
 
 .. function:: combustion.points.rotate

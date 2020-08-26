@@ -34,10 +34,10 @@ def rotate(
         z = radians(z)
 
     # build rotation matrices
-    rot_x = torch.tensor([[1.0, 0.0, 0.0], [0.0, cos(x), -sin(x)], [0.0, sin(x), cos(x)]]).type_as(coords)
-    rot_y = torch.tensor([[cos(y), 0.0, sin(y)], [0.0, 1.0, 0.0], [-sin(y), 0.0, cos(y)]]).type_as(coords)
-    rot_z = torch.tensor([[cos(z), -sin(z), 0.0], [sin(z), cos(z), 0.0], [0.0, 0.0, 1.0]]).type_as(coords)
-    rotation_matrix = torch.chain_matmul(rot_z, rot_x, rot_y).unsqueeze_(0)
+    rot_x = torch.tensor([[1.0, 0.0, 0.0], [0.0, cos(x), -sin(x)], [0.0, sin(x), cos(x)]], device=coords.device)
+    rot_y = torch.tensor([[cos(y), 0.0, sin(y)], [0.0, 1.0, 0.0], [-sin(y), 0.0, cos(y)]], device=coords.device)
+    rot_z = torch.tensor([[cos(z), -sin(z), 0.0], [sin(z), cos(z), 0.0], [0.0, 0.0, 1.0]], device=coords.device)
+    rotation_matrix = torch.chain_matmul(rot_z, rot_x, rot_y).unsqueeze_(0).type_as(coords)
     assert rotation_matrix.ndim == 3
     assert rotation_matrix.size() == torch.Size((1, 3, 3))
 
@@ -167,3 +167,48 @@ class RandomRotate(nn.Module):
 
     def forward(self, coords: Tensor) -> Tensor:
         return random_rotate(coords, self.x, self.y, self.z, self.degrees)
+
+
+@torch.jit.script
+def center(coords: Tensor, inplace: bool = False, strategy: str = "minmax") -> Tensor:
+    r"""Centers a collection of points about the origin based on their Cartesian coordinates.
+
+    Args:
+        coords (:class:`torch.Tensor`):
+            Cartesian coordinates of the input points.
+
+        inplace (bool):
+            If true, perform the operation inplace. Inplace operation is only possible when
+            ``coords`` is a floating point type.
+
+        strategy (str):
+            - ``'minmax'`` - center based on the range of points for each dimension
+            - ``'mean'`` - center such that the mean of points for each dimension is zero
+
+    Shape
+        * ``coords`` - :math:`(N, P)`
+        * Output - same as input
+
+    """
+    # validate inputs
+    if coords.ndim > 3 or coords.ndim < 2:
+        raise ValueError(f"Expected 2 <= coords.ndim <= 3 but coords.ndim == {coords.ndim}")
+
+    if not coords.is_floating_point():
+        if inplace:
+            raise RuntimeError("Inplace not possible when coords is non-floating point")
+        coords = coords.float()
+
+    if strategy == "minmax":
+        mins = coords.min(dim=0).values
+        maxes = coords.max(dim=0).values
+        offset = (maxes - mins).div_(2).add_(mins)
+    elif strategy == "mean":
+        offset = coords.mean(dim=0)
+    else:
+        raise ValueError(f"Unknown strategy {strategy}")
+
+    if inplace:
+        return coords.sub_(offset)
+    else:
+        return coords.sub(offset)

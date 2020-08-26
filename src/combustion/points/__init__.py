@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from .crop import CenterCrop, center_crop
-from .transforms import RandomRotate, Rotate, random_rotate, rotate
+from .transforms import RandomRotate, Rotate, center, random_rotate, rotate
 
 
 # torch-scatter doesn't install correctly unless combustion[points] is installed after combustion
@@ -18,6 +18,7 @@ except ModuleNotFoundError:
 
 
 __all__ = [
+    "center",
     "Rotate",
     "rotate",
     "random_rotate",

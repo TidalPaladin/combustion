@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
+from combustion.exceptions import ShapeMismatchError
 from combustion.util import double, single, triple
 
 
@@ -150,10 +151,6 @@ class DynamicSamePad(nn.Module):
             raise ValueError(
                 f"Couldn't infer tuple size for class {module.__class__.__name__}. " "Please pass an explicit tuple."
             )
-
-
-class ShapeMismatchError(RuntimeError):
-    r"""Raised on failure of :class:`combustion.nn.MatchShapes`."""
 
 
 class MatchShapes(nn.Module):
