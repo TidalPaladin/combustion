@@ -54,22 +54,25 @@ def projection_mapping(
     mins = torch.stack([min_x, min_y], dim=0)
     maxes = torch.stack([max_x, max_y], dim=0)
 
-    # use given height/width or calculate one from min/max
     if image_size is not None:
         height, width = image_size
+
+        # crop point cloud based on resolution and image size
+        crop_height = float(height)
+        crop_width = float(width)
+        mask = center_crop(coords, crop_height, crop_width)
+        assert mask.any()
+        coords = coords[mask]
+
     else:
+        # calculate size one from min/max
         height = int(max_y.sub(min_y).floor_divide_(resolution).long().item())
         width = int(max_x.sub(min_x).floor_divide_(resolution).long().item())
+        mask = torch.tensor([True], device=coords.device).expand(coords.shape[0])
+
     assert height > 0
     assert width > 0
 
-    # crop point cloud based on resolution and image size
-    crop_height = float(height)
-    crop_width = float(width)
-    mask = center_crop(coords, crop_height, crop_width)
-    assert mask.any()
-
-    coords = coords[mask]
     x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
 
     # recompute mins/maxes after cropping
