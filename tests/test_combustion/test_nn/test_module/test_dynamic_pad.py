@@ -190,3 +190,21 @@ class TestMatchShapes(TorchScriptTestMixin):
         assert t1.shape[1] == 3
         assert t2.shape[1] == 1
         assert t1.shape[2:] == t2.shape[2:]
+
+    @pytest.mark.parametrize("strategy", ["crop", "pad"])
+    def test_match_multiple_pad(self, strategy):
+        torch.random.manual_seed(42)
+        t1 = torch.rand(1, 3, 19, 20)
+        t2 = torch.rand(1, 1, 17, 22)
+        t3 = torch.rand(1, 1, 13, 14)
+        layer = MatchShapes(strategy=strategy, ignore_channels=True)
+
+        if strategy == "crop":
+            shape = (13, 14)
+        else:
+            shape = (19, 22)
+
+        t1, t2, t3 = layer([t1, t2, t3])
+        assert tuple(t1.shape) == (1, 3, *shape)
+        assert tuple(t2.shape) == (1, 1, *shape)
+        assert tuple(t2.shape) == (1, 1, *shape)

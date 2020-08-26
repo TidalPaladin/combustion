@@ -5,7 +5,6 @@ import warnings
 from math import ceil, floor
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
@@ -339,8 +338,6 @@ class MatchShapes(nn.Module):
             else:
                 raise NotImplementedError("Strategy {self._strategy}")
 
-            assert (i == 1 and self._ignore_channels) or tensors[i].shape == torch.Size(target_shape)
-
         return tensors
 
     def _crop(self, tensor: Tensor, shape: List[int]) -> Tensor:
@@ -381,8 +378,8 @@ class MatchShapes(nn.Module):
 
             low = floor(float(abs(padded_shape - raw_shape)) / 2)
             high = ceil(float(abs(padded_shape - raw_shape)) / 2)
-            tensor_padding[2 * i] = low
-            tensor_padding[2 * i + 1] = high
+            tensor_padding[-(2 * i + 1)] = low
+            tensor_padding[-(2 * i + 2)] = high
             has_padding = True
 
         if has_padding:
