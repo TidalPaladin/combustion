@@ -173,7 +173,7 @@ def test_configure_optimizer(torch, cfg, hydra, scheduled):
     if not scheduled:
         del cfg["schedule"]
     model = Subclass(cfg, **hparams)
-    model.prepare_data()
+    model.get_datasets()
 
     if not scheduled:
         optim = model.configure_optimizers()
@@ -190,7 +190,7 @@ def test_configure_optimizer_missing_keys(torch, cfg, hydra, missing):
     hparams = cfg["model"]["params"]
     del cfg["schedule"][missing]
     model = Subclass(cfg, **hparams)
-    model.prepare_data()
+    model.get_datasets()
 
     with pytest.raises(pl.utilities.exceptions.MisconfigurationException):
         optims, schedulers = model.configure_optimizers()
@@ -200,7 +200,7 @@ def test_configure_optimizer_warn_no_monitor_key(torch, cfg, hydra):
     hparams = cfg["model"]["params"]
     del cfg["schedule"]["monitor"]
     model = Subclass(cfg, **hparams)
-    model.prepare_data()
+    model.get_datasets()
 
     with pytest.warns(UserWarning):
         optims, schedulers = model.configure_optimizers()
@@ -212,7 +212,7 @@ def test_get_lr(scheduled, cfg, hydra):
         del cfg["schedule"]
 
     model = hydra.utils.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
     model.configure_optimizers()
     assert model.get_lr() == cfg["optimizer"]["params"]["lr"]
 
@@ -263,20 +263,20 @@ def test_recursive_instantiate_interpolated():
 
 
 @pytest.mark.parametrize("check", ["train_ds", "val_ds", "test_ds"])
-def test_prepare_data(cfg, check):
+def test_get_datasets(cfg, check):
     model = HydraMixin.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
     assert hasattr(model, check)
     assert isinstance(getattr(model, check), torch.utils.data.Dataset)
 
 
 @pytest.mark.parametrize("force", [True, False])
-def test_prepare_data_forced(cfg, force, mocker):
+def test_get_datasets_forced(cfg, force, mocker):
     model = HydraMixin.instantiate(cfg.model, cfg)
     mock = mocker.MagicMock(spec_set=bool, name="train_ds")
+    model.get_datasets()
     model.train_ds = mock
-    model.prepare_data(force=force)
-    model.train_ds
+    model.get_datasets(force=force)
 
     if force:
         assert model.train_ds != mock
@@ -292,11 +292,11 @@ def test_prepare_data_forced(cfg, force, mocker):
         pytest.param(["validate", "train"], ["test"]),
     ],
 )
-def test_prepare_data_missing_items(cfg, missing, present):
+def test_get_datasets_missing_items(cfg, missing, present):
     for k in missing:
         del cfg.dataset[k]
     model = HydraMixin.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
 
 
 @pytest.mark.parametrize("present", [True, False])
@@ -304,7 +304,7 @@ def test_train_dataloader(cfg, present):
     if not present:
         del cfg.dataset["train"]
     model = HydraMixin.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
     dataloader = model.train_dataloader()
 
     if present:
@@ -318,7 +318,7 @@ def test_val_dataloader(cfg, present):
     if not present:
         del cfg.dataset["validate"]
     model = HydraMixin.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
     dataloader = model.val_dataloader()
 
     if present:
@@ -332,7 +332,7 @@ def test_test_dataloader(cfg, present):
     if not present:
         del cfg.dataset["test"]
     model = HydraMixin.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
     dataloader = model.test_dataloader()
 
     if present:
@@ -354,7 +354,7 @@ def test_dataloader_from_subset(cfg, subset, split):
         del cfg.dataset["test"]
 
     model = HydraMixin.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
 
     if subset == "test":
         dataloader = model.test_dataloader()
@@ -384,7 +384,7 @@ def test_get_train_ds_statistics(cfg, dim, num_examples, index):
     cfg.dataset["stats_index"] = index
 
     model = HydraMixin.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
     num_channels = model.train_ds[0][0].shape[dim]
 
     for attr in ["channel_mean", "channel_variance", "channel_max", "channel_min"]:
@@ -402,7 +402,7 @@ def test_get_train_ds_statistics_index_error_handling(cfg, index):
     cfg.dataset["stats_index"] = index
     model = HydraMixin.instantiate(cfg.model, cfg)
     with pytest.raises(MisconfigurationException):
-        model.prepare_data()
+        model.get_datasets()
 
 
 @pytest.mark.parametrize("dim", [pytest.param(10), pytest.param(-10),])
@@ -410,7 +410,7 @@ def test_get_train_ds_statistics_dim_error_handling(cfg, dim):
     cfg.dataset["stats_dim"] = dim
     model = HydraMixin.instantiate(cfg.model, cfg)
     with pytest.raises(MisconfigurationException):
-        model.prepare_data()
+        model.get_datasets()
 
 
 @pytest.mark.parametrize(
@@ -420,7 +420,7 @@ def test_get_train_ds_statistics_num_examples_error_handling(cfg, num_examples):
     cfg.dataset["stats_sample_size"] = num_examples
     model = HydraMixin.instantiate(cfg.model, cfg)
     with pytest.raises(MisconfigurationException):
-        model.prepare_data()
+        model.get_datasets()
 
 
 def test_statistics_set_only_once(cfg, mocker):
@@ -428,11 +428,11 @@ def test_statistics_set_only_once(cfg, mocker):
     cfg.dataset["stats_dim"] = -3
 
     model = HydraMixin.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
     old_mean = model.channel_mean
 
     model.channel_mean *= 0.0
-    model.prepare_data()
+    model.get_datasets()
     new_mean = model.channel_mean
 
     assert torch.allclose(old_mean, new_mean)
@@ -446,7 +446,7 @@ def test_dataloader_override_batch_size(cfg, subset):
     cfg.dataset[subset]["batch_size"] = new_batch_size
 
     model = HydraMixin.instantiate(cfg.model, cfg)
-    model.prepare_data()
+    model.get_datasets()
 
     if subset == "test":
         dataloader = model.test_dataloader()

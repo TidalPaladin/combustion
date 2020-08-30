@@ -4,7 +4,7 @@
 import warnings
 from copy import deepcopy
 from itertools import islice
-from typing import Any, Iterable, Optional, Union
+from typing import Any, Iterable, Optional, Tuple, Union
 
 import pytorch_lightning as pl
 import torch
@@ -12,6 +12,7 @@ from hydra.errors import HydraException
 from hydra.utils import instantiate
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
+from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, random_split
 
 
@@ -29,6 +30,7 @@ class HydraMixin:
         * :attr:`test_dataloader`
     """
     _has_inspected: bool = False
+    _has_datasets: bool = False
     train_ds: Optional[Dataset] = None
     val_ds: Optional[Dataset] = None
     test_ds: Optional[Dataset] = None
@@ -124,6 +126,10 @@ class HydraMixin:
             # get number of optimizer steps per epoch, accounting for multiple batches per backward pass
             accum_grad_batches = int(self.config.trainer["params"].get("accumulate_grad_batches", 1))
             assert accum_grad_batches >= 1
+
+            dl = self.train_dataloader()
+            if dl is None:
+                raise RuntimeError("Could not create LR schedule because train_dataloader() returned None")
             steps_per_epoch = len(self.train_dataloader()) // accum_grad_batches
 
             schedule_dict = {
@@ -138,9 +144,8 @@ class HydraMixin:
 
         return result
 
-    def prepare_data(self, force: bool = False) -> None:
-        r"""Override for :class:`pytorch_lightning.LightningModule` that automatically prepares
-        any datasets based on a `Hydra <https://hydra.cc/>`_ configuration.
+    def get_datasets(self, force: bool = False) -> Tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
+        r"""Automatically prepares train/validation/test datasets based on a `Hydra <https://hydra.cc/>`_ configuration.
         The Hydra config should have an ``dataset`` section, and optionally a ``schedule`` section
         if learning rate scheduling is desired.
 
@@ -169,8 +174,11 @@ class HydraMixin:
         Args:
 
             force (bool):
-                By default, training datasets will only be loaded once. When ``force=True``, datasets
-                will always be reloaded.
+                By default, datasets will only be loaded once and cached for subsequent calls.
+                When ``force=True``, datasets will always be reloaded.
+
+        Returns:
+            ``(training_dataset, validation_dataset, test_dataset)``
 
         Sample Hydra Config
 
@@ -204,8 +212,8 @@ class HydraMixin:
               # as a random split from training set by fraction
               # test: 0.1
         """
-        if not force and self.train_ds is not None:
-            return
+        if self._has_datasets and not force:
+            return self.train_ds, self.val_ds, self.test_ds
 
         dataset_cfg = self.config.get("dataset")
 
@@ -267,18 +275,23 @@ class HydraMixin:
             else:
                 warnings.warn("dataset.stats_sample_size = 0, not collecting dataset staistics")
 
-        self.train_ds: Dataset = train_ds
-        self.val_ds: Optional[Dataset] = val_ds
-        self.test_ds: Optional[Dataset] = test_ds
+        self.train_ds = train_ds
+        self.val_ds = val_ds
+        self.test_ds = test_ds
+        self._has_datasets = True
+        return self.train_ds, self.val_ds, self.test_ds
 
     def train_dataloader(self) -> Optional[DataLoader]:
-        return self._dataloader(self.train_ds, "train")
+        train_ds, _, _ = self.get_datasets()
+        return self._dataloader(train_ds, "train")
 
     def val_dataloader(self) -> Optional[DataLoader]:
-        return self._dataloader(self.val_ds, "validate")
+        _, val_ds, _ = self.get_datasets()
+        return self._dataloader(val_ds, "validate")
 
     def test_dataloader(self) -> Optional[DataLoader]:
-        return self._dataloader(self.test_ds, "test")
+        _, _, test_ds = self.get_datasets()
+        return self._dataloader(test_ds, "test")
 
     def _dataloader(self, dataset: Optional[Dataset], split: str) -> Optional[DataLoader]:
         if dataset is not None:
@@ -354,10 +367,11 @@ class HydraMixin:
         # compute sample statistics and attach to self as a buffer
         var, mean = torch.var_mean(examples, dim=-1)
         maximum, minimum = examples.max(dim=-1).values, examples.min(dim=-1).values
-        self.register_buffer("channel_mean", mean)
-        self.register_buffer("channel_variance", var)
-        self.register_buffer("channel_max", maximum)
-        self.register_buffer("channel_min", minimum)
+
+        self.register_buffer("channel_mean", mean.to(self.device))
+        self.register_buffer("channel_variance", var.to(self.device))
+        self.register_buffer("channel_max", maximum.to(self.device))
+        self.register_buffer("channel_min", minimum.to(self.device))
         self._has_inspected = True
 
     @staticmethod
