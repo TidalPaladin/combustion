@@ -2,7 +2,7 @@
 # https://pytorch-lightning.readthedocs.io/en/stable/trainer.html#trainer-flags
 trainer:
   catch_exceptions: true
-  target: pytorch_lightning.Trainer
+  _target_: pytorch_lightning.Trainer
   params:
     max_epochs: 2
     fast_dev_run: true

@@ -3,25 +3,25 @@ dataset:
   num_workers: 4
 
   train:
-    target: torchvision.datasets.FakeData
+    _target_: torchvision.datasets.FakeData
     params:
       size: 10000
       image_size: [1, 128, 128]
       transform:
-        target: torchvision.transforms.ToTensor
+        _target_: torchvision.transforms.ToTensor
 
   validate:
-    target: torchvision.datasets.FakeData
+    _target_: torchvision.datasets.FakeData
     params:
       size: 100
       image_size: ${dataset.train.params.image_size}
       transform:
-        target: torchvision.transforms.ToTensor
+        _target_: torchvision.transforms.ToTensor
 
   test:
-    target: torchvision.datasets.FakeData
+    _target_: torchvision.datasets.FakeData
     params:
       size: 100
       image_size: ${dataset.train.params.image_size}
       transform:
-        target: torchvision.transforms.ToTensor
+        _target_: torchvision.transforms.ToTensor

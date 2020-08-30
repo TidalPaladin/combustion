@@ -17,6 +17,17 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, random_split
 
 
+_INSTANTIATE_KEYS = ["cls", "target", "_target_"]
+
+
+def _is_instantiate_key(k: str) -> bool:
+    return k in _INSTANTIATE_KEYS
+
+
+def _has_instantiate_key(i: Iterable) -> bool:
+    return any([_is_instantiate_key(k) for k in i])
+
+
 class HydraMixin:
     r"""
     Mixin for creating :class:`pytorch_lightning.LightningModule`
@@ -414,9 +425,9 @@ class HydraMixin:
 
         def is_subclass(d):
             if isinstance(d, (dict, DictConfig)):
-                return "cls" in d.keys() or "target" in d.keys()
+                return _has_instantiate_key(d.keys())
             elif isinstance(d, (list, ListConfig)):
-                return any(["target" in x.keys() or "cls" in x.keys() for x in d if isinstance(x, (dict, DictConfig))])
+                return any([_has_instantiate_key(x.keys()) for x in d if isinstance(x, (dict, DictConfig))])
             return False
 
         if isinstance(params, list):

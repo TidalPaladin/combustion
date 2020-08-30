@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from hydra.core.global_hydra import GlobalHydra
 from hydra.types import RunMode
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from packaging import version
 
 import combustion
@@ -71,7 +71,7 @@ def check_exceptions():
     """
     global _exceptions
     if _exceptions:
-        log.warn("One or more runs raised an exception")
+        log.warning("One or more runs raised an exception")
         raise MultiRunError(f"Exceptions: {_exceptions}")
 
 
@@ -200,7 +200,7 @@ def initialize(config_path: str, config_name: str, caller_stack_depth: int = 1) 
             overrides_dict.update(cfg.sweeper)
 
             if "--multirun" not in flags and "-m" not in flags:
-                log.warn("Multirun flag not given but sweeper config was non-empty. " "Adding -m flag")
+                log.warning("Multirun flag not given but sweeper config was non-empty. " "Adding -m flag")
                 flags.append("--multirun")
         else:
             log.debug("No sweeper config specified")
@@ -262,7 +262,7 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
 
     try:
         _log_versions()
-        log.info("Configuration: \n%s", cfg.pretty())
+        log.info("Configuration: \n%s", OmegaConf.to_yaml(cfg))
 
         if "deterministic" in cfg.trainer.params.keys():
             seed_val = 42

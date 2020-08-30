@@ -58,21 +58,21 @@ def cfg(torch):
     pytest.importorskip("torchvision")
     omegaconf = pytest.importorskip("omegaconf")
     cfg = {
-        "optimizer": {"name": "adam", "target": "torch.optim.Adam", "params": {"lr": 0.002,},},
+        "optimizer": {"name": "adam", "_target_": "torch.optim.Adam", "params": {"lr": 0.002,},},
         "model": {
-            "target": TrainTestValidateModel.__module__ + ".TrainTestValidateModel",
+            "_target_": TrainTestValidateModel.__module__ + ".TrainTestValidateModel",
             "params": {
                 "in_features": 10,
                 "out_features": 10,
                 "batch_size": 32,
-                "criterion": {"target": "torch.nn.BCEWithLogitsLoss", "params": {}},
+                "criterion": {"_target_": "torch.nn.BCEWithLogitsLoss", "params": {}},
             },
         },
         "schedule": {
             "interval": "step",
             "monitor": "val_loss",
             "frequency": 1,
-            "target": "torch.optim.lr_scheduler.OneCycleLR",
+            "_target_": "torch.optim.lr_scheduler.OneCycleLR",
             "params": {
                 "max_lr": 0.002,
                 "epochs": 10,
@@ -88,33 +88,33 @@ def cfg(torch):
             "stats_dim": 0,
             "train": {
                 "num_workers": 4,
-                "target": "torchvision.datasets.FakeData",
+                "_target_": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
                     "image_size": [1, 64, 64],
-                    "transform": {"target": "torchvision.transforms.ToTensor", "params": {}},
+                    "transform": {"_target_": "torchvision.transforms.ToTensor", "params": {}},
                 },
             },
             "validate": {
                 "num_workers": 4,
-                "target": "torchvision.datasets.FakeData",
+                "_target_": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
                     "image_size": [1, 64, 64],
-                    "transform": {"target": "torchvision.transforms.ToTensor", "params": {}},
+                    "transform": {"_target_": "torchvision.transforms.ToTensor", "params": {}},
                 },
             },
             "test": {
                 "num_workers": 4,
-                "target": "torchvision.datasets.FakeData",
+                "_target_": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
                     "image_size": [1, 64, 64],
-                    "transform": {"target": "torchvision.transforms.ToTensor", "params": {}},
+                    "transform": {"_target_": "torchvision.transforms.ToTensor", "params": {}},
                 },
             },
         },
-        "trainer": {"target": "pytorch_lightning.Trainer", "params": {"fast_dev_run": True,}},
+        "trainer": {"_target_": "pytorch_lightning.Trainer", "params": {"fast_dev_run": True,}},
     }
     return omegaconf.DictConfig(cfg)
 
@@ -143,19 +143,6 @@ def test_instantiate_with_hydra(cfg, hydra):
     assert isinstance(model, Subclass)
 
 
-def test_instantiate_recursive(hydra):
-    cfg = {
-        "target": "torch.nn.Sequential",
-        "params": [
-            {"target": "torch.nn.Linear", "params": {"in_features": 10, "out_features": 10,}},
-            {"target": "torch.nn.Linear", "params": {"in_features": 10, "out_features": 10,}},
-        ],
-    }
-
-    model = HydraMixin.instantiate(cfg)
-    assert isinstance(model, torch.nn.Sequential)
-
-
 @pytest.mark.parametrize(
     ["target", "exception"],
     [
@@ -164,7 +151,7 @@ def test_instantiate_recursive(hydra):
     ],
 )
 def test_instantiate_report_error(hydra, target, exception):
-    cfg = {"target": target}
+    cfg = {"_target_": target}
     with pytest.raises(exception):
         HydraMixin.instantiate(cfg)
 
@@ -220,8 +207,9 @@ def test_get_lr(scheduled, cfg, hydra):
 
 
 @pytest.mark.parametrize("params", [True, False])
-def test_recursive_instantiate(cfg, params):
-    cfg["model"]["params"]["test"] = {"target": "torch.nn.BCELoss", "params": {}}
+@pytest.mark.parametrize("key", ["cls", "target", "_target_"])
+def test_recursive_instantiate(cfg, params, key):
+    cfg["model"]["params"]["test"] = {key: "torch.nn.BCELoss", "params": {}}
 
     if params:
         cfg["model"]["params"]["test"]["params"] = {"reduction": "none"}
@@ -233,7 +221,7 @@ def test_recursive_instantiate(cfg, params):
 
 
 def test_recursive_instantiate_preserves_cfg(cfg):
-    key = {"target": "torch.nn.BCELoss", "params": {"reduction": "none"}}
+    key = {"_target_": "torch.nn.BCELoss", "params": {"reduction": "none"}}
     cfg["model"]["params"]["test"] = key
     model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
     assert "test" in model.config["model"]["params"].keys()
@@ -246,14 +234,14 @@ def test_recursive_instantiate_interpolated():
     in_channels: 4
     out_channels: 8
     kernel_size: 3
-    target: torch.nn.Sequential
+    _target_: torch.nn.Sequential
     params:
-        - target: torch.nn.Conv2d
+        - _target_: torch.nn.Conv2d
           params:
             in_channels: ${in_channels}
             out_channels: ${out_channels}
             kernel_size: ${kernel_size}
-        - target: torch.nn.Conv2d
+        - _target_: torch.nn.Conv2d
           params:
             in_channels: ${in_channels}
             out_channels: ${out_channels}
@@ -262,6 +250,20 @@ def test_recursive_instantiate_interpolated():
     cfg = OmegaConf.create(yaml)
     model = HydraMixin.instantiate(cfg)
     assert isinstance(model, torch.nn.Module)
+
+
+@pytest.mark.parametrize("key", ["cls", "target", "_target_"])
+def test_recursive_instantiate_list(hydra, key):
+    cfg = {
+        key: "torch.nn.Sequential",
+        "params": [
+            {key: "torch.nn.Linear", "params": {"in_features": 10, "out_features": 10,}},
+            {key: "torch.nn.Linear", "params": {"in_features": 10, "out_features": 10,}},
+        ],
+    }
+
+    model = HydraMixin.instantiate(cfg)
+    assert isinstance(model, torch.nn.Sequential)
 
 
 @pytest.mark.parametrize("check", ["train_ds", "val_ds", "test_ds"])
@@ -509,7 +511,7 @@ class TestRuntimeBehavior:
     @pytest.fixture(autouse=True, params=[TrainOnlyModel, TrainAndValidateModel, TrainTestValidateModel])
     def model(self, request, cfg):
         target = request.param.__module__ + "." + request.param.__name__
-        cfg.model["target"] = target
+        cfg.model["_target_"] = target
 
     @pytest.fixture
     def trainer(self, cfg):
