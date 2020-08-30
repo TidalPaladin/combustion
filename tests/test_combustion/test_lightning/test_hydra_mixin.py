@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import math
+
 import pytest
 import pytorch_lightning as pl
 import torch
@@ -75,7 +77,7 @@ def cfg(torch):
                 "max_lr": 0.002,
                 "epochs": 10,
                 "steps_per_epoch": "none",
-                "pct_start": 0.05,
+                "pct_start": 0.20,
                 "div_factor": 25.0,
                 "final_div_factor": 10000.0,
                 "anneal_strategy": "cos",
@@ -456,6 +458,51 @@ def test_dataloader_override_batch_size(cfg, subset):
 
     assert train_dl.batch_size == model_batch_size
     assert dataloader.batch_size == new_batch_size
+
+
+@pytest.mark.parametrize(
+    "gpus, gpu_count",
+    [
+        pytest.param(0, 1, id="gpus=0"),
+        pytest.param(1, 1, id="gpus=1"),
+        pytest.param(2, 2, id="gpus=2"),
+        pytest.param([0, 1], 2, id="gpus=[0, 1]"),
+    ],
+)
+@pytest.mark.parametrize("accum_grad_batches", [1, 2, 3])
+@pytest.mark.parametrize("num_nodes", [1, 2, 3])
+def test_schedule_length_correct(torch, cfg, hydra, gpus, gpu_count, accum_grad_batches, num_nodes):
+    cfg["trainer"]["params"]["gpus"] = gpus
+    cfg["trainer"]["params"]["accumulate_grad_batches"] = accum_grad_batches
+    cfg["trainer"]["params"]["num_nodes"] = num_nodes
+    cfg["trainer"]["params"]["fast_dev_run"] = False
+    cfg["trainer"]["params"]["max_epochs"] = 10
+    cfg["dataset"]["train"]["params"]["size"] = 10000
+    cfg["dataset"]["validate"]["params"]["size"] = 10000
+    cfg["dataset"]["test"]["params"]["size"] = 10000
+    hparams = cfg["model"]["params"]
+
+    model = Subclass(cfg, **hparams)
+    model.get_datasets()
+    _, schedulers = model.configure_optimizers()
+    schedule = schedulers[0]
+    assert schedule["interval"] == "step"
+    assert schedule["frequency"] == 1
+
+    scheduler = schedule["scheduler"]
+
+    max_lr = cfg.schedule["params"]["max_lr"]
+    div_factor = cfg.schedule["params"]["div_factor"]
+    cfg.schedule["params"]["final_div_factor"]
+    num_epochs = cfg.trainer["params"]["max_epochs"]
+    expected_steps = (
+        math.ceil(len(model.train_dataloader()) / (gpu_count * accum_grad_batches * num_nodes)) * num_epochs
+    )
+    pct_start = cfg.schedule["params"]["pct_start"]
+
+    assert abs(scheduler.get_lr()[0] - max_lr / div_factor) <= 1e-5
+    assert scheduler.total_steps == expected_steps
+    assert abs((scheduler.step_size_up + 1) / scheduler.total_steps - pct_start) <= 0.001
 
 
 class TestRuntimeBehavior:

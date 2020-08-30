@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import math
 import warnings
 from copy import deepcopy
 from itertools import islice
@@ -130,7 +131,14 @@ class HydraMixin:
             dl = self.train_dataloader()
             if dl is None:
                 raise RuntimeError("Could not create LR schedule because train_dataloader() returned None")
-            steps_per_epoch = len(self.train_dataloader()) // accum_grad_batches
+
+            gpus = self.config.trainer["params"].get("gpus", 1)
+            if isinstance(gpus, Iterable):
+                gpus = len(gpus)
+            gpus = max(gpus, 1)
+
+            num_nodes = self.config.trainer["params"].get("num_nodes", 1)
+            steps_per_epoch = math.ceil(len(dl) / (accum_grad_batches * gpus * num_nodes))
 
             schedule_dict = {
                 "interval": schedule.get("interval", "epoch"),
