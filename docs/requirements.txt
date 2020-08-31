@@ -3,3 +3,4 @@ sphinxcontrib.katex
 pytest
 git+https://github.com/pytorch/pytorch_sphinx_theme.git
 hydra-core>=1.0.0rc2
+.[vision]
