@@ -44,3 +44,8 @@ Ops
 .. autoclass:: combustion.vision.PointsToAnchors
     :members: 
 
+.. autoclass:: combustion.vision.ConfusionMatrixIoU
+    :members: 
+
+.. autoclass:: combustion.vision.BinaryLabelIoU
+    :members: 
