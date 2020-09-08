@@ -211,6 +211,7 @@ class MatchShapes(nn.Module):
         padding_mode: str = "constant",
         fill_value: float = 0.0,
         check_only: bool = False,
+        warn_pct_change: float = 100.0,
     ):
         super().__init__()
         strategy = str(strategy).lower()
@@ -227,6 +228,7 @@ class MatchShapes(nn.Module):
         self._fill_value = float(fill_value)
         self._check_only = bool(check_only)
         self._ignore_channels = bool(ignore_channels)
+        self._warn_pct_change = float(warn_pct_change)
 
     def extra_repr(self):
         s = f"strategy='{self._strategy}'"
@@ -238,6 +240,8 @@ class MatchShapes(nn.Module):
                 s += f", fill_value={self._fill_value}"
         if self._check_only:
             s += "check_only=True"
+        if self._warn_pct_change != 100.0:
+            s += f"warn_pct_change={self._warn_pct_change}"
         return s
 
     def forward(self, tensors: List[Tensor], shape_override: Optional[List[int]] = None) -> List[Tensor]:
@@ -386,8 +390,12 @@ class MatchShapes(nn.Module):
 
     def _warn_on_extreme_change(self, tensor: Tensor, shape: List[int]) -> None:
         for src, target in zip(tensor.shape[2:], shape[2:]):
-            if src / target >= 2 or src / target <= 0.5:
-                warnings.warn(f"Resized a tensor dimension by >= 50% matching {tensor.shape} to tuple({shape})")
+            ratio = min(src / target, target / src)
+            if ratio > self._warn_pct_change:
+                warnings.warn(
+                    f"Resized a tensor dimension by >= {self._warn_pct_change * 100}% "
+                    f"matching {tensor.shape} to tuple({shape})"
+                )
                 return
 
     def _has_shape(self, tensor: Tensor, shape: List[int]) -> bool:

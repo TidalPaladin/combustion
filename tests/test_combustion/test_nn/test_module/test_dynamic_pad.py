@@ -142,7 +142,7 @@ class TestMatchShapes(TorchScriptTestMixin):
         torch.random.manual_seed(42)
         t1 = torch.rand(1, 1, *shape1)
         t2 = torch.rand(1, 1, *shape2)
-        layer = MatchShapes(strategy=strategy)
+        layer = MatchShapes(strategy=strategy, warn_pct_change=0.5)
         with pytest.warns(UserWarning):
             t1, t2 = layer([t1, t2])
 
