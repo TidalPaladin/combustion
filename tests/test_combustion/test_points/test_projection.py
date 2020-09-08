@@ -67,7 +67,7 @@ class TestProjectionMaskFunctional:
     @pytest.mark.parametrize("cuda", [True, False])
     def test_runtime(self, cuda):
         if cuda and not torch.cuda.is_available():
-            pytest.skip(reason="CUDA not available")
+            pytest.skip("CUDA not available")
 
         torch.random.manual_seed(42)
         coords = torch.randint(0, 1000, (1000000, 3)).float()
