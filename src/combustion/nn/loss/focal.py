@@ -300,3 +300,138 @@ __all__ = [
     "FocalLoss",
     "FocalLossWithLogits",
 ]
+
+
+def categorical_focal_loss(
+    input: Tensor,
+    target: Tensor,
+    gamma: float,
+    pos_weight: Optional[float] = None,
+    label_smoothing: Optional[float] = None,
+    reduction: str = "mean",
+    normalize: bool = False,
+):
+    r"""Computes the Focal Loss between input and target.
+
+    .. warning::
+        This method is experimental
+
+    Args:
+        input (torch.Tensor):
+            The predicted values.
+
+        target (torch.Tensor):
+            The target values.
+
+        gamma (float):
+            The focusing parameter :math:`\gamma`. Must be non-negative.
+
+        pos_weight (float, optional):
+            The positive weight coefficient :math:`\alpha` to use on
+            the positive examples. Must be non-negative.
+
+        label_smoothing (float, optional):
+            Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
+            ground truth labels are clamped to :math:`[p, 1-p]`.
+
+        reduction (str, optional): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of
+            elements in the output, ``'sum'``: the output will be summed.
+            Default: ``'mean'``
+
+        normalize (bool, optional):
+            If given, output loss will be divided by the number of positive elements
+            in ``target``.
+    """
+    num_classes = input.shape[1]
+    positive_indices = target == 1
+
+    # apply label smoothing, clamping true labels between x, 1-x
+    if label_smoothing is not None:
+        target = target.clamp(label_smoothing, 1.0 - label_smoothing)
+
+    # loss in paper can be expressed as
+    # alpha * (1 - pt) ** gamma * (CE loss)
+    # where pt = p if target == 1 else (1-p)
+
+    # calculate p, pt, and vanilla CELoss
+    # NOTE CE loss gets logits input
+    ce_loss = F.cross_entropy(input, target, reduction="none")
+
+    # Therefore one unified form for positive (z = 1) and negative (z = 0)
+    # samples is:
+    #      (1 - p_t)^r = exp(-r * z * x - r * log(1 + exp(-x))).
+    #
+    # Becuase logits are unbounded, log(1 + exp(-x)) must be computed using
+    # torch.logaddexp()
+    neg_logits = input.neg().float()
+    dims = [0, -1] + list(range(1, input.ndim - 1))
+    z = F.one_hot(target, num_classes=num_classes).type_as(neg_logits).permute(dims)
+
+    if gamma != 0:
+        _ = torch.tensor([0.0], device=neg_logits.device).type_as(neg_logits)
+        _ = gamma * (z * neg_logits - torch.logaddexp(neg_logits, _))
+        focal_term = torch.exp(_)
+        loss = torch.sum(focal_term * (ce_loss / num_classes), dim=1)
+    else:
+        loss = ce_loss
+
+    if pos_weight is not None:
+        loss = torch.where(positive_indices, pos_weight * loss, (1.0 - pos_weight) * loss)
+
+    if reduction == "mean":
+        loss = loss.mean()
+    if reduction == "sum":
+        loss = loss.sum()
+    return loss
+
+
+class CategoricalFocalLoss(nn.Module):
+    r"""Computes the Focal Loss between input and target.
+
+    .. warning::
+        This method is experimental
+
+    Args:
+        gamma (float):
+            The focusing parameter :math:`\gamma`. Must be non-negative.
+
+        pos_weight (float, optional):
+            The positive weight coefficient :math:`\alpha` to use on
+            the positive examples. Must be non-negative.
+
+        label_smoothing (float, optional):
+            Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
+            ground truth labels are clamped to :math:`[p, 1-p]`.
+
+        reduction (str, optional): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of
+            elements in the output, ``'sum'``: the output will be summed.
+            Default: ``'mean'``
+
+        normalize (bool, optional):
+            If given, output loss will be divided by the number of positive elements
+            in ``target``.
+    """
+
+    def __init__(self, gamma, pos_weight=None, label_smoothing=None, reduction: str = "mean", normalize: bool = False):
+        super(CategoricalFocalLoss, self).__init__()
+        self.gamma = gamma
+        self.alpha = pos_weight
+        self.label_smoothing = label_smoothing
+        self.reduction = reduction
+        self.normalize = normalize
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        """forward Calculate smoothed MSE loss between input and target.
+        Expects inputs of shape NxCxHxW.
+
+        :param input: The predicted outputs :type input: Tensor :param
+        target: The target outputs :type target: Tensor :rtype: Tensor
+        """
+        loss = categorical_focal_loss(
+            input, target, self.gamma, self.alpha, self.label_smoothing, self.reduction, self.normalize
+        )
+        return loss

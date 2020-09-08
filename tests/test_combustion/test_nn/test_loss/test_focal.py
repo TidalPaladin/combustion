@@ -6,7 +6,7 @@ import torch
 from torch.nn import BCELoss, BCEWithLogitsLoss
 from torch.nn.functional import binary_cross_entropy, binary_cross_entropy_with_logits
 
-from combustion.nn import FocalLoss, FocalLossWithLogits, focal_loss, focal_loss_with_logits
+from combustion.nn import CategoricalFocalLoss, FocalLoss, FocalLossWithLogits, focal_loss, focal_loss_with_logits
 from combustion.testing import assert_tensors_close
 
 
@@ -237,3 +237,37 @@ class TestFocalLossWithLogits(TestFocalLoss):
         loss1 = criterion1(x1, y)
         loss2 = criterion1(x2, y)
         assert torch.allclose(loss1, loss2)
+
+
+@pytest.mark.skip
+class TestCategoricalFocalLoss:
+    @pytest.fixture
+    def true_cls(self):
+        kornia = pytest.importorskip("kornia")
+        return kornia.losses.FocalLoss
+
+    @pytest.fixture
+    def cls(self):
+        return CategoricalFocalLoss
+
+    def test_equals_ce_when_gamma_zero(self, cls, true_cls):
+        x = torch.rand(1, 5, 10, 10)
+        y = torch.randint(0, 5, (1, 10, 10))
+        criterion = cls(gamma=0, reduction="none")
+        true_criterion = true_cls(gamma=0, alpha=1, reduction="none")
+        true_loss = true_criterion(x, y)
+        loss = criterion(x, y)
+        assert_tensors_close(loss, true_loss)
+
+    @pytest.mark.parametrize("gamma", [0.5, 1.0, 2.0])
+    def test_positive_example(self, gamma, cls, true_cls):
+        x = torch.Tensor([0.5])
+        y = torch.Tensor([1.0])
+
+        x = torch.rand(1, 5, 10, 10)
+        y = torch.randint(0, 5, (1, 10, 10))
+        criterion = cls(gamma=gamma, reduction="none")
+        true_criterion = true_cls(gamma=gamma, alpha=1, reduction="none")
+        true_loss = true_criterion(x, y)
+        loss = criterion(x, y)
+        assert_tensors_close(loss, true_loss)

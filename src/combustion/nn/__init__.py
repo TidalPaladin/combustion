@@ -2,7 +2,15 @@
 # -*- coding: utf-8 -*-
 
 from .activations import HardSigmoid, HardSwish, Swish
-from .loss import CenterNetLoss, FocalLoss, FocalLossWithLogits, focal_loss, focal_loss_with_logits
+from .loss import (
+    CategoricalFocalLoss,
+    CenterNetLoss,
+    FocalLoss,
+    FocalLossWithLogits,
+    categorical_focal_loss,
+    focal_loss,
+    focal_loss_with_logits,
+)
 from .modules import (
     BiFPN,
     BiFPN1d,
@@ -45,6 +53,8 @@ __all__ = [
     "BiFPN1d",
     "BiFPN2d",
     "BiFPN3d",
+    "categorical_focal_loss",
+    "CategoricalFocalLoss",
     "CenterNetLoss",
     "Conv3d",
     "ConvTranspose3d",
