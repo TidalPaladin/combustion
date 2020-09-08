@@ -208,3 +208,39 @@ class TestMatchShapes(TorchScriptTestMixin):
         assert tuple(t1.shape) == (1, 3, *shape)
         assert tuple(t2.shape) == (1, 1, *shape)
         assert tuple(t2.shape) == (1, 1, *shape)
+
+    @pytest.mark.parametrize(
+        "padding_mode,fill_value",
+        [
+            pytest.param("constant", 1, id="constant"),
+            pytest.param("reflect", 0, id="reflect"),
+            pytest.param("replicate", 0, id="replicate"),
+            pytest.param("mean", 0, id="mean"),
+            pytest.param("var_mean", 0, id="var_mean"),
+        ],
+    )
+    def test_padding_mode(self, padding_mode, fill_value):
+        torch.random.manual_seed(42)
+        layer = MatchShapes(strategy="pad", padding_mode=padding_mode, fill_value=fill_value)
+        t1_in = torch.rand(1, 1, 10, 10)
+        t2_in = torch.rand(1, 1, 12, 12)
+
+        t1, t2 = layer([t1_in, t2_in])
+
+        assert t1.shape == t2.shape
+        assert tuple(t2.shape[2:]) == (12, 12)
+        assert tuple(t1.shape[2:]) == (12, 12)
+
+        if padding_mode == "mean":
+            assert torch.allclose(t1.mean(), t1_in.mean())
+            assert torch.allclose(t2.mean(), t2_in.mean())
+        if padding_mode == "var_mean":
+            t1_var, t1_mean = torch.var_mean(t1_in)
+            t1_var_new, t1_mean_new = torch.var_mean(t1)
+            assert torch.allclose(t1_mean, t1_mean_new, atol=3e-2)
+            assert torch.allclose(t1_var, t1_var_new, atol=2e-2)
+
+            t2_var, t2_mean = torch.var_mean(t2_in)
+            t2_var_new, t2_mean_new = torch.var_mean(t2)
+            assert torch.allclose(t2_mean, t2_mean_new, atol=3e-2)
+            assert torch.allclose(t2_var, t2_var_new, atol=2e-2)

@@ -3,7 +3,7 @@
 
 from ..activations.hsigmoid import hard_sigmoid
 from ..activations.swish import hard_swish, swish
-from ..modules.dynamic_pad import patch_dynamic_same_pad
+from .dynamic_pad import patch_dynamic_same_pad
 from .fill_masked import fill_normal
 from .fourier_conv import fourier_conv2d
 
