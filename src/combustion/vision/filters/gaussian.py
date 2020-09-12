@@ -49,7 +49,7 @@ class GaussianBlur2d(nn.Module):
         return s
 
     def forward(self, inputs: Tensor) -> Tensor:
-        kernel = self._kernel
+        kernel = self._kernel.type_as(inputs)
         height, width = inputs.shape[-2:]
         kernel_h, kernel_w = kernel.shape[-2:]
         padding = (kernel_h // 2, kernel_w // 2)
