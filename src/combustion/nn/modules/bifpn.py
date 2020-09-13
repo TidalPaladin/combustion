@@ -9,6 +9,8 @@ from torch import Tensor
 
 from combustion.util import double, single, triple
 
+from ..modules.match_shapes import MatchShapes
+
 
 class _BiFPNMeta(type):
     def __new__(cls, name, bases, dct):
@@ -64,6 +66,7 @@ class _BiFPN_Level(nn.Module):
 
         self.weight_1 = nn.Parameter(torch.ones(2))
         self.weight_2 = nn.Parameter(torch.ones(weight_2_count))
+        self.match = MatchShapes()
 
     def forward(
         self, same_level: Tensor, previous_level: Optional[Tensor] = None, next_level: Optional[Tensor] = None
@@ -79,22 +82,27 @@ class _BiFPN_Level(nn.Module):
             weight_1 = weight_1 / (torch.sum(weight_1, dim=0) + self.epsilon)
 
             # weighted combination of current level and higher level
-            output = self.conv_up(weight_1[0] * same_level + weight_1[1] * self.feature_up(next_level))
+            next_level = self.feature_up(next_level)
+            same_level, next_level = self.match([same_level, next_level], same_level.shape[2:])
+            output = self.conv_up(weight_1[0] * same_level + weight_1[1] * next_level)
 
         # input + lower level + last bifpn level (if one exists)
         if previous_level is not None:
             weight_2 = torch.relu(self.weight_2)
             weight_2 = weight_2 / (torch.sum(weight_2, dim=0) + self.epsilon)
+            previous_level = self.feature_down(previous_level)
 
             if output is not None:
                 # weight_2ed combination of current level, downward fpn output, lower level
-                output = self.conv_down(
-                    weight_2[0] * same_level + weight_2[1] * output + weight_2[2] * self.feature_down(previous_level)
+                same_level, output, previous_level = self.match(
+                    [same_level, output, previous_level], same_level.shape[2:]
                 )
+                output = self.conv_down(weight_2[0] * same_level + weight_2[1] * output + weight_2[2] * previous_level)
             # special case for top of pyramid
             else:
                 # weighted combination of current level, downward fpn output, lower level
-                output = self.conv_down(weight_2[0] * same_level + weight_2[1] * self.feature_down(previous_level))
+                same_level, previous_level = self.match([same_level, previous_level], same_level.shape[2:])
+                output = self.conv_down(weight_2[0] * same_level + weight_2[1] * previous_level)
 
         return output
 
@@ -179,6 +187,10 @@ class BiFPN2d(_BiFPN, metaclass=_BiFPNMeta):
         :align: center
         :height: 400px
         :alt: Diagram of BiFPN layer
+
+    .. note::
+        This implementation will automatically match spatial shapes between BiFPN levels. Adjacent levels
+        are upsampled / downsampled by a factor of 2 and padded/cropped to ensure shapes match.
 
     Args:
 

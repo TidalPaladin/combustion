@@ -117,6 +117,19 @@ class TestBiFPN2d(BiFPNBaseTest):
         for level, (expected, actual) in enumerate(zip(expected_output_sum, output_sum)):
             assert torch.allclose(expected, actual, rtol=0.1)
 
+    @cuda_or_skip
+    def test_shape_matching(self, model_class):
+        torch.random.manual_seed(42)
+        layer = model_class(2, 3)
+        input = [
+            torch.rand(1, 2, 15, 15),
+            torch.rand(1, 2, 7, 7),
+            torch.rand(1, 2, 3, 3),
+        ]
+        output = layer(input)
+        for x, y in zip(input, output):
+            assert x.shape[2:] == y.shape[2:]
+
 
 class TestBiFPN1d(BiFPNBaseTest):
     @pytest.fixture
@@ -152,6 +165,19 @@ class TestBiFPN1d(BiFPNBaseTest):
 
         for level, (expected, actual) in enumerate(zip(expected_output_sum, output_sum)):
             assert torch.allclose(expected, actual, rtol=0.1)
+
+    @cuda_or_skip
+    def test_shape_matching(self, model_class):
+        torch.random.manual_seed(42)
+        layer = model_class(2, 3)
+        input = [
+            torch.rand(1, 2, 15),
+            torch.rand(1, 2, 7),
+            torch.rand(1, 2, 3),
+        ]
+        output = layer(input)
+        for x, y in zip(input, output):
+            assert x.shape[2:] == y.shape[2:]
 
 
 class TestBiFPN3d(BiFPNBaseTest):
@@ -260,3 +286,16 @@ class TestBiFPN3dScript(BiFPNScriptBaseTest):
             t = torch.rand(batch_size, num_channels, depth, height, width)
             result.append(t)
         return list(reversed(result))
+
+    @cuda_or_skip
+    def test_shape_matching(self, model_class):
+        torch.random.manual_seed(42)
+        layer = model_class(2, 3)
+        input = [
+            torch.rand(1, 2, 15, 15, 15),
+            torch.rand(1, 2, 7, 7, 7),
+            torch.rand(1, 2, 3, 3, 3),
+        ]
+        output = layer(input)
+        for x, y in zip(input, output):
+            assert x.shape[2:] == y.shape[2:]

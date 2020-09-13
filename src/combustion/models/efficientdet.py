@@ -7,7 +7,7 @@ from typing import List, Optional
 import torch.nn as nn
 from torch import Tensor
 
-from combustion.nn import BiFPN1d, BiFPN2d, BiFPN3d, MobileNetBlockConfig
+from combustion.nn import BiFPN1d, BiFPN2d, BiFPN3d, MatchShapes, MobileNetBlockConfig
 
 from .efficientnet import _EfficientNet
 
@@ -85,6 +85,8 @@ class _EfficientDet(_EfficientNet):
 
         self.fpn_convs = nn.ModuleList(fpn_convs)
 
+        self.match = MatchShapes()
+
         bifpn_layers = []
         for i in range(fpn_repeats):
             bifpn = self.BiFPN(output_filters, levels=len(fpn_levels), **fpn_kwargs)
@@ -124,6 +126,13 @@ class _EfficientDet(_EfficientNet):
             else:
                 prev_x = conv(prev_x)
                 captured_features.append(prev_x)
+
+        # match shapes along bifpn so each is a multiple of 2
+        base_shape = captured_features[-1].shape[2:]
+        for i, feature_map in enumerate(captured_features):
+            target_shape = [int(s * 2 ** (i + 1)) for s in base_shape]
+            feature_map = self.match([feature_map], target_shape)[0]
+            captured_features[i] = feature_map
 
         for bifpn in self.bifpn_layers:
             captured_features = bifpn(captured_features)

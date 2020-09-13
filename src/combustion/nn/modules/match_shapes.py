@@ -142,7 +142,7 @@ class MatchShapes(nn.Module):
         if shape_override is not None:
             new_shape_override = list(shape_override)
             for i, val in enumerate(shape_override):
-                if not isinstance(val, (float, int)):
+                if not isinstance(val, (float, int, Tensor)):
                     raise TypeError(f"Expected float or int for shape_override at pos {i} but found {type(val)}")
                 new_shape_override[i] = int(val)
             new_shape_override = list(first_tensor.shape[:2]) + new_shape_override
@@ -274,8 +274,8 @@ class MatchShapes(nn.Module):
 
     def _warn_on_extreme_change(self, tensor: Tensor, shape: List[int]) -> None:
         for src, target in zip(tensor.shape[2:], shape[2:]):
-            ratio = min(src / target, target / src)
-            if ratio > self._warn_pct_change:
+            ratio = max(src // target, target // src)
+            if 1.0 / ratio > self._warn_pct_change:
                 warnings.warn(
                     f"Resized a tensor dimension by >= {self._warn_pct_change * 100}% "
                     f"matching {tensor.shape} to tuple({shape})"
