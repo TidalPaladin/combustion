@@ -39,7 +39,7 @@ class RASPPBaseTest(TorchScriptTestMixin):
     @pytest.fixture
     def model(self, model_class, input_channels, residual_channels, output_channels, num_classes):
         model = model_class(
-            input_channels, residual_channels, output_channels, num_classes, pool_kernel=2, pool_stride=1,
+            input_channels, residual_channels, output_channels, num_classes, pool_kernel=2, pool_stride=1
         )
         yield model
         del model

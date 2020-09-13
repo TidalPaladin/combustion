@@ -48,7 +48,6 @@ class _RASPPLite(nn.Module):
         relu: nn.Module = nn.ReLU(),
         bn_momentum: float = 0.1,
         bn_epsilon: float = 1e-5,
-        final_upsample: int = 1,
     ):
         super().__init__()
         pool_kernel = self.Tuple(pool_kernel)
@@ -69,15 +68,6 @@ class _RASPPLite(nn.Module):
 
         self.residual_conv = self.Conv(residual_filters, num_classes, kernel_size=1)
         self.main_conv2 = self.Conv(output_filters, num_classes, kernel_size=1)
-
-        upsample = []
-        for i in range(final_upsample // 2):
-            upsample.append(nn.ConvTranspose2d(num_classes, num_classes, kernel_size=2, stride=2))
-
-        if upsample:
-            self.final_upsample = nn.ModuleList(*upsample)
-        else:
-            self.final_upsample = None
 
     def forward(self, inputs: List[Tensor]) -> Tensor:
         skip_path, main_path = inputs
@@ -104,10 +94,6 @@ class _RASPPLite(nn.Module):
 
         main = self.main_conv2(main)
         output = main + residual
-
-        if self.final_upsample is not None:
-            output = self.final_upsample(output)
-
         return output
 
 
