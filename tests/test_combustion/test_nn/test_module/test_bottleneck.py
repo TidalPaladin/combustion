@@ -26,11 +26,19 @@ def test_output_shape(torch, conv, rank):
 
 @pytest.mark.parametrize(
     "bn_spatial",
-    [pytest.param(None, id="bn_spatial=None"), pytest.param(2, id="bn_spatial=2"), pytest.param(4, id="bn_spatial=4"),],
+    [
+        pytest.param(None, id="bn_spatial=None"),
+        pytest.param(2, id="bn_spatial=2"),
+        pytest.param(4, id="bn_spatial=4"),
+    ],
 )
 @pytest.mark.parametrize(
     "bn_depth",
-    [pytest.param(None, id="bn_depth=None"), pytest.param(2, id="bn_depth=2"), pytest.param(4, id="bn_depth=4"),],
+    [
+        pytest.param(None, id="bn_depth=None"),
+        pytest.param(2, id="bn_depth=2"),
+        pytest.param(4, id="bn_depth=4"),
+    ],
 )
 @pytest.mark.parametrize(
     "conv,rank",
@@ -66,7 +74,15 @@ def test_checkpoint(torch, conv, rank, checkpoint, mocker):
     spy = mocker.spy(torch.utils.checkpoint, "checkpoint")
     shape = (16,) * rank
     input = torch.ones(1, 16, *shape)
-    layer = conv(16, 16, 3, bn_depth=None, bn_spatial=None, repeats=1, checkpoint=checkpoint,)
+    layer = conv(
+        16,
+        16,
+        3,
+        bn_depth=None,
+        bn_spatial=None,
+        repeats=1,
+        checkpoint=checkpoint,
+    )
     output = layer(input)
     if checkpoint:
         spy.assert_called()

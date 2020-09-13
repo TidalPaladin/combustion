@@ -37,7 +37,11 @@ class TestInput:
         func.assert_called_once()
 
     @pytest.mark.parametrize(
-        "shape,names", [pytest.param((4,), ("A",), id="dim=1"), pytest.param((4, 5), ("A", "B"), id="dim=2"),],
+        "shape,names",
+        [
+            pytest.param((4,), ("A",), id="dim=1"),
+            pytest.param((4, 5), ("A", "B"), id="dim=2"),
+        ],
     )
     def test_drop_names(self, func, shape, names, torch):
         tensor = torch.ones(*shape, names=names)
@@ -54,7 +58,11 @@ class TestInput:
             pytest.param((4, 5), (None, "B"), ("A", "B"), id="None,B->A,B"),
             pytest.param((4, 5), (None, None), ("A", "B"), id="None,None->A,B"),
             pytest.param(
-                (4, 5), (None, "C"), ("A", "B"), marks=pytest.mark.xfail(raises=ValueError), id="None,C->A,B",
+                (4, 5),
+                (None, "C"),
+                ("A", "B"),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="None,C->A,B",
             ),
         ],
     )
@@ -70,14 +78,39 @@ class TestInput:
         [
             pytest.param((4,), (4,), id="4,->4,"),
             pytest.param((None,), (4,), id="None,->4,"),
-            pytest.param((4,), (3,), marks=pytest.mark.xfail(raises=ValueError), id="4,->3,",),
+            pytest.param(
+                (4,),
+                (3,),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="4,->3,",
+            ),
             pytest.param((4, 5), (4, 5), id="4,5->4,5"),
-            pytest.param((4, 5), (4, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->4,4",),
-            pytest.param((4, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->5,4",),
+            pytest.param(
+                (4, 5),
+                (4, 4),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="4,5->4,4",
+            ),
+            pytest.param(
+                (4, 5),
+                (5, 4),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="4,5->5,4",
+            ),
             pytest.param((None, 5), (4, 5), id="None,5->4,5"),
             pytest.param((None, None), (4, 4), id="None,None->4,4"),
-            pytest.param((None, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="None,5->None,4",),
-            pytest.param((4, None), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,None->5,4",),
+            pytest.param(
+                (None, 5),
+                (5, 4),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="None,5->None,4",
+            ),
+            pytest.param(
+                (4, None),
+                (5, 4),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="4,None->5,4",
+            ),
         ],
     )
     def test_validates_shape(self, func, pre, post, torch):
@@ -156,7 +189,11 @@ class TestOutput:
             pytest.param((4, 5), (None, "B"), ("A", "B"), id="None,B->A,B"),
             pytest.param((4, 5), (None, None), ("A", "B"), id="None,None->A,B"),
             pytest.param(
-                (4, 5), (None, "C"), ("A", "B"), marks=pytest.mark.xfail(raises=ValueError), id="None,C->A,B",
+                (4, 5),
+                (None, "C"),
+                ("A", "B"),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="None,C->A,B",
             ),
         ],
     )
@@ -175,14 +212,39 @@ class TestOutput:
         [
             pytest.param((4,), (4,), id="4,->4,"),
             pytest.param((None,), (4,), id="None,->4,"),
-            pytest.param((4,), (3,), marks=pytest.mark.xfail(raises=ValueError), id="4,->3,",),
+            pytest.param(
+                (4,),
+                (3,),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="4,->3,",
+            ),
             pytest.param((4, 5), (4, 5), id="4,5->4,5"),
-            pytest.param((4, 5), (4, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->4,4",),
-            pytest.param((4, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,5->5,4",),
+            pytest.param(
+                (4, 5),
+                (4, 4),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="4,5->4,4",
+            ),
+            pytest.param(
+                (4, 5),
+                (5, 4),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="4,5->5,4",
+            ),
             pytest.param((None, 5), (4, 5), id="None,5->4,5"),
             pytest.param((None, None), (4, 4), id="None,None->4,4"),
-            pytest.param((None, 5), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="None,5->None,4",),
-            pytest.param((4, None), (5, 4), marks=pytest.mark.xfail(raises=ValueError), id="4,None->5,4",),
+            pytest.param(
+                (None, 5),
+                (5, 4),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="None,5->None,4",
+            ),
+            pytest.param(
+                (4, None),
+                (5, 4),
+                marks=pytest.mark.xfail(raises=ValueError),
+                id="4,None->5,4",
+            ),
         ],
     )
     def test_validates_shape(self, pre, post, torch):

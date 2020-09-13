@@ -7,9 +7,25 @@ from combustion.vision import nms
 
 
 def test_nms_batched():
-    boxes = torch.tensor([[0, 0, 10, 10], [1, 1, 11, 11], [10, 10, 20, 20],]).unsqueeze(0).float()
+    boxes = (
+        torch.tensor(
+            [
+                [0, 0, 10, 10],
+                [1, 1, 11, 11],
+                [10, 10, 20, 20],
+            ]
+        )
+        .unsqueeze(0)
+        .float()
+    )
 
-    scores = torch.tensor([0.1, 0.5, 0.05,]).unsqueeze(0)
+    scores = torch.tensor(
+        [
+            0.1,
+            0.5,
+            0.05,
+        ]
+    ).unsqueeze(0)
 
     indices = nms(boxes, scores, 0.5)
 
@@ -28,9 +44,21 @@ def test_nms_batched():
 
 
 def test_nms_unbatched():
-    boxes = torch.tensor([[0, 0, 10, 10], [1, 1, 11, 11], [10, 10, 20, 20],]).float()
+    boxes = torch.tensor(
+        [
+            [0, 0, 10, 10],
+            [1, 1, 11, 11],
+            [10, 10, 20, 20],
+        ]
+    ).float()
 
-    scores = torch.tensor([0.1, 0.5, 0.05,])
+    scores = torch.tensor(
+        [
+            0.1,
+            0.5,
+            0.05,
+        ]
+    )
 
     indices = nms(boxes, scores, 0.5)
 
@@ -38,4 +66,9 @@ def test_nms_unbatched():
 
     nms_boxes, nms_scores = boxes[indices], scores[indices]
     assert torch.allclose(nms_boxes, boxes[(1, 2), :])
-    assert torch.allclose(nms_scores, scores[(1, 2),])
+    assert torch.allclose(
+        nms_scores,
+        scores[
+            (1, 2),
+        ],
+    )

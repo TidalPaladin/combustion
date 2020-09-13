@@ -32,7 +32,13 @@ from combustion.nn.functional import fourier_conv2d
         pytest.param((2, 1), id="pad=(2, 1)"),
     ],
 )
-@pytest.mark.parametrize("bias", [pytest.param(False, id="bias=False"), pytest.param(True, id="bias=True"),])
+@pytest.mark.parametrize(
+    "bias",
+    [
+        pytest.param(False, id="bias=False"),
+        pytest.param(True, id="bias=True"),
+    ],
+)
 def test_conv2d(kernel_size, stride, padding, bias):
     torch.random.manual_seed(42)
     inputs = torch.rand(1, 1, 9, 9)

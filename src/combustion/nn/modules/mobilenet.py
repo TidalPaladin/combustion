@@ -109,7 +109,13 @@ class _MobileNetConvBlockNd(nn.Module):
 
         # Pointwise convolution phase
         final_out_filter = self._output_filters
-        pointwise = self.Conv(out_filter, final_out_filter, kernel_size=1, bias=False, padding_mode=padding_mode,)
+        pointwise = self.Conv(
+            out_filter,
+            final_out_filter,
+            kernel_size=1,
+            bias=False,
+            padding_mode=padding_mode,
+        )
         self.pointwise_conv = nn.Sequential(
             pointwise, self.BatchNorm(final_out_filter, momentum=self._bn_momentum, eps=self._bn_epsilon), HardSwish()
         )

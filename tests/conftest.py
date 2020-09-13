@@ -57,13 +57,22 @@ def np():
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--tf", action="store_true", default=False, help="run tests requiring tensorflow",
+        "--tf",
+        action="store_true",
+        default=False,
+        help="run tests requiring tensorflow",
     )
     parser.addoption(
-        "--torch", action="store_true", default=False, help="run tests requiring pytorch",
+        "--torch",
+        action="store_true",
+        default=False,
+        help="run tests requiring pytorch",
     )
     parser.addoption(
-        "--all", action="store_true", default=False, help="run all tests including torch/tf",
+        "--all",
+        action="store_true",
+        default=False,
+        help="run all tests including torch/tf",
     )
 
 

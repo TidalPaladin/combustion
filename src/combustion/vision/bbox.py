@@ -104,7 +104,11 @@ def visualize_bbox(
 
             # bounding box
             cv2.rectangle(
-                img, (x_min, y_min), (x_max, y_max), box_color, thickness,
+                img,
+                (x_min, y_min),
+                (x_max, y_max),
+                box_color,
+                thickness,
             )
 
             if label is not None:

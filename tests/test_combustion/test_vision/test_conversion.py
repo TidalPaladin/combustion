@@ -13,7 +13,11 @@ class TestTo8bit:
         return request.param
 
     @pytest.fixture(
-        params=[(3, 32, 32), (1, 32, 32), (2, 1, 32, 32),]
+        params=[
+            (3, 32, 32),
+            (1, 32, 32),
+            (2, 1, 32, 32),
+        ]
     )
     def shape(self, request):
         return request.param
@@ -64,7 +68,12 @@ class TestTo8bit:
 
     @pytest.mark.parametrize("per_channel", [True, False])
     def test_known_input_per_channel_result(self, per_channel):
-        input = torch.tensor([[[0, 1000], [1001, 2000]], [[0, 500], [500, 1000]],]).long()
+        input = torch.tensor(
+            [
+                [[0, 1000], [1001, 2000]],
+                [[0, 500], [500, 1000]],
+            ]
+        ).long()
 
         if per_channel:
             expected = torch.tensor([[[0, 128], [128, 255]], [[0, 128], [128, 255]]]).byte()
@@ -84,11 +93,32 @@ class TestTo8bit:
     @pytest.mark.parametrize(
         "same_on_batch, expected",
         [
-            pytest.param(True, torch.tensor([[[[0, 170], [170, 255]]], [[[85, 212], [170, 255]]],]).byte()),
-            pytest.param(False, torch.tensor([[[[0, 170], [170, 255]]], [[[0, 191], [128, 255]]],]).byte()),
+            pytest.param(
+                True,
+                torch.tensor(
+                    [
+                        [[[0, 170], [170, 255]]],
+                        [[[85, 212], [170, 255]]],
+                    ]
+                ).byte(),
+            ),
+            pytest.param(
+                False,
+                torch.tensor(
+                    [
+                        [[[0, 170], [170, 255]]],
+                        [[[0, 191], [128, 255]]],
+                    ]
+                ).byte(),
+            ),
         ],
     )
     def test_batched_input(self, same_on_batch, expected):
-        input = torch.tensor([[[[-2.0, 0.0], [0.0, 1.0]]], [[[-1.0, 0.5], [0.0, 1.0]]],])
+        input = torch.tensor(
+            [
+                [[[-2.0, 0.0], [0.0, 1.0]]],
+                [[[-1.0, 0.5], [0.0, 1.0]]],
+            ]
+        )
         result = to_8bit(input, per_channel=True, same_on_batch=same_on_batch)
         assert torch.allclose(result, expected)

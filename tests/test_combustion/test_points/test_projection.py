@@ -28,7 +28,15 @@ class TestProjectionMaskFunctional:
 
     def test_mask_trivial(self):
         coords = (
-            torch.tensor([[0.0, 0.0, 0.0], [1.1, 1.1, 0.0], [1.1, 1.1, 2.0], [0.0, 10.0, 0.0], [10, 10, 0.0],])
+            torch.tensor(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.1, 1.1, 0.0],
+                    [1.1, 1.1, 2.0],
+                    [0.0, 10.0, 0.0],
+                    [10, 10, 0.0],
+                ]
+            )
             .float()
             .sub(5)
         )
@@ -58,7 +66,12 @@ class TestProjectionMaskFunctional:
             pytest.skip("not implemented")
         torch.random.manual_seed(42)
         coords = torch.randint(-1, 2, (1000, 3)).float()
-        new = torch.tensor([[2, 1, 0], [1, 2, 0],]).type_as(coords)
+        new = torch.tensor(
+            [
+                [2, 1, 0],
+                [1, 2, 0],
+            ]
+        ).type_as(coords)
         coords = torch.cat([coords, new], dim=0)
 
         mask = projection_mask(coords, 1.0, (5, 5), padding_mode=padding_mode)

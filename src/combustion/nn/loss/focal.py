@@ -181,7 +181,12 @@ class _FocalLoss(nn.Module):
 
     @classmethod
     def from_args(cls, args):
-        return cls(args.focal_gamma, args.focal_alpha, args.focal_smoothing, args.reduction,)
+        return cls(
+            args.focal_gamma,
+            args.focal_alpha,
+            args.focal_smoothing,
+            args.reduction,
+        )
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         """forward Calculate smoothed MSE loss between input and target.

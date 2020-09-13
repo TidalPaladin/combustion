@@ -15,7 +15,15 @@ def image(request):
 
 
 @pytest.fixture(
-    params=[pytest.param([1,], id="levels=1"), pytest.param([2, 3], id="levels=2,3"),]
+    params=[
+        pytest.param(
+            [
+                1,
+            ],
+            id="levels=1",
+        ),
+        pytest.param([2, 3], id="levels=2,3"),
+    ]
 )
 def levels(request):
     return request.param
@@ -47,7 +55,13 @@ def test_num_anchors_genreated():
 
 def test_clip_boxes(image):
     boxes = (
-        torch.tensor([[0, 10, 10, 20], [-10, 10, 20, image.shape[-1] + 1], [0, 10, image.shape[-2] + 1, 20],])
+        torch.tensor(
+            [
+                [0, 10, 10, 20],
+                [-10, 10, 20, image.shape[-1] + 1],
+                [0, 10, image.shape[-2] + 1, 20],
+            ]
+        )
         .unsqueeze(0)
         .type_as(image)
     )

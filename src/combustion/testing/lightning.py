@@ -214,7 +214,11 @@ class LightningModuleTest:
     @cuda_or_skip
     @pytest.mark.usefixtures("prepare_data")
     @pytest.mark.parametrize(
-        "distributed", [pytest.param(True, id="distributed"), pytest.param(False, id="non-distributed"),]
+        "distributed",
+        [
+            pytest.param(True, id="distributed"),
+            pytest.param(False, id="non-distributed"),
+        ],
     )
     def test_training_step(self, model: pl.LightningModule, distributed: bool):
         r"""Runs a training step based on the data returned from ``model.train_dataloader()``.

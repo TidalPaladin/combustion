@@ -8,7 +8,10 @@ from combustion.vision import visualize_bbox
 
 
 @pytest.fixture(
-    params=[(1, 32, 32), (32, 32),]
+    params=[
+        (1, 32, 32),
+        (32, 32),
+    ]
 )
 def img_shape(request):
     return request.param

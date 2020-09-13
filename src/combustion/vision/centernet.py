@@ -217,7 +217,10 @@ class PointsToAnchors:
     """
 
     def __init__(
-        self, upsample: int, max_roi: int, threshold: float = 0.0,
+        self,
+        upsample: int,
+        max_roi: int,
+        threshold: float = 0.0,
     ):
         self.max_roi = int(max_roi)
         self.upsample = int(upsample)

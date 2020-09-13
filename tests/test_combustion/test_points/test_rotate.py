@@ -38,7 +38,11 @@ class TestRotateFunctional:
 
     @pytest.mark.parametrize("batched", [pytest.param(True, id="batched"), pytest.param(False, id="unbatched")])
     def test_rotate_point_at_origin(self, batched):
-        x, y, z, = 0.5, 0.23, 0.1
+        x, y, z, = (
+            0.5,
+            0.23,
+            0.1,
+        )
         if batched:
             coords = torch.zeros(1, 10, 3).float()
         else:
@@ -60,7 +64,13 @@ class TestRotateFunctional:
         ],
     )
     def test_rotated_points(self, x, y, z, batched, degrees):
-        coords = torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1],]).float()
+        coords = torch.tensor(
+            [
+                [1, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+            ]
+        ).float()
 
         if not degrees:
             x, y, z = radians(x), radians(y), radians(z)
@@ -156,7 +166,11 @@ class TestRandomRotateFunctional:
 
     @pytest.mark.parametrize("batched", [pytest.param(True, id="batched"), pytest.param(False, id="unbatched")])
     def test_rotate_point_at_origin(self, batched):
-        x, y, z, = ((0.0, 1.0),) * 3
+        (
+            x,
+            y,
+            z,
+        ) = ((0.0, 1.0),) * 3
         if batched:
             coords = torch.zeros(1, 10, 3).float()
         else:
@@ -177,7 +191,13 @@ class TestRandomRotateFunctional:
         ],
     )
     def test_matches_rotate_fixed_range(self, x, y, z, batched, degrees):
-        coords = torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1],]).float()
+        coords = torch.tensor(
+            [
+                [1, 0, 0],
+                [0, 1, 0],
+                [0, 0, 1],
+            ]
+        ).float()
         if not degrees:
             x, y, z = radians(x), radians(y), radians(z)
         expected = rotate(coords, x, y, z, degrees)

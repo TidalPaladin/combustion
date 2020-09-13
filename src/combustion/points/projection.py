@@ -13,7 +13,9 @@ from combustion.points import center_crop
 
 @torch.jit.script
 def projection_mapping(
-    coords: Tensor, resolution: float = 1.0, image_size: Optional[Tuple[int, int]] = None,
+    coords: Tensor,
+    resolution: float = 1.0,
+    image_size: Optional[Tuple[int, int]] = None,
 ) -> Tuple[Tensor, Tensor, Tuple[int, int]]:
     r"""Performs a parallel projection of Cartesian coordinates at a given resolution, computing a mapping of each
     3D point to a 2D pixel. Returns a mapping of points within the image area to height and witdth pixel coordinates,

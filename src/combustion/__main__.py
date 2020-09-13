@@ -192,7 +192,11 @@ def initialize(config_path: str, config_name: str, caller_stack_depth: int = 1) 
     # use compose api to inspect multirun values
     with hydra.experimental.initialize(config_path, caller_stack_depth=caller_stack_depth):
         assert gh.hydra is not None
-        cfg = gh.hydra.compose_config(config_name=config_name, overrides=overrides, run_mode=RunMode.MULTIRUN,)
+        cfg = gh.hydra.compose_config(
+            config_name=config_name,
+            overrides=overrides,
+            run_mode=RunMode.MULTIRUN,
+        )
         assert isinstance(cfg, DictConfig)
 
         if "sweeper" in cfg.keys() and cfg.sweeper:
@@ -207,7 +211,13 @@ def initialize(config_path: str, config_name: str, caller_stack_depth: int = 1) 
 
     # append key value pairs in sweeper config to sys.argv
     overrides = [f"{key}={value}" for key, value in overrides_dict.items()]
-    sys.argv = [sys.argv[0],] + flags + overrides
+    sys.argv = (
+        [
+            sys.argv[0],
+        ]
+        + flags
+        + overrides
+    )
 
 
 # accepts options from the yaml config file

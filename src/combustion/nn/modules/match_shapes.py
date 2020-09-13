@@ -238,8 +238,12 @@ class MatchShapes(nn.Module):
         tensor_shape = tensor.shape[2:]
         spatial_shape = shape[2:]
 
-        tensor_padding: List[int] = [0,] * (2 * len(tensor_shape))
-        second_padding: List[int] = [0,] * (2 * len(spatial_shape))
+        tensor_padding: List[int] = [
+            0,
+        ] * (2 * len(tensor_shape))
+        second_padding: List[int] = [
+            0,
+        ] * (2 * len(spatial_shape))
         has_padding = False
 
         self._warn_on_extreme_change(tensor, shape)

@@ -39,7 +39,11 @@ class ConfusionMatrixIoU:
             raise ValueError("Expected iou_threshold > 0")
 
     def __call__(
-        self, pred_boxes: Tensor, pred_classes: Tensor, true_boxes: Tensor, true_classes: Tensor,
+        self,
+        pred_boxes: Tensor,
+        pred_classes: Tensor,
+        true_boxes: Tensor,
+        true_classes: Tensor,
     ) -> Tuple[Tensor, Tensor]:
         self._validate_inputs(pred_boxes, pred_classes, true_boxes, true_classes)
 
@@ -76,7 +80,13 @@ class ConfusionMatrixIoU:
         fn[final_mapping[..., 1]] = False
         return tp, fn
 
-    def _get_ious(self, pred_boxes: Tensor, pred_classes: Tensor, true_boxes: Tensor, true_classes: Tensor,) -> Tensor:
+    def _get_ious(
+        self,
+        pred_boxes: Tensor,
+        pred_classes: Tensor,
+        true_boxes: Tensor,
+        true_classes: Tensor,
+    ) -> Tensor:
         box_dim = -2
         num_pred_boxes = pred_boxes.shape[box_dim]
         num_true_boxes = true_boxes.shape[box_dim]
@@ -120,7 +130,9 @@ class ConfusionMatrixIoU:
         true_num_boxes = true_boxes.shape[box_dim]
 
         last_dims = [4, 1, 4, 1]
-        num_boxes = [pred_num_boxes,] * 2 + [true_num_boxes,] * 2
+        num_boxes = [pred_num_boxes,] * 2 + [
+            true_num_boxes,
+        ] * 2
 
         for name, tensor, last_dim, num_box in zip(names, tensors, last_dims, num_boxes):
             if not tensor.shape[box_dim] == num_box:
@@ -163,7 +175,12 @@ class BinaryLabelIoU(ConfusionMatrixIoU):
         super().__init__(iou_threshold)
 
     def __call__(
-        self, pred_boxes: Tensor, pred_scores: Tensor, pred_classes: Tensor, true_boxes: Tensor, true_classes: Tensor,
+        self,
+        pred_boxes: Tensor,
+        pred_scores: Tensor,
+        pred_classes: Tensor,
+        true_boxes: Tensor,
+        true_classes: Tensor,
     ) -> Tuple[Tensor, Tensor]:
         tp, fn = super().__call__(pred_boxes, pred_classes, true_boxes, true_classes)
 

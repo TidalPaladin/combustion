@@ -58,7 +58,13 @@ def cfg(torch):
     pytest.importorskip("torchvision")
     omegaconf = pytest.importorskip("omegaconf")
     cfg = {
-        "optimizer": {"name": "adam", "_target_": "torch.optim.Adam", "params": {"lr": 0.002,},},
+        "optimizer": {
+            "name": "adam",
+            "_target_": "torch.optim.Adam",
+            "params": {
+                "lr": 0.002,
+            },
+        },
         "model": {
             "_target_": TrainTestValidateModel.__module__ + ".TrainTestValidateModel",
             "params": {
@@ -114,7 +120,12 @@ def cfg(torch):
                 },
             },
         },
-        "trainer": {"_target_": "pytorch_lightning.Trainer", "params": {"fast_dev_run": True,}},
+        "trainer": {
+            "_target_": "pytorch_lightning.Trainer",
+            "params": {
+                "fast_dev_run": True,
+            },
+        },
     }
     return omegaconf.DictConfig(cfg)
 
@@ -257,8 +268,20 @@ def test_recursive_instantiate_list(hydra, key):
     cfg = {
         key: "torch.nn.Sequential",
         "params": [
-            {key: "torch.nn.Linear", "params": {"in_features": 10, "out_features": 10,}},
-            {key: "torch.nn.Linear", "params": {"in_features": 10, "out_features": 10,}},
+            {
+                key: "torch.nn.Linear",
+                "params": {
+                    "in_features": 10,
+                    "out_features": 10,
+                },
+            },
+            {
+                key: "torch.nn.Linear",
+                "params": {
+                    "in_features": 10,
+                    "out_features": 10,
+                },
+            },
         ],
     }
 
@@ -372,7 +395,13 @@ def test_dataloader_from_subset(cfg, subset, split):
         assert getattr(dataloader, key) == getattr(train_dl, key)
 
 
-@pytest.mark.parametrize("dim", [pytest.param(0, id="dim=0"), pytest.param(-3, id="dim=-3"),])
+@pytest.mark.parametrize(
+    "dim",
+    [
+        pytest.param(0, id="dim=0"),
+        pytest.param(-3, id="dim=-3"),
+    ],
+)
 @pytest.mark.parametrize(
     "num_examples",
     [
@@ -381,7 +410,13 @@ def test_dataloader_from_subset(cfg, subset, split):
         pytest.param("all", id="num_examples=all"),
     ],
 )
-@pytest.mark.parametrize("index", [pytest.param(0, id="index=0"), pytest.param(-2, id="index=-2"),])
+@pytest.mark.parametrize(
+    "index",
+    [
+        pytest.param(0, id="index=0"),
+        pytest.param(-2, id="index=-2"),
+    ],
+)
 def test_get_train_ds_statistics(cfg, dim, num_examples, index):
     cfg.dataset["stats_sample_size"] = num_examples
     cfg.dataset["stats_dim"] = dim
@@ -401,7 +436,14 @@ def test_get_train_ds_statistics(cfg, dim, num_examples, index):
             assert not hasattr(model, attr)
 
 
-@pytest.mark.parametrize("index", [pytest.param(10), pytest.param(4), pytest.param(-4),])
+@pytest.mark.parametrize(
+    "index",
+    [
+        pytest.param(10),
+        pytest.param(4),
+        pytest.param(-4),
+    ],
+)
 def test_get_train_ds_statistics_index_error_handling(cfg, index):
     cfg.dataset["stats_index"] = index
     model = HydraMixin.instantiate(cfg.model, cfg)
@@ -409,7 +451,13 @@ def test_get_train_ds_statistics_index_error_handling(cfg, index):
         model.get_datasets()
 
 
-@pytest.mark.parametrize("dim", [pytest.param(10), pytest.param(-10),])
+@pytest.mark.parametrize(
+    "dim",
+    [
+        pytest.param(10),
+        pytest.param(-10),
+    ],
+)
 def test_get_train_ds_statistics_dim_error_handling(cfg, dim):
     cfg.dataset["stats_dim"] = dim
     model = HydraMixin.instantiate(cfg.model, cfg)
@@ -418,7 +466,11 @@ def test_get_train_ds_statistics_dim_error_handling(cfg, dim):
 
 
 @pytest.mark.parametrize(
-    "num_examples", [pytest.param("BAD"), pytest.param(-1),],
+    "num_examples",
+    [
+        pytest.param("BAD"),
+        pytest.param(-1),
+    ],
 )
 def test_get_train_ds_statistics_num_examples_error_handling(cfg, num_examples):
     cfg.dataset["stats_sample_size"] = num_examples

@@ -135,7 +135,7 @@ class SqueezeExcite2d(_SqueezeExcite):
         https://arxiv.org/abs/1709.01507
 
     .. _Searching for MobileNetV3:
-        https://arxiv.org/abs/1905.02244 """
+        https://arxiv.org/abs/1905.02244"""
 
     def _get_pool(self):
         return nn.AdaptiveAvgPool2d(output_size=(1, 1))

@@ -175,12 +175,26 @@ class _ConvNd(Module):
             )
         else:
             return self._conv(
-                input, self.pointwise, self.spatial, None, self.stride, padding, self.dilation, self.groups,
+                input,
+                self.pointwise,
+                self.spatial,
+                None,
+                self.stride,
+                padding,
+                self.dilation,
+                self.groups,
             )
 
 
 def conv1d(
-    input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1, groups=1,
+    input,
+    pointwise,
+    spatial,
+    bias=None,
+    stride=1,
+    padding=0,
+    dilation=1,
+    groups=1,
 ):
     if not isinstance(spatial, Tensor):
         spatial = spatial[0]
@@ -193,7 +207,14 @@ def conv1d(
 
 
 def conv2d(
-    input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1, groups=1,
+    input,
+    pointwise,
+    spatial,
+    bias=None,
+    stride=1,
+    padding=0,
+    dilation=1,
+    groups=1,
 ):
     stride = double(stride)
     padding = double(padding)
@@ -208,7 +229,14 @@ def conv2d(
 
 
 def conv3d(
-    input, pointwise, spatial, bias=None, stride=1, padding=0, dilation=1, groups=1,
+    input,
+    pointwise,
+    spatial,
+    bias=None,
+    stride=1,
+    padding=0,
+    dilation=1,
+    groups=1,
 ):
     stride = triple(stride)
     padding = triple(padding)
@@ -223,7 +251,15 @@ def conv3d(
 
 
 def conv_transpose1d(
-    input, pointwise, spatial, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1,
+    input,
+    pointwise,
+    spatial,
+    bias=None,
+    stride=1,
+    padding=0,
+    output_padding=0,
+    groups=1,
+    dilation=1,
 ):
     if not isinstance(spatial, Tensor):
         spatial = spatial[0]
@@ -237,7 +273,15 @@ def conv_transpose1d(
 
 
 def conv_transpose2d(
-    input, pointwise, spatial, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1,
+    input,
+    pointwise,
+    spatial,
+    bias=None,
+    stride=1,
+    padding=0,
+    output_padding=0,
+    groups=1,
+    dilation=1,
 ):
     stride = double(stride)
     padding = double(padding)
@@ -254,7 +298,15 @@ def conv_transpose2d(
 
 
 def conv_transpose3d(
-    input, pointwise, spatial, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1,
+    input,
+    pointwise,
+    spatial,
+    bias=None,
+    stride=1,
+    padding=0,
+    output_padding=0,
+    groups=1,
+    dilation=1,
 ):
     stride = triple(stride)
     padding = triple(padding)
@@ -323,7 +375,16 @@ class Conv3d(_ConvNd, metaclass=FactorizedMeta):
         padding_mode="zeros",
     ):
         super(Conv3d, self).__init__(
-            in_channels, out_channels, kernel_size, stride, padding, dilation, 0, groups, bias, padding_mode,
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            0,
+            groups,
+            bias,
+            padding_mode,
         )
 
     def forward(self, input):
@@ -375,7 +436,16 @@ class Conv2d(_ConvNd, metaclass=FactorizedMeta):
         padding_mode="zeros",
     ):
         super(Conv2d, self).__init__(
-            in_channels, out_channels, kernel_size, stride, padding, dilation, 0, groups, bias, padding_mode,
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            0,
+            groups,
+            bias,
+            padding_mode,
         )
 
     def forward(self, input):
@@ -427,7 +497,16 @@ class Conv1d(_ConvNd, metaclass=FactorizedMeta):
         padding_mode="zeros",
     ):
         super(Conv1d, self).__init__(
-            in_channels, out_channels, kernel_size, stride, padding, dilation, 0, groups, bias, padding_mode,
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            0,
+            groups,
+            bias,
+            padding_mode,
         )
 
     def forward(self, input):

@@ -8,9 +8,22 @@ from combustion.vision import BinaryLabelIoU, ConfusionMatrixIoU
 
 class TestConfusionMatrixIoU:
     def test_basic(self):
-        pred_box = torch.tensor([[1, 1, 4, 4], [2, 2, 5, 5], [1, 1, 2, 2],]).float()
+        pred_box = torch.tensor(
+            [
+                [1, 1, 4, 4],
+                [2, 2, 5, 5],
+                [1, 1, 2, 2],
+            ]
+        ).float()
         true_box = torch.tensor(
-            [[1, 1, 20, 20], [2, 2, 4.5, 4.5], [2, 2, 4, 4], [0, 0, 2, 2], [3, 3, 5, 5], [0.9, 0.9, 1.9, 1.9],]
+            [
+                [1, 1, 20, 20],
+                [2, 2, 4.5, 4.5],
+                [2, 2, 4, 4],
+                [0, 0, 2, 2],
+                [3, 3, 5, 5],
+                [0.9, 0.9, 1.9, 1.9],
+            ]
         ).float()
         pred_cls = torch.tensor([0, 1, 1]).unsqueeze(-1)
         true_cls = torch.tensor([1, 1, 0, 0, 1, 0]).unsqueeze(-1)
@@ -22,10 +35,23 @@ class TestConfusionMatrixIoU:
 
     def test_excludes_duplicate_tp(self):
         pred_box = torch.tensor(
-            [[1, 1, 4, 4], [2, 2, 5, 5], [1, 1, 2, 2], [2, 2, 4.1, 4.1], [2, 2, 4.2, 4.2],],
+            [
+                [1, 1, 4, 4],
+                [2, 2, 5, 5],
+                [1, 1, 2, 2],
+                [2, 2, 4.1, 4.1],
+                [2, 2, 4.2, 4.2],
+            ],
         ).float()
         true_box = torch.tensor(
-            [[1, 1, 20, 20], [2, 2, 4.5, 4.5], [2, 2, 4, 4], [0, 0, 2, 2], [3, 3, 5, 5], [0.9, 0.9, 1.9, 1.9],]
+            [
+                [1, 1, 20, 20],
+                [2, 2, 4.5, 4.5],
+                [2, 2, 4, 4],
+                [0, 0, 2, 2],
+                [3, 3, 5, 5],
+                [0.9, 0.9, 1.9, 1.9],
+            ]
         ).float()
         pred_cls = torch.tensor([0, 1, 1, 0, 0]).unsqueeze(-1)
         true_cls = torch.tensor([1, 1, 0, 0, 1, 0]).unsqueeze(-1)
@@ -40,10 +66,23 @@ class TestConfusionMatrixIoU:
 class TestBinaryLabelIoU:
     def test_basic(self):
         pred_box = torch.tensor(
-            [[1, 1, 4, 4], [2, 2, 5, 5], [1, 1, 2, 2], [2, 2, 4.1, 4.1], [2, 2, 4.2, 4.2],],
+            [
+                [1, 1, 4, 4],
+                [2, 2, 5, 5],
+                [1, 1, 2, 2],
+                [2, 2, 4.1, 4.1],
+                [2, 2, 4.2, 4.2],
+            ],
         ).float()
         true_box = torch.tensor(
-            [[1, 1, 20, 20], [2, 2, 4.5, 4.5], [2, 2, 4, 4], [0, 0, 2, 2], [3, 3, 5, 5], [0.9, 0.9, 1.9, 1.9],]
+            [
+                [1, 1, 20, 20],
+                [2, 2, 4.5, 4.5],
+                [2, 2, 4, 4],
+                [0, 0, 2, 2],
+                [3, 3, 5, 5],
+                [0.9, 0.9, 1.9, 1.9],
+            ]
         ).float()
         pred_cls = torch.tensor([0, 1, 1, 0, 0]).unsqueeze(-1)
         pred_score = torch.tensor([0.5, 0.25, 0.75, 0.001, 0.2]).unsqueeze(-1)

@@ -24,7 +24,12 @@ def stride(request):
 
 
 @pytest.fixture(
-    params=[pytest.param("constant"), pytest.param("reflect"), pytest.param("replicate"), pytest.param("circular"),]
+    params=[
+        pytest.param("constant"),
+        pytest.param("reflect"),
+        pytest.param("replicate"),
+        pytest.param("circular"),
+    ]
 )
 def padding_mode(request):
     return request.param
@@ -50,7 +55,14 @@ def test_construct_overrides(base_module, padding_mode, kernel_size, stride):
     DynamicSamePad(base_module, padding_mode, kernel_size=kernel_size, stride=stride)
 
 
-@pytest.mark.parametrize("shape", [(32, 32), (9, 9), (11, 11),])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (32, 32),
+        (9, 9),
+        (11, 11),
+    ],
+)
 @pytest.mark.parametrize("override", [True, False])
 def test_forward(padding_mode, kernel_size, stride, shape, override):
     base_module = nn.Conv2d(1, 1, kernel_size, stride=stride)
@@ -95,7 +107,14 @@ class TestDynamicSamePadPatch:
         )
         return _
 
-    @pytest.mark.parametrize("shape", [(11, 11), (8, 8), (12, 12),])
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (11, 11),
+            (8, 8),
+            (12, 12),
+        ],
+    )
     def test_patch(self, module, shape):
         torch.random.manual_seed(42)
         inputs = torch.rand(1, 1, *shape)
@@ -136,7 +155,11 @@ class TestMatchShapes(TorchScriptTestMixin):
 
     @pytest.mark.parametrize("strategy", ["crop", "pad"])
     @pytest.mark.parametrize(
-        "shape1,shape2", [pytest.param((5, 5), (10, 10), id="case1"), pytest.param((10, 10), (5, 5), id="case2"),],
+        "shape1,shape2",
+        [
+            pytest.param((5, 5), (10, 10), id="case1"),
+            pytest.param((10, 10), (5, 5), id="case2"),
+        ],
     )
     def test_warns_on_major_resize(self, shape1, shape2, strategy):
         torch.random.manual_seed(42)

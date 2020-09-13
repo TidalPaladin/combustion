@@ -27,7 +27,11 @@ class TestDropConnect(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         return layer
 
     @pytest.fixture(
-        params=[pytest.param(1, id="1d"), pytest.param(2, id="2d"), pytest.param(3, id="3d"),]
+        params=[
+            pytest.param(1, id="1d"),
+            pytest.param(2, id="2d"),
+            pytest.param(3, id="3d"),
+        ]
     )
     def data(self, request, batch_size):
         torch.random.manual_seed(42)

@@ -15,7 +15,10 @@ def input(torch):
 
 
 @pytest.fixture(
-    params=[pytest.param(True, id="factorized"), pytest.param(False, id="nonfactorized"),]
+    params=[
+        pytest.param(True, id="factorized"),
+        pytest.param(False, id="nonfactorized"),
+    ]
 )
 def factorized(request):
     return request.param
@@ -60,16 +63,33 @@ def test_repeats(torch, input, factorized):
 
 @pytest.mark.parametrize(
     "bn_spatial",
-    [pytest.param(None, id="bn_spatial=None"), pytest.param(2, id="bn_spatial=2"), pytest.param(4, id="bn_spatial=4"),],
+    [
+        pytest.param(None, id="bn_spatial=None"),
+        pytest.param(2, id="bn_spatial=2"),
+        pytest.param(4, id="bn_spatial=4"),
+    ],
 )
 @pytest.mark.parametrize(
     "bn_depth",
-    [pytest.param(None, id="bn_depth=None"), pytest.param(2, id="bn_depth=2"), pytest.param(4, id="bn_depth=4"),],
+    [
+        pytest.param(None, id="bn_depth=None"),
+        pytest.param(2, id="bn_depth=2"),
+        pytest.param(4, id="bn_depth=4"),
+    ],
 )
 def test_bottleneck(torch, input, factorized, bn_depth, bn_spatial):
     expected_shape = (1, 3, 16, 16, 16)
     layer = UpSample3d(
-        6, 3, 3, 2, factorized=factorized, stride=2, padding=0, repeats=1, bn_spatial=bn_spatial, bn_depth=bn_depth,
+        6,
+        3,
+        3,
+        2,
+        factorized=factorized,
+        stride=2,
+        padding=0,
+        repeats=1,
+        bn_spatial=bn_spatial,
+        bn_depth=bn_depth,
     )
     output, _ = layer(input)
     assert output.shape == expected_shape

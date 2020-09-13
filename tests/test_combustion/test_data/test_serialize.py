@@ -183,7 +183,11 @@ class TestSerialize:
 
     @pytest.mark.ci_skip
     @pytest.mark.parametrize(
-        "num_workers", [pytest.param(1), pytest.param(4, marks=pytest.mark.xfail(reason="parallel hdf5")),],
+        "num_workers",
+        [
+            pytest.param(1),
+            pytest.param(4, marks=pytest.mark.xfail(reason="parallel hdf5")),
+        ],
     )
     def test_dataloader(self, h5py, torch, tmp_path, dataset, input_file, data, num_workers):
         path = input_file

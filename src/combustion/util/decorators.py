@@ -39,7 +39,9 @@ def input(
 
 
 def output(
-    pos: int = 0, name: Optional[Tuple[str, ...]] = None, shape: Optional[Tuple[Optional[int], ...]] = None,
+    pos: int = 0,
+    name: Optional[Tuple[str, ...]] = None,
+    shape: Optional[Tuple[Optional[int], ...]] = None,
 ):
     """output Decorator for validating / coercing output tensors by position.
 
