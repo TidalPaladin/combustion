@@ -59,6 +59,7 @@ class TestRelativeIntensityFunctional:
 
         assert torch.allclose(actual, expected, atol=1e-4)
 
+    @pytest.mark.ci_skip
     def test_time(self):
         kernel = [(101, 101)]
         sigma = [(50, 50)]
