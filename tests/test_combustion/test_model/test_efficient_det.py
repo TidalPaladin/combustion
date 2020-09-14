@@ -42,9 +42,15 @@ class EfficientDetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         output = model(data)
         assert isinstance(output, list)
         assert all([isinstance(x, Tensor) for x in output])
-        for out in output:
+
+        batch_size, fpn_levels = 1, 64
+        data.ndim - 2
+
+        for i, out in enumerate(output):
             assert out.ndim == data.ndim
-            assert out.shape[0] == 1
+            assert out.shape[0] == batch_size
+            assert out.shape[1] == fpn_levels
+            assert tuple(out.shape[2:]) == tuple([x // 2 ** (i + 2) for x in data.shape[2:]])
 
     def test_backward(self, model, data):
         output = model(data)
@@ -110,6 +116,21 @@ class TestEfficientDet3d(EfficientDetBaseTest):
     def data(self):
         torch.random.manual_seed(42)
         return torch.rand(1, 3, 3, 256, 256, requires_grad=True)
+
+    def test_forward(self, model, data):
+        output = model(data)
+        assert isinstance(output, list)
+        assert all([isinstance(x, Tensor) for x in output])
+
+        batch_size, fpn_levels = 1, 64
+        data.ndim - 2
+
+        for i, out in enumerate(output):
+            assert out.ndim == data.ndim
+            assert out.shape[0] == batch_size
+            assert out.shape[1] == fpn_levels
+            # skip depth dimension check - too slow to manipulate full size 3d tensors
+            assert tuple(out.shape[3:]) == tuple([x // 2 ** (i + 2) for x in data.shape[3:]])
 
     @pytest.mark.parametrize("compound_coeff", [0, 1, 2])
     def test_from_predefined(self, model_type, compound_coeff, data):

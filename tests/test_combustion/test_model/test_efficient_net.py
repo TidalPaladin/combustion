@@ -38,9 +38,14 @@ class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         output = model(data)
         assert isinstance(output, list)
         assert all([isinstance(x, Tensor) for x in output])
-        for out in output:
+
+        batch_size = 1
+        data.ndim - 2
+
+        for i, out in enumerate(output):
             assert out.ndim == data.ndim
-            assert out.shape[0] == 1
+            assert out.shape[0] == batch_size
+            assert tuple(out.shape[2:]) == tuple([x // 2 ** (i + 2) for x in data.shape[2:]])
 
     def test_backward(self, model, data):
         output = model(data)

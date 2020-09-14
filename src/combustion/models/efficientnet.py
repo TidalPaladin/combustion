@@ -45,7 +45,7 @@ class _EfficientNet(nn.Module):
             expand_ratio=1,
             use_skipconn=True,
             stride=1,
-            squeeze_excite_ratio=0.25,
+            squeeze_excite_ratio=4,
         ),
         MobileNetBlockConfig(
             kernel_size=3,
@@ -55,7 +55,7 @@ class _EfficientNet(nn.Module):
             expand_ratio=6,
             use_skipconn=True,
             stride=2,
-            squeeze_excite_ratio=0.25,
+            squeeze_excite_ratio=4,
         ),
         MobileNetBlockConfig(
             kernel_size=5,
@@ -65,7 +65,7 @@ class _EfficientNet(nn.Module):
             expand_ratio=6,
             use_skipconn=True,
             stride=2,
-            squeeze_excite_ratio=0.25,
+            squeeze_excite_ratio=4,
         ),
         MobileNetBlockConfig(
             kernel_size=3,
@@ -75,7 +75,7 @@ class _EfficientNet(nn.Module):
             expand_ratio=6,
             use_skipconn=True,
             stride=2,
-            squeeze_excite_ratio=0.25,
+            squeeze_excite_ratio=4,
         ),
         MobileNetBlockConfig(
             kernel_size=5,
@@ -85,7 +85,7 @@ class _EfficientNet(nn.Module):
             expand_ratio=6,
             use_skipconn=True,
             stride=1,
-            squeeze_excite_ratio=0.25,
+            squeeze_excite_ratio=4,
         ),
         MobileNetBlockConfig(
             kernel_size=5,
@@ -95,7 +95,7 @@ class _EfficientNet(nn.Module):
             expand_ratio=6,
             use_skipconn=True,
             stride=2,
-            squeeze_excite_ratio=0.25,
+            squeeze_excite_ratio=4,
         ),
         MobileNetBlockConfig(
             kernel_size=3,
@@ -105,7 +105,7 @@ class _EfficientNet(nn.Module):
             expand_ratio=6,
             use_skipconn=True,
             stride=1,
-            squeeze_excite_ratio=0.25,
+            squeeze_excite_ratio=4,
         ),
     ]
 
