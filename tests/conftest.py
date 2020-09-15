@@ -15,8 +15,18 @@ def ignite():
     return pytest.importorskip("ignite", reason="test requires ignite")
 
 
+@pytest.fixture(params=[True, False])
+def cuda(torch, request):
+    if request.param:
+        if not torch.cuda.is_available():
+            pytest.skip("test requires cuda")
+        return True
+    else:
+        return False
+
+
 @pytest.fixture(scope="session")
-def cuda(torch):
+def cuda_or_skip(torch):
     if not torch.cuda.is_available():
         pytest.skip("test requires cuda")
 

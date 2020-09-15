@@ -189,12 +189,6 @@ class _FocalLoss(nn.Module):
         )
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
-        """forward Calculate smoothed MSE loss between input and target.
-        Expects inputs of shape NxCxHxW.
-
-        :param input: The predicted outputs :type input: Tensor :param
-        target: The target outputs :type target: Tensor :rtype: Tensor
-        """
         loss = self.__class__._loss(
             input, target, self.gamma, self.alpha, self.label_smoothing, self.reduction, self.normalize
         )
@@ -307,6 +301,17 @@ __all__ = [
 ]
 
 
+@torch.jit.script
+def log1mexp(x: Tensor) -> Tensor:
+    case1 = torch.log(torch.expm1(x).neg())
+    case2 = torch.log1p(x.exp().neg())
+    return torch.where(x > -0.693147, case1, case2)
+
+
+def log1m(x: Tensor) -> Tensor:
+    return torch.log1p(x.neg())
+
+
 def categorical_focal_loss(
     input: Tensor,
     target: Tensor,
@@ -316,7 +321,8 @@ def categorical_focal_loss(
     reduction: str = "mean",
     normalize: bool = False,
 ):
-    r"""Computes the Focal Loss between input and target.
+    r"""Computes the categorical Focal Loss between input and target. This is a multi-class
+    loss function.
 
     .. warning::
         This method is experimental
@@ -331,9 +337,11 @@ def categorical_focal_loss(
         gamma (float):
             The focusing parameter :math:`\gamma`. Must be non-negative.
 
-        pos_weight (float, optional):
+        pos_weight (float or iterable of floats, optional):
             The positive weight coefficient :math:`\alpha` to use on
-            the positive examples. Must be non-negative.
+            the positive examples. Must be in range :math:`[0, 1]`.
+            If an iterable is given, length of iterable should match expected
+            number of classes
 
         label_smoothing (float, optional):
             Float in [0, 1]. When 0, no smoothing occurs. When positive, the binary
@@ -362,28 +370,51 @@ def categorical_focal_loss(
 
     # calculate p, pt, and vanilla CELoss
     # NOTE CE loss gets logits input
-    ce_loss = F.cross_entropy(input, target, reduction="none")
+    # NOTE for some reason, target.clone() must be used or inplace op errors arise
+    ce_loss = F.cross_entropy(input.float(), target.clone(), reduction="none")
 
-    # Therefore one unified form for positive (z = 1) and negative (z = 0)
-    # samples is:
-    #      (1 - p_t)^r = exp(-r * z * x - r * log(1 + exp(-x))).
+    # Let S = sum_{i=1}^n x_j (denominator of softmax), r = gamma, z = 1 or 0 positive example indicator
     #
-    # Becuase logits are unbounded, log(1 + exp(-x)) must be computed using
-    # torch.logaddexp()
-    neg_logits = input.neg().float()
+    # For positive example (z=1) case:
+    #
+    # (1 - p_t)^r = (1 - e^x_i / S)^r
+    #   = exp(r * log(1 - e^x_i / S))
+    #   = exp(r * log(1 - e^x_i / e^(log(S))))
+    #   = exp(r * log(1 - e^[x_i - log(S)])
+    #
+    # We can compute this (unstable) as
+    #   = torch.log(1 - torch.exp(input - torch.logsumexp(input)))
+    #
+    # For stability we implement our own log1mexp function using torch.log1p and torch.expm1
+    # as follows (see https://stats.stackexchange.com/questions/469706/log1-softmaxx)
+    #
+    #   log1mexp(x) = log(-expm1(x)) if x > -0.693147 else log1p(-exp(x))
+    #
+    # For negative example (z=0) case:
+    #
+    # (1 - p_t)^r = (1 - (1 - e^x_i / S))^r
+    #   = (e^x_i / S)^r
+    #   = exp(r * log(e^x_i / S))
+    #   = exp(r * log(e^x_i) - r * log(S))))
+    #   = exp(r * [x_i - r * log(S)))])
     dims = [0, -1] + list(range(1, input.ndim - 1))
-    z = F.one_hot(target, num_classes=num_classes).type_as(neg_logits).permute(dims)
-
-    if gamma != 0:
-        _ = torch.tensor([0.0], device=neg_logits.device).type_as(neg_logits)
-        _ = gamma * (z * neg_logits - torch.logaddexp(neg_logits, _))
-        focal_term = torch.exp(_)
-        loss = torch.sum(focal_term * (ce_loss / num_classes), dim=1)
-    else:
-        loss = ce_loss
+    z = F.one_hot(target, num_classes=num_classes).type_as(input).float().permute(dims).contiguous()
 
     if pos_weight is not None:
-        loss = torch.where(positive_indices, pos_weight * loss, (1.0 - pos_weight) * loss)
+        raise NotImplementedError("positive example weighting not yet implemented")
+        pos_weight = torch.as_tensor(pos_weight, device=ce_loss.device, dtype=ce_loss.dtype)
+        ce_loss = torch.where(positive_indices, pos_weight * ce_loss, (1.0 - pos_weight) * ce_loss)
+
+    if gamma != 0:
+        logS = torch.logsumexp(input, dim=1, keepdim=True)
+        log1msoftmax = log1mexp(input - logS)
+
+        pos = torch.exp(gamma * (log1msoftmax))
+        neg = torch.exp(gamma * (input - logS))
+        focal_term = torch.where(z == 1, pos, neg)
+        loss = torch.sum(focal_term * (ce_loss.unsqueeze(1) / num_classes), dim=1)
+    else:
+        loss = ce_loss
 
     if reduction == "mean":
         loss = loss.mean()
@@ -393,7 +424,8 @@ def categorical_focal_loss(
 
 
 class CategoricalFocalLoss(nn.Module):
-    r"""Computes the Focal Loss between input and target.
+    r"""Computes the Focal Loss between input and target. This is a multi-class loss function, and is
+    numerically stabilized.
 
     .. warning::
         This method is experimental
@@ -430,12 +462,6 @@ class CategoricalFocalLoss(nn.Module):
         self.normalize = normalize
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
-        """forward Calculate smoothed MSE loss between input and target.
-        Expects inputs of shape NxCxHxW.
-
-        :param input: The predicted outputs :type input: Tensor :param
-        target: The target outputs :type target: Tensor :rtype: Tensor
-        """
         loss = categorical_focal_loss(
             input, target, self.gamma, self.alpha, self.label_smoothing, self.reduction, self.normalize
         )

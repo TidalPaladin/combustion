@@ -3,7 +3,8 @@
 
 import pytest
 import torch
-from torch.nn import BCELoss, BCEWithLogitsLoss
+import torch.nn.functional as F
+from torch.nn import BCELoss, BCEWithLogitsLoss, CrossEntropyLoss
 from torch.nn.functional import binary_cross_entropy, binary_cross_entropy_with_logits
 
 from combustion.nn import CategoricalFocalLoss, FocalLoss, FocalLossWithLogits, focal_loss, focal_loss_with_logits
@@ -120,9 +121,9 @@ class TestFunctionalFocalLossWithLogits(TestFunctionalFocalLoss):
         loss = fn(x, y, gamma=2.0)
         assert (loss <= 140).all()
 
-    @pytest.mark.usefixtures("cuda")
+    @pytest.mark.usefixtures("cuda_or_skip")
     def test_half(self, fn):
-        x1 = torch.tensor([0.0, 140, -140], requires_grad=True).cuda().half()
+        x1 = torch.tensor([0.0, 140, -140], requires_grad=True).cuda()
         x2 = x1.half()
         y = torch.tensor([1.0, 0.0, 1.0]).cuda()
         loss1 = fn(x1, y, gamma=2.0)
@@ -164,9 +165,20 @@ class TestFocalLoss:
         loss = cls(gamma=gamma, pos_weight=pos_weight)(x, y)
         assert torch.allclose(true_loss, loss)
 
-    def test_is_differentiable(self, cls, true_cls):
+    @pytest.mark.parametrize("gamma", [0.0, 2.0])
+    @pytest.mark.parametrize("half", [True, False])
+    def test_is_differentiable(self, cls, gamma, cuda, half):
         x = torch.rand(10, 10, requires_grad=True)
         y = torch.rand(10, 10).round()
+
+        if cuda:
+            x = x.cuda()
+            y = y.cuda()
+
+            if half:
+                x = x.half()
+                y = y.half()
+
         loss = cls(gamma=0.5, pos_weight=0.5)(x, y)
         loss.backward()
 
@@ -227,9 +239,9 @@ class TestFocalLossWithLogits(TestFocalLoss):
         loss = criterion(x, y)
         assert (loss <= 140).all()
 
-    @pytest.mark.usefixtures("cuda")
+    @pytest.mark.usefixtures("cuda_or_skip")
     def test_half(self, cls):
-        x1 = torch.tensor([0.0, 140, -140], requires_grad=True).cuda().half()
+        x1 = torch.tensor([0.0, 140, -140], requires_grad=True).cuda()
         x2 = x1.half()
         y = torch.tensor([1.0, 0.0, 1.0]).cuda()
         criterion1 = cls(gamma=2.0)
@@ -239,7 +251,6 @@ class TestFocalLossWithLogits(TestFocalLoss):
         assert torch.allclose(loss1, loss2)
 
 
-@pytest.mark.skip
 class TestCategoricalFocalLoss:
     @pytest.fixture
     def true_cls(self):
@@ -254,20 +265,58 @@ class TestCategoricalFocalLoss:
         x = torch.rand(1, 5, 10, 10)
         y = torch.randint(0, 5, (1, 10, 10))
         criterion = cls(gamma=0, reduction="none")
-        true_criterion = true_cls(gamma=0, alpha=1, reduction="none")
+        true_criterion = CrossEntropyLoss(reduction="none")
         true_loss = true_criterion(x, y)
         loss = criterion(x, y)
         assert_tensors_close(loss, true_loss)
 
     @pytest.mark.parametrize("gamma", [0.5, 1.0, 2.0])
-    def test_positive_example(self, gamma, cls, true_cls):
-        x = torch.Tensor([0.5])
-        y = torch.Tensor([1.0])
-
+    @pytest.mark.parametrize("pos_weight", [None])
+    def test_positive_example(self, gamma, cls, true_cls, pos_weight):
         x = torch.rand(1, 5, 10, 10)
         y = torch.randint(0, 5, (1, 10, 10))
-        criterion = cls(gamma=gamma, reduction="none")
-        true_criterion = true_cls(gamma=gamma, alpha=1, reduction="none")
-        true_loss = true_criterion(x, y)
+        criterion = cls(gamma=gamma, pos_weight=pos_weight, reduction="none")
+
+        p = F.softmax(x, dim=1)
+        z = F.one_hot(y, 5).permute(0, -1, 1, 2).contiguous()
+        pt = torch.where(z == 1, p, 1 - p)
+        pos_weight = torch.as_tensor(pos_weight) if pos_weight is not None else None
+        pos_weight = torch.where(z == 1, pos_weight, 1 - pos_weight) if pos_weight is not None else None
+
+        ce = CrossEntropyLoss(reduction="none")(x, y)
+        gamma_term = (1 - pt) ** gamma
+
+        true_loss = (pos_weight if pos_weight is not None else 1.0) * gamma_term * ce
+        true_loss = true_loss.sum(dim=1).div_(5)
         loss = criterion(x, y)
-        assert_tensors_close(loss, true_loss)
+        assert torch.allclose(true_loss, loss, rtol=0.2)
+
+    @pytest.mark.parametrize("gamma", [0.0, 2.0])
+    @pytest.mark.parametrize("half", [True, False])
+    def test_is_differentiable(self, cls, gamma, cuda, half):
+        x = torch.rand(1, 5, 10, 10, requires_grad=True)
+        y = torch.randint(0, 5, (1, 10, 10))
+
+        if cuda:
+            x = x.cuda()
+            y = y.cuda()
+        elif half:
+            pytest.skip()
+
+        if half:
+            x = x.half()
+
+        criterion = cls(gamma=gamma, reduction="none")
+        loss = criterion(x, y).sum()
+        loss.backward()
+
+    @pytest.mark.usefixtures("cuda_or_skip")
+    def test_half(self, cls):
+        x1 = torch.rand(1, 5, 10, 10, requires_grad=True).cuda()
+        x2 = x1.half()
+        y = torch.randint(0, 5, (1, 10, 10)).cuda()
+        criterion1 = cls(gamma=2.0)
+        criterion2 = cls(gamma=2.0)
+        loss1 = criterion1(x1, y)
+        loss2 = criterion1(x2, y)
+        assert torch.allclose(loss1, loss2, atol=1e-4)

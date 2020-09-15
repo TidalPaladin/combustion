@@ -120,6 +120,7 @@ Focal Loss
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. autofunction:: combustion.nn.focal_loss_with_logits
 .. autofunction:: combustion.nn.focal_loss
+.. autofunction:: combustion.nn.categorical_focal_loss
 
 .. autoclass:: combustion.nn.FocalLoss
     :members:
@@ -127,6 +128,8 @@ Focal Loss
 .. autoclass:: combustion.nn.FocalLossWithLogits
     :members:
 
+.. autoclass:: combustion.nn.CategoricalFocalLoss
+    :members:
 
 
 Utilities
