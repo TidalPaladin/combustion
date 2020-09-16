@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from .batch import Batch
-from .serialize import HDF5Dataset, SerializeMixin, TorchDataset, save_hdf5, save_torch
+from .serialize import HDF5Dataset, SerializeMixin, TorchDataset, TransformableDataset, save_hdf5, save_torch
 from .window import DenseWindow, SparseWindow, Window
 
 
@@ -16,4 +16,5 @@ __all__ = [
     "save_hdf5",
     "save_torch",
     "TorchDataset",
+    "TransformableDataset",
 ]

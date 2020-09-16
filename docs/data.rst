@@ -11,6 +11,12 @@ PLACEHOLDER
     :local:
     :backlinks: top
 
+Base Datasets
+----------------------------------
+
+.. autoclass:: combustion.data.TransformableDataset
+    :members: apply_transforms
+
 Saving and Loading
 ----------------------------------
 

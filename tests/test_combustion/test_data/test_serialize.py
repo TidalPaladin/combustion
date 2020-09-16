@@ -134,14 +134,29 @@ class TestSerialize:
 
     @pytest.mark.parametrize("transform", [lambda x: torch.ones(2, 2), None])
     @pytest.mark.parametrize("target_transform", [lambda x: torch.zeros(2, 2), None])
-    def test_apply_transforms_to_loaded_data(self, h5py, tmp_path, dataset, transform, target_transform, input_file):
-        new_dataset = dataset.__class__.load(input_file, transform=transform, target_transform=target_transform)
+    @pytest.mark.parametrize("transforms", [lambda x, y: (torch.zeros(2, 2), torch.ones(2, 2)), None])
+    def test_apply_transforms_to_loaded_data(
+        self, h5py, tmp_path, dataset, transform, target_transform, input_file, transforms
+    ):
+        new_dataset = dataset.__class__.load(
+            input_file, transform=transform, target_transform=target_transform, transforms=transforms
+        )
         example = next(iter(new_dataset))
 
-        if transform is not None:
+        # transform/target transform are overriden by transforms
+        if transform is not None and transforms is None:
             assert torch.allclose(example[0], transform(None))
-        if target_transform is not None:
+        elif transforms is not None:
+            assert torch.allclose(example[0], transforms(None, None)[0])
+
+        if target_transform is not None and transforms is None:
             assert torch.allclose(example[1], target_transform(None))
+        elif transforms is not None:
+            assert torch.allclose(example[1], transforms(None, None)[1])
+
+        if transforms is not None:
+            for actual, expected in zip(example, transforms(None, None)):
+                assert torch.allclose(actual, expected)
 
     def test_repr(self, h5py, torch, tmp_path, dataset, input_file, data):
         path = input_file

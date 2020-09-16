@@ -6,7 +6,7 @@ import glob
 import itertools
 import os
 import warnings
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterable, Optional, Tuple, Union
 
 import torch
 from progress.bar import Bar, ChargingBar
@@ -244,7 +244,88 @@ class SerializeMixin:
             raise FileNotFoundError(f"Could not find a target to load in path {path}")
 
 
-class HDF5Dataset(Dataset, SerializeMixin):
+class TransformableDataset(Dataset):
+    r"""Base class for datasets that accept callable transforms that are applied to each example.
+
+    Args:
+
+        transform (optional, callable): Transform to be applied to data tensors.
+        target_transform (optional, callable): Transform to be applied to label tensors. If
+            given, the loaded dataset must produce
+        transforms (optional, callable): Transform to be applied to the output of ``__getitem__``,
+            i.e. both data and labels. The transform should accept as many positional arguments
+            as ``__getitem__`` returns.
+
+
+    Example with data and label transform::
+
+        >>> def xform(data, label):
+        >>>     ...
+        >>>     return new_data, new_label
+        >>>
+        >>> ds = TransformableDataset(transforms=xform)
+    """
+
+    def __init__(
+        self,
+        transform: Optional[Callable[[Tensor], Any]] = None,
+        target_transform: Optional[Callable[[Tensor], Any]] = None,
+        transforms: Optional[Callable[[Any], Any]] = None,
+    ):
+
+        super().__init__()
+        self._transform = transform
+        self._target_transform = target_transform
+        self._transforms = transforms
+
+    def _transform_repr(self):
+        rep = ""
+        if self._transform is not None:
+            rep += f", transform={self._transform}"
+        if self._target_transform is not None:
+            rep += f", transform={self._target_transform}"
+        if self._transforms is not None:
+            rep += f", transform={self._transforms}"
+        return rep
+
+    def __repr__(self):
+        return f"TransformableDataset({self._transform_repr()})"
+
+    def apply_transforms(self, tensors: Iterable[Tensor]) -> Union[Tensor, Tuple[Tensor, ...]]:
+        r"""Applies transforms to an iterable of tensors
+
+        Args:
+            tensors (iterable of tensors):
+                The tensors to transform. When transforming a single tensor, wrap it in an interable.
+        """
+        if len(tensors) < 0:
+            raise RuntimeError("No tensors were present to transform")
+
+        # require two or more tensors when target transform given
+        if self._target_transform is not None and len(tensors) < 2:
+            raise RuntimeError(
+                f"Expected loaded dataset to return 2 tensors when target_transform is given, found {len(tensors)}"
+            )
+
+        # warn if more than 2 tensors - result will be
+        #    (transform(t1), target_transform(t2), t3, ...)
+        if (self._transform is not None or self._target_transform is not None) and len(tensors) > 2:
+            warnings.warn(
+                f"Loaded dataset returned {len(tensors)} tensors when transform/target_transform "
+                "was given. Only tensors 1 and 2 will have a transform applied."
+            )
+
+        if self._transform is not None:
+            tensors[0] = self._transform(tensors[0])
+        if self._target_transform is not None:
+            tensors[1] = self._target_transform(tensors[1])
+        if self._transforms is not None:
+            tensors = self._transforms(*tensors)
+
+        return tuple(tensors) if len(tensors) > 1 else tensors[0]
+
+
+class HDF5Dataset(TransformableDataset, SerializeMixin):
     r"""Dataset used to read from HDF5 files. See :class:`SerializeMixin` for more details
 
     .. note::
@@ -261,6 +342,9 @@ class HDF5Dataset(Dataset, SerializeMixin):
         transform (optional, callable): Transform to be applied to data tensors.
         target_transform (optional, callable): Transform to be applied to label tensors. If
             given, the loaded dataset must produce
+        transforms (optional, callable): Transform to be applied to the output of ``__getitem__``,
+            i.e. both data and labels. The transform should accept as many positional arguments
+            as ``__getitem__`` returns.
     """
 
     def __init__(
@@ -268,14 +352,14 @@ class HDF5Dataset(Dataset, SerializeMixin):
         path: str,
         transform: Optional[Callable[[Tensor], Any]] = None,
         target_transform: Optional[Callable[[Tensor], Any]] = None,
+        transforms: Optional[Callable[[Any], Any]] = None,
     ):
+        super().__init__(transform, target_transform, transforms)
         _check_h5py()
 
         # ensure private vars to avoid conflicts when loading keys from dataset
         self._hdf5_file = h5py.File(path, "r")
         self._keys = self._hdf5_file.keys()
-        self._transform = transform
-        self._target_transform = target_transform
 
         # set attributes that were attached to serialized dataset
         for key, value in self._hdf5_file.attrs.items():
@@ -283,49 +367,21 @@ class HDF5Dataset(Dataset, SerializeMixin):
 
     def __repr__(self):
         rep = f"HDF5Dataset({self._hdf5_file}, keys={list(self._keys)}, len={len(self)}"
-        if self._transform is not None:
-            rep += f", transform={self._transform}"
-        if self._target_transform is not None:
-            rep += f", transform={self._target_transform}"
+        rep += self._transform_repr()
         rep += ")"
         return rep
 
     def __getitem__(self, pos: int) -> Union[Tensor, Tuple[Tensor, ...]]:
         tensors = [torch.from_numpy(self._hdf5_file[k][pos]) for k in self._keys]
-        return self.__postprocess(tensors)
+        return self.apply_transforms(tensors)
 
     def __len__(self):
         lengths = [len(self._hdf5_file[k]) for k in self._keys]
         assert len(set(lengths)) == 1, "all lengths equal"
         return lengths[0]
 
-    def __postprocess(self, tensors: List[Tensor]) -> Union[Tensor, Tuple[Tensor, ...]]:
-        if len(tensors) < 0:
-            raise RuntimeError("Loaded dataset returned no tensors")
 
-        # require two or more tensors when target transform given
-        if self._target_transform is not None and len(tensors) < 2:
-            raise RuntimeError(
-                "Expected loaded dataset to return 2 tensors" f"when target_transform is given, found {len(tensors)}"
-            )
-
-        # warn if more than 2 tensors - result will be
-        #    (transform(t1), target_transform(t2), t3, ...)
-        if (self._transform is not None or self._target_transform is not None) and len(tensors) > 2:
-            warnings.warn(
-                f"Loaded dataset returned {len(tensors)} tensors when transform/target_transform "
-                "given. Only tensors 1 and 2 will have a transform applied."
-            )
-
-        if self._transform is not None:
-            tensors[0] = self._transform(tensors[0])
-        if self._target_transform is not None:
-            tensors[1] = self._target_transform(tensors[1])
-
-        return tuple(tensors) if len(tensors) > 1 else tensors[0]
-
-
-class TorchDataset(Dataset, SerializeMixin):
+class TorchDataset(TransformableDataset, SerializeMixin):
     r"""Dataset used to read serialized examples in torch format. See :class:`SerializeMixin` for more details.
 
     Args:
@@ -334,6 +390,10 @@ class TorchDataset(Dataset, SerializeMixin):
         transform (optional, callable): Transform to be applied to data tensors.
         target_transform (optional, callable): Transform to be applied to label tensors. If
             given, the loaded dataset must produce
+        transforms (optional, callable): Transform to be applied to the output of ``__getitem__``,
+            i.e. both data and labels. The transform should accept as many positional arguments
+            as ``__getitem__`` returns.
+
         pattern (optional, str): Pattern of filenames to match.
     """
 
@@ -342,58 +402,30 @@ class TorchDataset(Dataset, SerializeMixin):
         path: str,
         transform: Optional[Callable[[Tensor], Any]] = None,
         target_transform: Optional[Callable[[Tensor], Any]] = None,
+        transforms: Optional[Callable[[Any], Any]] = None,
         pattern: str = "*.pth",
     ):
+        super().__init__(transform, target_transform, transforms)
         self.path = path
         self.pattern = pattern
         pattern = os.path.join(path, pattern)
         self.files = sorted(list(glob.glob(pattern)))
-        self._transform = transform
-        self._target_transform = target_transform
 
     def __repr__(self):
         rep = f"TorchDataset({self.path}"
+        rep += self._transform_repr()
         if self.pattern != "*.pth":
             rep += f", pattern={self.pattern}"
-        if self._transform is not None:
-            rep += f", transform={self._transform}"
-        if self._target_transform is not None:
-            rep += f", transform={self._target_transform}"
         rep += ")"
         return rep
 
     def __getitem__(self, pos: int) -> Union[Tensor, Tuple[Tensor, ...]]:
         target = self.files[pos]
         example = torch.load(target, map_location="cpu")
-        return self.__postprocess(list(example))
+        return self.apply_transforms(list(example))
 
     def __len__(self):
         return len(self.files)
-
-    def __postprocess(self, tensors: List[Tensor]) -> Union[Tensor, Tuple[Tensor, ...]]:
-        if len(tensors) < 0:
-            raise RuntimeError("Loaded dataset returned no tensors")
-
-        # require two or more tensors when target transform given
-        if self._target_transform is not None and len(tensors) < 2:
-            raise RuntimeError(
-                "Expected loaded dataset to return 2 tensors" f"when target_transform is given, found {len(tensors)}"
-            )
-
-        # warn if more than 2 tensors - result will be
-        #    (transform(t1), target_transform(t2), t3, ...)
-        if (self._transform is not None or self._target_transform is not None) and len(tensors) > 2:
-            warnings.warn(
-                f"Loaded dataset returned {len(tensors)} tensors when transform/target_transform "
-                "given. Only tensors 1 and 2 will have a transform applied."
-            )
-
-        if self._transform is not None:
-            tensors[0] = self._transform(tensors[0])
-        if self._target_transform is not None:
-            tensors[1] = self._target_transform(tensors[1])
-
-        return tuple(tensors) if len(tensors) > 1 else tensors[0]
 
 
 def _write_shard(path, source, shard_size, shard_index=None, verbose=True, bar=_DefaultBar):
@@ -464,4 +496,4 @@ def _check_h5py():
         )
 
 
-__all__ = ["save_hdf5", "save_torch", "SerializeMixin", "HDF5Dataset", "TorchDataset"]
+__all__ = ["save_hdf5", "save_torch", "SerializeMixin", "HDF5Dataset", "TorchDataset", "TransformableDataset"]
