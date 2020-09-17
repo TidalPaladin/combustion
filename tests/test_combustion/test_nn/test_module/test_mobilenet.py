@@ -15,18 +15,25 @@ class TestMobileNetConvBlock1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
 
     @pytest.fixture(
         params=[
-            pytest.param((3, 1, 0.0, 1, 1, True), id="kernel=3,stride=1,dc=0.0,squeeze=1,excite=1,skip=False"),
-            pytest.param((5, 2, 0.0, 2, 2, True), id="kernel=3,stride=1,dc=0.0,squeeze=1,excite=1,skip=True"),
-            pytest.param((3, 1, 0.3, 8, 8, False), id="kernel=3,stride=1,dc=0.0,squeeze=1,excite=1,skip=False"),
+            pytest.param((3, 1, 1, 0.0, 1, 1, True), id="kernel=3,stride=1,dil=1,dc=0.0,squeeze=1,excite=1,skip=False"),
+            pytest.param((5, 2, 1, 0.0, 2, 2, True), id="kernel=3,stride=1,dil=1,dc=0.0,squeeze=2,excite=2,skip=True"),
+            pytest.param(
+                (3, 1, 1, 0.3, 8, 8, False), id="kernel=3,stride=1,dil=1,dc=0.3,squeeze=8,excite=8,skip=False"
+            ),
+            pytest.param(
+                (3, 1, 2, 0.3, 8, 8, False), id="kernel=3,stride=1,dil=2,dc=0.3,squeeze=8,excite=8,skip=False"
+            ),
+            pytest.param((5, 1, 4, 0.3, 8, 8, False), id="kernel=5,stride=1,dil=4,dc=0.3,squeeze=8,excite=8,skip=True"),
         ]
     )
     def model(self, model_type, request):
-        kernel, stride, dc, squeeze, excite, skip = request.param
+        kernel, stride, dil, dc, squeeze, excite, skip = request.param
         return model_type(
             4,
             4,
             kernel,
             stride=stride,
+            dilation=dil,
             drop_connect_rate=dc,
             squeeze_excite_ratio=squeeze,
             expand_ratio=excite,
@@ -60,6 +67,7 @@ class TestMobileNetConvBlock1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
             output_filters=4,
             kernel_size=3,
             stride=1,
+            dilation=1,
             drop_connect_rate=0.0,
             squeeze_excite_ratio=2,
             expand_ratio=4,

@@ -44,6 +44,7 @@ class _MobileNetConvBlockNd(nn.Module):
         output_filters: int,
         kernel_size: Union[int, Tuple[int]],
         stride: Union[int, Tuple[int]] = 1,
+        dilation: Union[int, Tuple[int]] = 1,
         bn_momentum: float = 0.1,
         bn_epsilon: float = 1e-5,
         activation: nn.Module = HardSwish(),
@@ -56,11 +57,13 @@ class _MobileNetConvBlockNd(nn.Module):
         super().__init__()
         kernel_size = self.Tuple(kernel_size)
         stride = self.Tuple(stride)
+        dilation = self.Tuple(dilation)
 
         self._input_filters = int(input_filters)
         self._output_filters = int(output_filters)
         self._kernel_size = kernel_size
         self._stride = stride
+        self._dilation = dilation
         self._bn_momentum = float(bn_momentum)
         self._bn_epsilon = float(bn_epsilon)
         self._activation = activation
@@ -68,7 +71,8 @@ class _MobileNetConvBlockNd(nn.Module):
         self._expand_ratio = float(expand_ratio)
         self._use_skipconn = bool(use_skipconn)
 
-        padding = tuple([(kernel - 1) // 2 for kernel in kernel_size])
+        # same padding for spatial conv
+        padding = tuple([(kernel - 1) // 2 * dil for kernel, dil in zip(kernel_size, dilation)])
 
         # Expansion phase (Inverted Bottleneck)
         in_filter, out_filter = self._input_filters, int(self._input_filters * self._expand_ratio)
@@ -87,6 +91,7 @@ class _MobileNetConvBlockNd(nn.Module):
             out_filter,
             self._kernel_size,
             stride=self._stride,
+            dilation=self._dilation,
             padding=padding,
             groups=out_filter,
             bias=False,
@@ -215,6 +220,10 @@ class MobileNetConvBlock2d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
             Stride for the depthwise (spatial) convolutions. See :class:`torch.nn.Conv2d`
             for more details.
 
+        dilation (int or tuple of ints):
+            Dilation of the depthwise (spatial) convolutions. See :class:`torch.nn.Conv2d`
+            for more details.
+
         bn_momentum (float):
             Momentum for batch normalization layers. See :class:`torch.nn.BatchNorm2d` for
             more details.
@@ -277,6 +286,10 @@ class MobileNetBlockConfig:
             Stride for the depthwise (spatial) convolutions. See :class:`torch.nn.Conv2d`
             for more details.
 
+        dilation (int or tuple of ints):
+            Dilation of the depthwise (spatial) convolutions. See :class:`torch.nn.Conv2d`
+            for more details.
+
         bn_momentum (float):
             Momentum for batch normalization layers. See :class:`torch.nn.BatchNorm2d` for
             more details.
@@ -312,6 +325,7 @@ class MobileNetBlockConfig:
     output_filters: int
     kernel_size: Union[int, Tuple[int, ...]]
     stride: Union[int, Tuple[int, ...]] = 1
+    dilation: Union[int, Tuple[int, ...]] = 1
     bn_momentum: float = 0.1
     bn_epsilon: float = 1e-5
     squeeze_excite_ratio: float = 1.0
