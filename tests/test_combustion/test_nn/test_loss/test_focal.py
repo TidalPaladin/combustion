@@ -130,6 +130,16 @@ class TestFunctionalFocalLossWithLogits(TestFunctionalFocalLoss):
         loss2 = fn(x2, y, gamma=2.0)
         assert torch.allclose(loss1, loss2)
 
+    @pytest.mark.parametrize("scale", [-1000.0, 0.0, 1000.0])
+    def test_numerical_stability(self, fn, scale):
+        x = torch.rand(1, 5, 10, 10, requires_grad=True)
+        y = torch.rand(1, 5, 10, 10)
+
+        loss = fn(x * scale, y, gamma=2.0)
+        loss.backward()
+
+        assert not x.grad.isnan().any()
+
 
 class TestFocalLoss:
     @pytest.fixture
@@ -320,3 +330,14 @@ class TestCategoricalFocalLoss:
         loss1 = criterion1(x1, y)
         loss2 = criterion1(x2, y)
         assert torch.allclose(loss1, loss2, atol=1e-4)
+
+    @pytest.mark.parametrize("scale", [-1000.0, 0.0, 1000.0])
+    def test_numerical_stability(self, cls, scale):
+        x = torch.rand(1, 5, 10, 10, requires_grad=True)
+        y = torch.randint(0, 5, (1, 10, 10))
+
+        criterion = cls(gamma=2.0)
+        loss = criterion(x * scale, y)
+        loss.backward()
+
+        assert not x.grad.isnan().any()

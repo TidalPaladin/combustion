@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
+from torch.autograd import Function
 
 
 _EPSILON = 1e-5
@@ -301,10 +302,26 @@ __all__ = [
 ]
 
 
+class Log1mExp(Function):
+    @staticmethod
+    def forward(ctx, x):
+        case1 = torch.log(torch.expm1(x).neg())
+        case2 = torch.log1p(x.exp().neg())
+        # return torch.where(x > -0.693147, case1, case2)
+        result = torch.where(x > -0.693147, case1, case2)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # d/dx log(1-e^x) = -e^x / (1 - e^x)
+        ...
+
+
 @torch.jit.script
 def log1mexp(x: Tensor) -> Tensor:
     case1 = torch.log(torch.expm1(x).neg())
     case2 = torch.log1p(x.exp().neg())
+    # return torch.where(x > -0.693147, case1, case2)
     return torch.where(x > -0.693147, case1, case2)
 
 
@@ -380,15 +397,7 @@ def categorical_focal_loss(
     # (1 - p_t)^r = (1 - e^x_i / S)^r
     #   = exp(r * log(1 - e^x_i / S))
     #   = exp(r * log(1 - e^x_i / e^(log(S))))
-    #   = exp(r * log(1 - e^[x_i - log(S)])
-    #
-    # We can compute this (unstable) as
-    #   = torch.log(1 - torch.exp(input - torch.logsumexp(input)))
-    #
-    # For stability we implement our own log1mexp function using torch.log1p and torch.expm1
-    # as follows (see https://stats.stackexchange.com/questions/469706/log1-softmaxx)
-    #
-    #   log1mexp(x) = log(-expm1(x)) if x > -0.693147 else log1p(-exp(x))
+    #   = exp(r * [log(sum_{j != i} e^x_j) - log(S)])
     #
     # For negative example (z=0) case:
     #
@@ -407,10 +416,21 @@ def categorical_focal_loss(
 
     if gamma != 0:
         logS = torch.logsumexp(input, dim=1, keepdim=True)
-        log1msoftmax = log1mexp(input - logS)
+        log1mexp(input - logS)
 
-        pos = torch.exp(gamma * (log1msoftmax))
-        neg = torch.exp(gamma * (input - logS))
+        # get exp sum of logits at z=0 indices
+        batch_size = input.shape[0]
+        spatial_shape = input.shape[2:]
+        z_channels_last = z.permute(0, -2, -1, 1)
+        input_channels_last = input.permute(0, -2, -1, 1)
+        non_pos_logits = (
+            input_channels_last[~z_channels_last.bool()].view(batch_size, *spatial_shape, -1).permute(0, -1, 1, 2)
+        )
+        del z_channels_last, input_channels_last
+        non_pos_logits = non_pos_logits.contiguous()
+
+        pos = torch.exp(gamma * (torch.logsumexp(non_pos_logits, dim=1, keepdim=True) - logS))
+        neg = torch.exp(gamma * F.log_softmax(input, dim=1))
         focal_term = torch.where(z == 1, pos, neg)
         loss = torch.sum(focal_term * (ce_loss.unsqueeze(1) / num_classes), dim=1)
     else:
