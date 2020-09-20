@@ -21,6 +21,9 @@ Conversions
 Filters
 ----------------------------------
 
+.. autoclass:: combustion.vision.filters.CLAHE
+    :members: 
+
 .. autofunction:: combustion.vision.filters.relative_intensity
 .. autoclass:: combustion.vision.filters.RelativeIntensity
     :members: 
