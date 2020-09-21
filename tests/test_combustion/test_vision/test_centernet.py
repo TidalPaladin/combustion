@@ -6,6 +6,7 @@ import torch
 
 from combustion.testing import cuda_or_skip
 from combustion.vision import AnchorsToPoints, PointsToAnchors
+from combustion.vision.centernet import CenterNetMixin
 
 
 @pytest.fixture(params=[None, 1, 2])
@@ -199,3 +200,172 @@ def test_corner_case():
     positive_ind = (output[:, :2, ...] == 1).nonzero()
     positive_elems = output[0, :, positive_ind[:, -2], positive_ind[:, -1]]
     assert (positive_elems[..., -2:] >= 0.0).all()
+
+
+class TestCenterNetMixin:
+    @pytest.mark.parametrize("split_label", [False, True, [1, 1]])
+    def test_split_box_target_result(self, split_label):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4))
+        label_target = torch.randint(0, 10, (3, 4, 2))
+        target = torch.cat([bbox_target, label_target], dim=-1)
+
+        mixin = CenterNetMixin()
+        result = mixin.split_box_target(target, split_label=split_label)
+        bbox = result[0]
+        label = result[1:]
+        assert torch.allclose(bbox, bbox_target)
+
+        if not split_label:
+            assert torch.allclose(torch.cat(label, dim=-1), label_target)
+        else:
+            for i, sub_label in enumerate(label):
+                assert torch.allclose(sub_label, label_target[..., i : i + 1])
+
+    def test_split_box_target_returns_views(self):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4))
+        label_target = torch.randint(0, 10, (3, 4, 2))
+        target = torch.cat([bbox_target, label_target], dim=-1)
+
+        mixin = CenterNetMixin()
+        bbox, label = mixin.split_box_target(target)
+
+        target.mul_(10)
+        assert torch.allclose(bbox, target[..., :4])
+        assert torch.allclose(label, target[..., 4:])
+
+    def test_split_point_target(self):
+        torch.random.manual_seed(42)
+        heatmap_target = torch.rand(3, 2, 10, 10)
+        regression_target = torch.rand(3, 4, 10, 10)
+        target = torch.cat([heatmap_target, regression_target], dim=-3)
+
+        mixin = CenterNetMixin()
+        heatmap, regression = mixin.split_point_target(target)
+
+        assert torch.allclose(heatmap, heatmap_target)
+        assert torch.allclose(regression, regression_target)
+
+    def test_split_point_target_returns_views(self):
+        torch.random.manual_seed(42)
+        heatmap_target = torch.rand(3, 2, 10, 10)
+        regression_target = torch.rand(3, 4, 10, 10)
+        target = torch.cat([heatmap_target, regression_target], dim=-3)
+
+        mixin = CenterNetMixin()
+        heatmap, regression = mixin.split_point_target(target)
+
+        target.mul_(10)
+        assert torch.allclose(heatmap, target[..., :-4, :, :])
+        assert torch.allclose(regression, target[..., -4:, :, :])
+
+    @pytest.mark.parametrize("extra_labels", [False, True])
+    def test_combine_box_target(self, extra_labels):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4))
+        label_target = torch.randint(0, 10, (3, 4, 2))
+        if extra_labels:
+            extra_labels = (torch.randint(0, 10, (3, 4, 2)),)
+        else:
+            extra_labels = ()
+
+        true_target = torch.cat([bbox_target, label_target, *extra_labels], dim=-1)
+
+        mixin = CenterNetMixin()
+        target = mixin.combine_box_target(bbox_target, label_target, *extra_labels)
+
+        assert torch.allclose(target, true_target)
+
+    def test_combine_point_target(self):
+        torch.random.manual_seed(42)
+        heatmap_target = torch.rand(3, 2, 10, 10)
+        regression_target = torch.rand(3, 4, 10, 10)
+        true_target = torch.cat([heatmap_target, regression_target], dim=-3)
+
+        mixin = CenterNetMixin()
+        target = mixin.combine_point_target(heatmap_target, regression_target)
+
+        assert torch.allclose(target, true_target)
+
+    def test_heatmap_max_score(self):
+        torch.random.manual_seed(42)
+        heatmap = torch.rand(3, 2, 10, 10)
+
+        expected = heatmap.max(dim=-1).values.max(dim=-1).values
+
+        mixin = CenterNetMixin()
+        actual = mixin.heatmap_max_score(heatmap)
+
+        assert actual.ndim == 2
+        assert torch.allclose(actual, expected)
+
+    def test_visualize_heatmap_no_background(self):
+        torch.random.manual_seed(42)
+        heatmap = torch.rand(3, 2, 10, 10)
+
+        mixin = CenterNetMixin()
+        result = mixin.visualize_heatmap(heatmap)
+
+        assert len(result) == heatmap.shape[-3]
+
+        for x in result:
+            assert x.min() >= 0
+            assert x.max() <= 255
+            assert x.dtype == torch.uint8
+
+    def test_visualize_heatmap_background(self):
+        torch.random.manual_seed(42)
+        heatmap = torch.rand(3, 2, 10, 10)
+        background = torch.rand(3, 1, 10, 10)
+
+        mixin = CenterNetMixin()
+        result = mixin.visualize_heatmap(heatmap, background=background)
+
+        assert len(result) == heatmap.shape[-3]
+
+        for x in result:
+            assert x.min() >= 0
+            assert x.max() <= 255
+            assert x.dtype == torch.uint8
+
+    @pytest.mark.parametrize("pad_value", [-1, -2])
+    def test_batch_box_target(self, pad_value):
+        torch.random.manual_seed(42)
+        target1 = torch.randint(0, 10, (3, 6))
+        target2 = torch.randint(0, 10, (2, 6))
+
+        mixin = CenterNetMixin()
+        batch = mixin.batch_box_target([target1, target2], pad_value=pad_value)
+
+        assert batch.shape[0] == 2
+        assert torch.allclose(batch[0], target1)
+        assert torch.allclose(batch[1, :2, :], target2)
+        assert (batch[1, 2, :] == pad_value).all()
+
+    @pytest.mark.parametrize("pad_value", [-1, -2])
+    def test_unbatch_box_target(self, pad_value):
+        torch.random.manual_seed(42)
+        target = torch.randint(0, 10, (2, 3, 6))
+        target[0, 2, :].fill_(pad_value)
+
+        mixin = CenterNetMixin()
+        split_batch = mixin.unbatch_box_target(target, pad_value=pad_value)
+
+        assert torch.allclose(target[0, :2, ...], split_batch[0])
+        assert torch.allclose(target[1], split_batch[1])
+
+    @pytest.mark.parametrize("pad_value", [-1, -2])
+    def test_flatten_box_target(self, pad_value):
+        torch.random.manual_seed(42)
+        target = torch.randint(0, 10, (2, 3, 6))
+        target[0, 2, :].fill_(pad_value)
+
+        mixin = CenterNetMixin()
+        flat_batch = mixin.flatten_box_target(target, pad_value=pad_value)
+
+        assert flat_batch.ndim == 2
+        assert flat_batch.shape[0] == 2 + 3
+
+        expected = torch.cat([target[0, :2, ...], target[1, ...]], dim=0)
+        assert torch.allclose(flat_batch, expected)

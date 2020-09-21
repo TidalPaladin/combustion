@@ -1,10 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Optional, Tuple
+from typing import Iterable, List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor
+import torch.nn.functional as F
+from torch import ByteTensor, Tensor
+
+from combustion.util import alpha_blend, apply_colormap, check_is_tensor
+
+from .convert import to_8bit
 
 
 try:
@@ -296,3 +301,296 @@ class PointsToAnchors:
             num_roi = result.shape[0]
             output[i, :num_roi, ...] = result
         return output
+
+
+class CenterNetMixin:
+    PAD_VALUE: float = -1
+
+    @staticmethod
+    def split_box_target(target: Tensor, split_label: Union[bool, Iterable[int]] = False) -> Tuple[Tensor, ...]:
+        r"""Split a bounding box label set into box coordinates and label tensors.
+
+        .. note::
+            This operation returns views of the original tensor.
+
+        Args:
+            target (:class:`torch.Tensor`):
+                The target to split.
+
+            split_label (bool or iterable of ints):
+                Whether to further decompose the label tensor. If ``split_label`` is ``True``, split
+                the label tensor along the last dimension. If an interable of ints is given, treat each
+                int as a split size arugment to :func:`torch.split` along the last dimension.
+
+        Shape:
+            * ``target`` - :math:`(*, N, 4 + C)` where :math:`N` is the number of boxes and :math:`C` is the
+              number of labels associated with each box.
+
+            * Output - :math:`(*, N, 4)` and :math:`(*, N, C)`
+        """
+        check_is_tensor(target, "target")
+        bbox = target[..., :4]
+        label = target[..., 4:]
+
+        if isinstance(split_label, bool) and not split_label:
+            return bbox, label
+
+        num_labels = label.shape[-1]
+
+        # setup split size of 1 if bool given
+        if isinstance(split_label, bool):
+            split_label = [
+                1,
+            ] * num_labels
+
+        lower_bound = 0
+        upper_bound = 0
+        final_label = []
+        for delta in split_label:
+            upper_bound = lower_bound + delta
+            final_label.append(label[..., lower_bound:upper_bound])
+            lower_bound = upper_bound
+        final_label = tuple(final_label)
+        assert len(final_label) == len(split_label)
+        return bbox, *final_label
+
+    @staticmethod
+    def split_point_target(target: Tensor) -> Tuple[Tensor, Tensor]:
+        r"""Split a CenterNet target into heatmap and regression components.
+
+        .. note::
+            This operation returns views of the original tensor.
+
+        Args:
+            target (:class:`torch.Tensor`):
+                The target to split.
+
+        Shape:
+            * ``target`` - :math:`(*, C + 4, H, W)` where :math:`C` is the number of classes.
+            * Output - :math:`(*, C, H, W)` and :math:`(*, 4, H, W)`
+        """
+        check_is_tensor(target, "target")
+        heatmap = target[..., :-4, :, :]
+        bbox = target[..., -4:, :, :]
+        return heatmap, bbox
+
+    @staticmethod
+    def combine_box_target(bbox: Tensor, label: Tensor, *extra_labels) -> Tensor:
+        r"""Combine a bounding box coordinates and labels into a single label.
+
+        Args:
+            bbox (:class:`torch.Tensor`):
+                Coordinates of the bounding box.
+
+            label (:class:`torch.Tensor`):
+                Label associated with each bounding box.
+
+        Shape:
+            * ``target`` - :math:`(*, N, 4 + C)` where :math:`N` is the number of boxes and :math:`C` is the
+              number of labels associated with each box.
+
+            * Output - :math:`(*, N, 4)` and :math:`(*, N, C)`
+        """
+        # input validation
+        check_is_tensor(bbox, "bbox")
+        check_is_tensor(label, "label")
+        if bbox.shape[-1] != 4:
+            raise ValueError(f"Expected bbox.shape[-1] == 4, found shape {bbox.shape}")
+        if bbox.shape[:-1] != label.shape[:-1]:
+            raise ValueError(f"Expected bbox.shape[:-1] == label.shape[:-1], found shapes {bbox.shape}, {label.shape}")
+
+        return torch.cat([bbox, label, *extra_labels], dim=-1)
+
+    @staticmethod
+    def combine_point_target(heatmap: Tensor, regression: Tensor) -> Tensor:
+        r"""Combine a CenterNet heatmap and regression components into a single label.
+
+        Args:
+            heatmap (:class:`torch.Tensor`):
+                The CenterNet heatmap.
+
+            regression (:class:`torch.Tensor`):
+                The CenterNet regression map.
+
+        Shape:
+            * ``heatmap`` - :math:`(*, C, H, W)`
+            * ``regression`` - :math:`(*, 4, H, W)`
+            * Output - :math:`(*, C+4, H, W)`
+        """
+        # input validation
+        check_is_tensor(heatmap, "heatmap")
+        check_is_tensor(regression, "regression")
+        if regression.shape[-3] != 4:
+            raise ValueError(f"Expected regression.shape[-3] == 4, found shape {regression.shape}")
+
+        return torch.cat([heatmap, regression], dim=-3)
+
+    @staticmethod
+    def heatmap_max_score(heatmap: Tensor) -> Tensor:
+        r"""Computes global maximum scores over a heatmap on a per-class basis.
+
+        Args:
+            heatmap (:class:`torch.Tensor`):
+                CenterNet heatmap
+
+        Shape:
+            * ``heatmap`` - :math:`(*, C, H, W)`
+            * Output - :math:`(*, C)`
+        """
+        check_is_tensor(heatmap, "heatmap")
+        non_spatial_shape = heatmap.shape[:-2]
+        output = heatmap.view(*non_spatial_shape, -1).max(dim=-1).values
+        return output
+
+    @staticmethod
+    def visualize_heatmap(
+        heatmap: Tensor,
+        background: Optional[Tensor] = None,
+        cmap: str = "gnuplot",
+        same_on_batch: bool = True,
+        heatmap_alpha: float = 0.5,
+        background_alpha: float = 0.5,
+    ) -> List[ByteTensor]:
+        r"""Generates visualizations of a CenterNet heatmap. Can optionally overlay the
+        heatmap on top of a background image.
+
+        Args:
+            heatmap (:class:`torch.Tensor`):
+                The heatmap to visualize
+
+            background (:class:`torch.Tensor`):
+                An optional background image for the heatmap visualization
+
+            cmap (str):
+                Matplotlib colormap
+
+            same_on_batch (bool):
+                See :func:`combustion.vision.to_8bit`
+
+            heatmap_alpha (float):
+                See :func:`combustion.util.alpha_blend`
+
+            background_alpha (float):
+                See :func:`combustion.util.alpha_blend`
+
+        Returns:
+            List of tensors, where each tensor is a heatmap visualization for one class in the heatmap
+
+        Shape:
+            * ``heatmap`` - :math:`(N, C, H, W)` where :math:`C` is the number of classes in the heatmap.
+            * Output - :math:`(N, 3, H, W)`
+        """
+        check_is_tensor(heatmap, "heatmap")
+        if background is not None:
+            check_is_tensor(background, "heatmap")
+            # need background to be float [0, 1] for alpha blend w/ heatmap
+            background = to_8bit(background, same_on_batch=same_on_batch).float().div_(255).cpu()
+
+            if background.shape[-3] == 1:
+                repetitions = [
+                    1,
+                ] * background.ndim
+                repetitions[-3] = 3
+                background = background.repeat(*repetitions)
+
+        num_channels = heatmap.shape[-3]
+
+        result = []
+        for channel_idx in range(num_channels):
+            _ = heatmap[..., channel_idx : channel_idx + 1, :, :]
+            _ = to_8bit(_, same_on_batch=same_on_batch)
+
+            # output is float from [0, 1]
+            heatmap_channel = apply_colormap(_.cpu(), cmap=cmap)
+
+            # drop alpha channel
+            heatmap_channel = heatmap_channel[..., :3, :, :]
+
+            # alpha blend w/ background
+            if background is not None:
+                heatmap_channel = F.interpolate(
+                    heatmap_channel, size=background.shape[-2:], mode="bilinear", align_corners=True
+                )
+                heatmap_channel = alpha_blend(heatmap_channel, background, heatmap_alpha, background_alpha)[0]
+
+            heatmap_channel = heatmap_channel.mul_(255).byte()
+            result.append(heatmap_channel)
+
+        return result
+
+    @staticmethod
+    def batch_box_target(target: List[Tensor], pad_value: float = -1) -> Tensor:
+        r"""Combine multiple distinct bounding box targets into a single batched target.
+
+        Args:
+            target (list of :class:`torch.Tensor`):
+                List of bounding box targets to combine
+
+            pad_value (float):
+                Padding value to use when creating the batch
+
+        Shape:
+            * ``target`` - :math:`(N_i, 4 + C)` where :math:`N_i` is the number of boxes and :math:`C` is the
+              number of labels associated with each box.
+
+            * Output - :math:`(B, N, 4 + c)`
+        """
+        max_boxes = 0
+        for elem in target:
+            check_is_tensor(elem, "target_elem")
+            max_boxes = max(max_boxes, elem.shape[-2])
+
+        output_shape = [len(target)] + list(target[0].shape)
+        output_shape[-2] = max_boxes
+        batch = torch.empty(*output_shape, device=target[0].device, dtype=target[0].dtype).fill_(pad_value)
+
+        for i, elem in enumerate(target):
+            batch[i, : elem.shape[-2], :] = elem
+
+        return batch
+
+    @staticmethod
+    def unbatch_box_target(target: Tensor, pad_value: float = -1) -> List[Tensor]:
+        r"""Splits a padded batch of bounding boxtarget tensors into a list of unpadded target tensors
+
+        Args:
+            target (:class:`torch.Tensor`):
+                Batch of bounding box targets to split
+
+            pad_value (float):
+                Value used for padding when creating the batch
+
+        Shape:
+            * ``target`` - :math:`(B, N, 4 + C)` where :math:`N` is the number of boxes and :math:`C` is the
+              number of labels associated with each box.
+
+            * Output - :math:`(N, 4 + C)`
+        """
+
+        padding_indices = (target == pad_value).all(dim=-1)
+        non_padded_coords = (~padding_indices).nonzero(as_tuple=True)
+
+        flat_result = target[non_padded_coords]
+        split_size = non_padded_coords[0].unique(return_counts=True)[1]
+        return torch.split(flat_result, split_size.tolist(), dim=0)
+
+    @staticmethod
+    def flatten_box_target(target: Tensor, pad_value: float = -1) -> List[Tensor]:
+        r"""Flattens a batch of bounding box target tensors, removing padded locations
+
+        Args:
+            target (:class:`torch.Tensor`):
+                Batch of bounding box targets to split
+
+            pad_value (float):
+                Value used for padding when creating the batch
+
+        Shape:
+            * ``target`` - :math:`(B, N, 4 + C)` where :math:`N` is the number of boxes and :math:`C` is the
+              number of labels associated with each box.
+
+            * Output - :math:`(N_{tot}, 4 + C)`
+        """
+        padding_indices = (target == pad_value).all(dim=-1)
+        non_padded_coords = (~padding_indices).nonzero(as_tuple=True)
+        return target[non_padded_coords]
