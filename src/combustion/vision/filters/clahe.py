@@ -26,6 +26,17 @@ class CLAHE:
 
     def __init__(self, *args, **kwargs):
         self.clahe = cv2.createCLAHE(*args, **kwargs)
+        self._args = args
+        self._kwargs = kwargs
+
+    def __repr__(self):
+        s = "CLAHE("
+        for arg in self._args:
+            s += f"{arg}, "
+        for key, value in self._kwargs.items():
+            s += f"{key}={value}, "
+        s = s[:-2] + ")"
+        return s
 
     def __call__(self, inputs: Tensor) -> Tensor:
         if inputs.dtype != torch.uint8:
@@ -33,10 +44,10 @@ class CLAHE:
         if inputs.ndim != 4:
             raise ValueError(f"Expected inputs.ndim == 4, found {inputs.ndim}")
 
-        inputs.device
         batch_size, channels, height, width = inputs.shape
-
         result = torch.empty_like(inputs)
+        inputs = inputs.cpu()
+
         for i in range(batch_size):
             batch_elem = inputs[i]
 
