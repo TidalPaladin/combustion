@@ -84,10 +84,10 @@ def test_anchors_to_points(bbox, classes, num_classes, image_shape, batch_size):
     offset_x, offset_y = reg[..., 0, :, :], reg[..., 1, :, :]
     size_x, size_y = reg[..., 2, :, :], reg[..., 3, :, :]
 
-    assert offset_x.nonzero().numel()
-    assert offset_y.nonzero().numel()
-    assert size_x.nonzero().numel()
-    assert size_y.nonzero().numel()
+    assert offset_x.nonzero(as_tuple=False).numel()
+    assert offset_y.nonzero(as_tuple=False).numel()
+    assert size_x.nonzero(as_tuple=False).numel()
+    assert size_y.nonzero(as_tuple=False).numel()
 
 
 @cuda_or_skip
@@ -197,7 +197,7 @@ def test_corner_case():
     output = layer(bbox, classes, (512, 256))
     assert (output[0, :2, ...] == 1).sum() == 1
 
-    positive_ind = (output[:, :2, ...] == 1).nonzero()
+    positive_ind = (output[:, :2, ...] == 1).nonzero(as_tuple=False)
     positive_elems = output[0, :, positive_ind[:, -2], positive_ind[:, -1]]
     assert (positive_elems[..., -2:] >= 0.0).all()
 

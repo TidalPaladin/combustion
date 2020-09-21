@@ -350,9 +350,8 @@ class CenterNetMixin:
             upper_bound = lower_bound + delta
             final_label.append(label[..., lower_bound:upper_bound])
             lower_bound = upper_bound
-        final_label = tuple(final_label)
         assert len(final_label) == len(split_label)
-        return bbox, *final_label
+        return tuple([bbox] + final_label)
 
     @staticmethod
     def split_point_target(target: Tensor) -> Tuple[Tensor, Tensor]:
