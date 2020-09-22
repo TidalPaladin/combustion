@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch import ByteTensor, Tensor
 
-from combustion.util import alpha_blend, apply_colormap, check_is_tensor
+from combustion.util import alpha_blend, apply_colormap, check_is_tensor, check_ndim_match
 
 from .convert import to_8bit
 
@@ -565,6 +565,7 @@ class CenterNetMixin:
 
             * Output - :math:`(N, 4 + C)`
         """
+        check_is_tensor(target, "target")
 
         padding_indices = (target == pad_value).all(dim=-1)
         non_padded_coords = (~padding_indices).nonzero(as_tuple=True)
@@ -590,6 +591,58 @@ class CenterNetMixin:
 
             * Output - :math:`(N_{tot}, 4 + C)`
         """
+        check_is_tensor(target, "target")
         padding_indices = (target == pad_value).all(dim=-1)
         non_padded_coords = (~padding_indices).nonzero(as_tuple=True)
         return target[non_padded_coords]
+
+    @staticmethod
+    def append_bbox_label(old_label: Tensor, new_label: Tensor) -> Tensor:
+        r"""Adds a new label element to an existing bounding box target.
+        The new label will be concatenated to the end of the last dimension in
+        ``old_label``.
+
+        Args:
+            old_label (:class:`torch.Tensor`):
+                The existing bounding box label
+
+            new_label (:class:`torch.Tensor`):
+                The label entry to add to ``old_label``
+
+        Shape:
+            * ``old_label`` - :math:`(*, N, C_0)`
+            * ``new_label`` - :math:`(B, N, C_1`)`
+            * Output - :math:`(B, N, C_0 + C_1)`
+        """
+        check_is_tensor(old_label, "old_label")
+        check_is_tensor(new_label, "new_label")
+        check_ndim_match(old_label, new_label, "old_label", "new_label")
+        if old_label.shape[:-1] != new_label.shape[:-1]:
+            raise ValueError(
+                "expected old_label.shape[:-1] == new_label.shape[:-1], " "found {old_label.shape}, {new_label.shape}"
+            )
+
+        return torch.cat([old_label, new_label], dim=-1)
+
+    @staticmethod
+    def append_heatmap_label(old_label: Tensor, new_label: Tensor) -> Tensor:
+        r"""Adds a new label element to an existing CenterNet target.
+        The new label will be concatenated to along the heatmap channel dimension
+        immediately preceeding the regression component of the heatmap.
+
+        Args:
+            old_label (:class:`torch.Tensor`):
+                The existing heatmap label
+
+            new_label (:class:`torch.Tensor`):
+                The heatmap channel to add to ``old_label``
+
+        Shape:
+            * ``old_label`` - :math:`(*, C_0 + 4, H, W)`
+            * ``new_label`` - :math:`(*, C_1, H, W)`
+            * Output - :math:`(*, C_0 + C_1 + 4, H, W)`
+        """
+        check_is_tensor(old_label, "old_label")
+        check_is_tensor(new_label, "new_label")
+        check_ndim_match(old_label, new_label, "old_label", "new_label")
+        return torch.cat([old_label[..., :-4, :, :], new_label, old_label[..., -4:, :, :]], dim=-3)

@@ -369,3 +369,25 @@ class TestCenterNetMixin:
 
         expected = torch.cat([target[0, :2, ...], target[1, ...]], dim=0)
         assert torch.allclose(flat_batch, expected)
+
+    @pytest.mark.parametrize("label_size", [1, 2])
+    def test_append_bbox_label(self, label_size):
+        torch.random.manual_seed(42)
+        old_label = torch.randint(0, 10, (2, 4, 6))
+        new_label = torch.randint(0, 10, (2, 4, label_size))
+
+        mixin = CenterNetMixin()
+        final_label = mixin.append_bbox_label(old_label, new_label)
+        assert torch.allclose(final_label, torch.cat([old_label, new_label], dim=-1))
+
+    @pytest.mark.parametrize("label_size", [1, 2])
+    def test_append_heatmap_label(self, label_size):
+        torch.random.manual_seed(42)
+        old_label = torch.rand(3, 6, 10, 10)
+        new_label = torch.rand(3, label_size, 10, 10)
+
+        mixin = CenterNetMixin()
+        final_label = mixin.append_heatmap_label(old_label, new_label)
+        assert torch.allclose(final_label[..., :2, :, :], old_label[..., :2, :, :])
+        assert torch.allclose(final_label[..., -4:, :, :], old_label[..., -4:, :, :])
+        assert torch.allclose(final_label[..., 2:-4, :, :], new_label)
