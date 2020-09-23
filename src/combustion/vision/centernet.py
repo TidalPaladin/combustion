@@ -201,9 +201,9 @@ class PointsToAnchors:
         upsample (int):
             An integer factor by which the points will be upsampled to produce box coordinates.
 
-        max_roi (int):
+        max_roi (int or ``None``):
             The maximum number of boxes to include in the final output. Only the top `max_roi` scoring
-            points will be converted into anchor boxes.
+            points will be converted into anchor boxes. If ``None``, don't drop boxes below a score threshold.
 
         threshold (float, optional):
             If given, discard boxes with classification scores less than or equal to `threshold`.
@@ -224,10 +224,10 @@ class PointsToAnchors:
     def __init__(
         self,
         upsample: int,
-        max_roi: int,
+        max_roi: Optional[int] = None,
         threshold: float = 0.0,
     ):
-        self.max_roi = int(max_roi)
+        self.max_roi = int(max_roi) if max_roi is not None else None
         self.upsample = int(upsample)
         self.threshold = float(threshold)
 
@@ -241,6 +241,8 @@ class PointsToAnchors:
 
     def __call__(self, points: Tensor) -> Tensor:
         # batched recursion
+        if points.shape[-3] <= 4:
+            raise ValueError(f"Expected points.shape[-3] > 4, found shape {points.shape}")
         if points.ndim > 3:
             return self._batched_recurse(points)
 
@@ -252,8 +254,12 @@ class PointsToAnchors:
         classes = non_maxima_suppression2d(classes.unsqueeze(0), kernel_size=(3,) * 2).squeeze(0)
 
         # extract class / center x / center y indices of top k scores over heatmap
-        topk = min(self.max_roi, classes.numel())
-        nms_scores, nms_idx = classes.view(-1).topk(topk, dim=-1)
+        if self.max_roi is not None:
+            topk = min(self.max_roi, classes.numel())
+            nms_scores, nms_idx = classes.view(-1).topk(topk, dim=-1)
+        else:
+            nms_scores, nms_idx = classes.view(-1).sort(dim=-1, descending=True)
+
         nms_idx = nms_idx[nms_scores > self.threshold]
         nms_scores = nms_scores[nms_scores > self.threshold]
 

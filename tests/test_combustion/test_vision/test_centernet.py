@@ -157,6 +157,22 @@ def test_reversible_with_points_to_anchors(downsample):
     assert torch.allclose(out_cls.type_as(classes), classes)
 
 
+@pytest.mark.parametrize("max_roi", [1, 2, None])
+def test_points_to_anchors_max_roi(max_roi):
+    torch.random.manual_seed(42)
+    image_shape = (32, 32)
+    num_classes = 3
+    heatmap = torch.rand(3, num_classes + 4, *image_shape)
+
+    to_anchors = PointsToAnchors(2, max_roi=max_roi)
+    result = to_anchors(heatmap)
+
+    if max_roi is not None:
+        assert result.shape[-2] <= max_roi
+    else:
+        assert result.shape[-2] == 372
+
+
 def test_overlapping_boxes():
     image_shape = (16, 16)
     num_classes = 3
