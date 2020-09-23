@@ -354,6 +354,55 @@ class CenterNetMixin:
         return tuple([bbox] + final_label)
 
     @staticmethod
+    def split_bbox_scores_class(target: Tensor, split_scores: Union[bool, Iterable[int]] = False) -> Tuple[Tensor, ...]:
+        r"""Split a predicted bounding box into box coordinates, probability score, and predicted class.
+        This implementation supports multiple score assignments for each box. It is expected that ``target``
+        be ordered along the last dimension as ``bbox``, ``scores``, ``class``.
+
+        .. note::
+            This operation returns views of the original tensor.
+
+        Args:
+            target (:class:`torch.Tensor`):
+                The target to split.
+
+            split_scores (bool or iterable of ints):
+                Whether to further decompose the scores tensor. If ``split_scores`` is ``True``, split
+                the scores tensor along the last dimension. If an interable of ints is given, treat each
+                int as a split size arugment to :func:`torch.split` along the last dimension.
+
+        Shape:
+            * ``target`` - :math:`(*, N, 4 + S + 1)` where :math:`N` is the number of boxes and :math:`S` is the
+              number of scores associated with each box.
+            * Output - :math:`(*, N, 4)`, :math:`(*, N, S)`, and :math:`(*, N, 1)`
+        """
+        check_is_tensor(target, "target")
+        bbox = target[..., :4]
+        scores = target[..., 4:-1]
+        cls = target[..., -1:]
+
+        if isinstance(split_scores, bool) and not split_scores:
+            return bbox, scores, cls
+
+        num_scores = scores.shape[-1]
+
+        # setup split size of 1 if bool given
+        if isinstance(split_scores, bool):
+            split_scores = [
+                1,
+            ] * num_scores
+
+        lower_bound = 0
+        upper_bound = 0
+        final_scores = []
+        for delta in split_scores:
+            upper_bound = lower_bound + delta
+            final_scores.append(scores[..., lower_bound:upper_bound])
+            lower_bound = upper_bound
+        assert len(final_scores) == len(split_scores)
+        return tuple([bbox] + final_scores + [cls])
+
+    @staticmethod
     def split_point_target(target: Tensor) -> Tuple[Tensor, Tensor]:
         r"""Split a CenterNet target into heatmap and regression components.
 
@@ -385,10 +434,9 @@ class CenterNetMixin:
                 Label associated with each bounding box.
 
         Shape:
-            * ``target`` - :math:`(*, N, 4 + C)` where :math:`N` is the number of boxes and :math:`C` is the
-              number of labels associated with each box.
-
-            * Output - :math:`(*, N, 4)` and :math:`(*, N, C)`
+            * ``bbox`` - :math:`(*, N, 4)`
+            * ``label`` - :math:`(*, N, 1)`
+            * Output - :math:`(*, N, 4 + 1)`
         """
         # input validation
         check_is_tensor(bbox, "bbox")
@@ -423,6 +471,38 @@ class CenterNetMixin:
             raise ValueError(f"Expected regression.shape[-3] == 4, found shape {regression.shape}")
 
         return torch.cat([heatmap, regression], dim=-3)
+
+    @staticmethod
+    def combine_bbox_scores_class(bbox: Tensor, cls: Tensor, scores: Tensor, *extra_scores) -> Tensor:
+        r"""Combine a bounding box coordinates and labels into a single label. Combined tensor
+        will be ordered along the last dimension as ``bbox``, ``scores``, ``cls``.
+
+        Args:
+            bbox (:class:`torch.Tensor`):
+                Coordinates of the bounding box.
+
+            cls (:class:`torch.Tensor`):
+                Class associated with each bounding box
+
+            scores (:class:`torch.Tensor`):
+                Probability associated with each bounding box.
+
+            *extra_scores (:class:`torch.Tensor`):
+                Additional scores to combine
+
+        Shape:
+            * ``bbox`` - :math:`(*, N, 4)`
+            * ``scores`` - :math:`(*, N, S)`
+            * ``cls`` - :math:`(*, N, 1)`
+            * Output - :math:`(*, N, 4 + S + 1)`
+        """
+        # input validation
+        check_is_tensor(bbox, "bbox")
+        check_is_tensor(scores, "scores")
+        check_is_tensor(cls, "cls")
+        if bbox.shape[-1] != 4:
+            raise ValueError(f"Expected bbox.shape[-1] == 4, found shape {bbox.shape}")
+        return torch.cat([bbox, scores, *extra_scores, cls], dim=-1)
 
     @staticmethod
     def heatmap_max_score(heatmap: Tensor) -> Tensor:

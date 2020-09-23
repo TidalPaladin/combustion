@@ -391,3 +391,62 @@ class TestCenterNetMixin:
         assert torch.allclose(final_label[..., :2, :, :], old_label[..., :2, :, :])
         assert torch.allclose(final_label[..., -4:, :, :], old_label[..., -4:, :, :])
         assert torch.allclose(final_label[..., 2:-4, :, :], new_label)
+
+    @pytest.mark.parametrize("split_scores", [False, True, [1, 1]])
+    def test_split_bbox_scores_class_result(self, split_scores):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4)).float()
+        scores_target = torch.rand(3, 4, 2)
+        cls_target = torch.randint(0, 10, (3, 4, 1)).float()
+        target = torch.cat([bbox_target, scores_target, cls_target], dim=-1)
+
+        mixin = CenterNetMixin()
+        result = mixin.split_bbox_scores_class(target, split_scores=split_scores)
+        bbox = result[0]
+        scores = result[1:-1]
+        cls = result[-1]
+
+        assert torch.allclose(bbox, bbox_target)
+        assert torch.allclose(cls, cls_target)
+
+        if not split_scores:
+            assert torch.allclose(torch.cat(scores, dim=-1), scores_target)
+        else:
+            for i, sub_scores in enumerate(scores):
+                assert torch.allclose(sub_scores, scores_target[..., i : i + 1])
+
+    def test_split_bbox_scores_class_returns_views(self):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4)).float()
+        scores_target = torch.rand(3, 4, 2)
+        torch.randint(0, 10, (3, 4, 1)).float()
+        target = torch.cat([bbox_target, scores_target], dim=-1)
+
+        mixin = CenterNetMixin()
+        result = mixin.split_bbox_scores_class(target)
+        bbox = result[0]
+        scores = result[1]
+        cls = result[-1]
+
+        target.mul_(10)
+        assert torch.allclose(bbox, target[..., :4])
+        assert torch.allclose(scores, target[..., 4:-1])
+        assert torch.allclose(cls, target[..., -1:])
+
+    @pytest.mark.parametrize("extra_scores", [False, True])
+    def test_combine_bbox_scores_cls(self, extra_scores):
+        torch.random.manual_seed(42)
+        bbox = torch.randint(0, 10, (3, 4, 4)).float()
+        scores = torch.rand(3, 4, 2)
+        cls = torch.randint(0, 10, (3, 4, 1))
+        if extra_scores:
+            extra_scores = (torch.rand(3, 4, 2).float(),)
+        else:
+            extra_scores = ()
+
+        true_target = torch.cat([bbox, scores, *extra_scores, cls], dim=-1)
+
+        mixin = CenterNetMixin()
+        target = mixin.combine_bbox_scores_class(bbox, cls, scores, *extra_scores)
+
+        assert torch.allclose(target, true_target)
