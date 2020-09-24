@@ -10,6 +10,7 @@ from torch import ByteTensor, Tensor
 from combustion.util import alpha_blend, apply_colormap, check_is_tensor, check_ndim_match
 
 from .convert import to_8bit
+from .iou_assign import CategoricalLabelIoU
 
 
 try:
@@ -519,10 +520,11 @@ class CenterNetMixin:
                 CenterNet heatmap
 
         Shape:
-            * ``heatmap`` - :math:`(*, C, H, W)`
+            * ``heatmap`` - :math:`(*, C+4, H, W)`
             * Output - :math:`(*, C)`
         """
         check_is_tensor(heatmap, "heatmap")
+        heatmap = heatmap[..., :-4, :, :]
         non_spatial_shape = heatmap.shape[:-2]
         output = heatmap.view(*non_spatial_shape, -1).max(dim=-1).values
         return output
@@ -732,3 +734,136 @@ class CenterNetMixin:
         check_is_tensor(new_label, "new_label")
         check_ndim_match(old_label, new_label, "old_label", "new_label")
         return torch.cat([old_label[..., :-4, :, :], new_label, old_label[..., -4:, :, :]], dim=-3)
+
+    @staticmethod
+    def get_pred_target_pairs(
+        pred: Tensor,
+        target: Tensor,
+        upsample: int,
+        iou_threshold: float = 0.5,
+        true_positive_limit: bool = True,
+        pad_value: float = -1,
+    ) -> Tensor:
+        r"""Given a predicted CenterNet heatmap and target bounding box label, use box IoU to
+        create a paring of predicted and target boxes such that each predicted box has
+        an associated gold standard label.
+
+        .. warning::
+            This method should work with batched input, but such inputs are not thoroughly tested
+
+        Args:
+            pred (:class:`torch.Tensor`):
+                Predicted heatmap.
+
+            target (:class:`torch.Tensor`):
+                Target bounding boxes in format ``x1, y1, x2, y2, class``.
+
+            iou_threshold (float):
+                Intersection over union threshold for which a prediction can be considered a
+                true positive.
+
+            true_positive_limit (bool):
+                By default, only one predicted box overlapping a target box will be counted
+                as a true positive. If ``True``, allow multiple true positive boxes per
+                target box.
+
+            pad_value (float):
+                Value used for padding a batched input, and the value to use when padding
+                a batched output.
+
+        Returns:
+            Tensor paring a predicted probability with an integer class label. If input is a batch,
+            return a list with result tensors for each batch element.
+
+        Shape:
+            * ``pred`` - :math:`(*, C+4, H, W)`
+            * ``target`` - :math:`(*, N_i, 5)`
+            * Output - :math:`(*, N_o, 2)`
+        """
+        check_is_tensor(pred, "pred")
+        check_is_tensor(target, "target")
+        is_batch = pred.ndim > 3
+        assert pred.shape[-3] > 4
+
+        if is_batch:
+            assert target.ndim > 2, "pred batched but target not batched"
+            batch_result = []
+            for pred_i, target_i in zip(pred, target):
+                result = CenterNetMixin.get_pred_target_pairs(
+                    pred_i, target_i, upsample, iou_threshold, true_positive_limit, pad_value
+                )
+                batch_result.append(result)
+            return batch_result
+
+        # we might be operating on a batched example that was padded, so remove these padded locations
+        pad_locations = (target == -1).all(dim=-1)
+        target = target[~pad_locations, :]
+
+        # turn heatmap into anchor boxes with no threshold / max roi
+        # this generates all boxes that satisfy the > 8 nearest neighbors condition
+        xform = PointsToAnchors(upsample, max_roi=None, threshold=0.0)
+        pred = xform(pred)
+
+        # get a paring of predicted probability to target labels
+        # if we didn't detect a target box at any threshold, assume P_pred = 0.0
+        xform = CategoricalLabelIoU(iou_threshold, true_positive_limit)
+        pred_boxes, pred_scores, pred_cls = CenterNetMixin.split_bbox_scores_class(pred)
+        target_bbox, target_cls = CenterNetMixin.split_box_target(target)
+        pred_out, is_correct, target_out = xform(pred_boxes, pred_scores, pred_cls, target_bbox, target_cls)
+
+        assert pred_out.ndim == 1
+        assert target_out.ndim == 1
+        assert pred_out.shape == target_out.shape
+        return pred_out, target_out.long(), is_correct
+
+    @staticmethod
+    def get_global_pred_target_pairs(pred: Tensor, target: Tensor, pad_value: float = -1) -> Tensor:
+        r"""Given predicted CenterNet heatmap and target bounding box label, create a paring of
+        per-class global heatmap maxima to binary labels indicating whether or not the class was
+        present in the true label.
+
+        Args:
+            pred (:class:`torch.Tensor`):
+                Predicted heatmap.
+
+            target (:class:`torch.Tensor`):
+                Target bounding boxes in format ``x1, y1, x2, y2, class``.
+
+            pad_value (float):
+                Value used for padding a batched ``target`` input.
+
+        Returns:
+            Tensor paring a predicted probability with a binary indicator
+
+        Shape:
+            * ``pred`` - :math:`(*, C+4, H, W)`
+            * ``target`` - :math:`(*, N_i, 5)`
+            * Output - :math:`(*, C, 2)`
+        """
+        check_is_tensor(pred, "pred")
+        check_is_tensor(target, "target")
+        is_batch = pred.ndim > 3
+        assert pred.shape[-3] > 4
+
+        if is_batch:
+            assert target.ndim > 2, "pred batched but target not batched"
+            batch_result = []
+            for pred_i, target_i in zip(pred, target):
+                result = CenterNetMixin.get_global_pred_target_pairs(pred_i, target_i, pad_value)
+                batch_result.append(result)
+            return torch.stack(batch_result, dim=0)
+
+        # we might be operating on a batched example that was padded, so remove these padded locations
+        pad_locations = (target == -1).all(dim=-1)
+        target = target[~pad_locations, :]
+
+        # get the global max probability for each class in the heatmap
+        num_classes = pred.shape[-3] - 4
+        max_pred_scores = CenterNetMixin.heatmap_max_score(pred)
+
+        # get boolean mask of which classes were present in the target
+        target_class_present = torch.zeros(num_classes, device=target.device).bool()
+        target_class_present[target[..., -1].unique().long()] = True
+
+        assert max_pred_scores.shape == target_class_present.shape
+        return torch.stack([max_pred_scores, target_class_present.type_as(max_pred_scores)], dim=-1)

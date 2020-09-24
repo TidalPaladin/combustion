@@ -306,9 +306,9 @@ class TestCenterNetMixin:
 
     def test_heatmap_max_score(self):
         torch.random.manual_seed(42)
-        heatmap = torch.rand(3, 2, 10, 10)
-
-        expected = heatmap.max(dim=-1).values.max(dim=-1).values
+        num_classes = 3
+        heatmap = torch.rand(3, num_classes + 4, 10, 10)
+        expected = heatmap[..., :num_classes, :, :].max(dim=-1).values.max(dim=-1).values
 
         mixin = CenterNetMixin()
         actual = mixin.heatmap_max_score(heatmap)
@@ -466,3 +466,98 @@ class TestCenterNetMixin:
         target = mixin.combine_bbox_scores_class(bbox, cls, scores, *extra_scores)
 
         assert torch.allclose(target, true_target)
+
+    @pytest.mark.parametrize("true_positive_limit", [True, False])
+    def test_get_pred_target_pairs(self, true_positive_limit):
+        torch.random.manual_seed(42)
+        num_classes = 3
+
+        # its easier to check correctness with bounding boxes than heatmaps,
+        # so we start with bounding boxes and compute an equaivalent heatmap
+        #
+        # assume we predicted a set of boxes (x1, y1, x2, y2, class)
+        pred_bbox = torch.tensor(
+            [
+                [0, 0, 2, 2, 0],  # overlaps target[0] and target[1]
+                [2, 2, 4, 4, 0],  # false positive
+                [1, 1, 4, 4, 1],  # overlaps target[4] better than V
+                [2, 2, 6, 6, 1],  # overlaps target[4] worse than ^
+                [5, 5, 9, 9, 1],  # overlaps target[2]
+            ]
+        ).float()
+
+        # compute the equivalent heatmap
+        atp = AnchorsToPoints(num_classes=num_classes, downsample=1)
+        pred_heatmap = atp(pred_bbox[..., :4], pred_bbox[..., -1:], shape=(10, 10))
+
+        # for clarity make max heatmap probability just under 1
+        pred_heatmap[..., :num_classes, :, :].clamp_max_(0.99)
+        assert (pred_heatmap == 0.99).sum() == pred_bbox.shape[-2], "heatmap discretization dropped a box"
+
+        target = torch.tensor(
+            [
+                [0, 0, 2.1, 2.1, 0],  # tp pred_bbox[0]
+                [0, 0, 2, 2, 0],  # tp pred_bbox[0]
+                [3, 3, 6, 6, 0],  # false negative
+                [5, 5, 10, 9, 1],  # tp pred_bbox[4]
+                [1, 1, 4.9, 4.9, 1],  # tp pred_bbox[3]
+                [-1, -1, -1, -1, -1],  # padding
+            ]
+        ).float()
+
+        mixin = CenterNetMixin()
+        pred_score, target_class, is_correct = mixin.get_pred_target_pairs(
+            pred_heatmap, target, upsample=1, true_positive_limit=true_positive_limit, iou_threshold=0.3
+        )
+
+        assert torch.allclose(pred_score, torch.tensor([0.99, 0.99, 0.99, 0.99, 0.99, 0.0]))
+
+        tp = is_correct.sum()
+        fp = (target_class == -1).sum()
+        fn = ((target_class != -1) & (~is_correct)).sum()
+
+        if true_positive_limit:
+            assert tp == 3
+            assert fp == 2
+            assert fn == 1
+        else:
+            assert tp == 4  # one extra tp from duplicate boxes
+            assert fp == 1  # one less fp from ^
+            assert fn == 1
+
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_get_global_pred_target_pairs(self, batched):
+        torch.random.manual_seed(42)
+        num_classes = 3
+
+        pred_heatmap = torch.rand(num_classes + 4, 10, 10)
+
+        # classes {0, 1} present, class 3 not present
+        target = torch.tensor(
+            [
+                [0, 0, 2.1, 2.1, 0],
+                [0, 0, 2, 2, 0],
+                [3, 3, 6, 6, 0],
+                [5, 5, 10, 9, 1],
+                [1, 1, 4.9, 4.9, 1],
+                [-1, -1, -1, -1, -1],
+            ]
+        ).float()
+
+        if batched:
+            pred_heatmap = pred_heatmap.unsqueeze_(0).expand(2, -1, -1, -1)
+            target = target.unsqueeze_(0).expand(2, -1, -1)
+
+        mixin = CenterNetMixin()
+        result = mixin.get_global_pred_target_pairs(pred_heatmap, target)
+
+        # expected pred is the max over the heatmap
+        expected_pred = pred_heatmap[..., :-4, :, :].max(dim=-1).values.max(dim=-1).values
+
+        # expected target is 1, 1, 0 for classes 0, 1 present / 2 not present
+        expected_target = torch.tensor([1.0, 1.0, 0.0])
+        if batched:
+            expected_target = expected_target.unsqueeze_(0).expand(2, -1)
+
+        assert torch.allclose(result[..., 0], expected_pred)
+        assert torch.allclose(result[..., 1], expected_target)

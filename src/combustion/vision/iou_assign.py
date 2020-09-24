@@ -20,6 +20,12 @@ class ConfusionMatrixIoU:
         iou_threshold (float):
             Intersection over union threshold for which a box should be declared a positive
 
+        true_positive_limit (bool):
+            By default, if multiple predicted boxes correctly overlap a target box only one predicted box will be
+            considered a true positive. If ``true_positive_limit=True``, consider all correctly overlapping boxes
+            as true positives
+
+    Returns:
         Tuple of ``(true_positive_mask, false_negative_mask)``
 
     Input Shape
@@ -33,10 +39,11 @@ class ConfusionMatrixIoU:
         * ``false_negative_mask`` - :math:`(N_t)`
     """
 
-    def __init__(self, iou_threshold: float = 0.5):
+    def __init__(self, iou_threshold: float = 0.5, true_positive_limit: bool = True):
         self.iou_threshold = float(abs(iou_threshold))
         if self.iou_threshold == 0:
             raise ValueError("Expected iou_threshold > 0")
+        self.true_positive_limit = bool(true_positive_limit)
 
     def __call__(
         self,
@@ -70,11 +77,14 @@ class ConfusionMatrixIoU:
         ious = ious[iou_argsort_indices]
 
         # for multiple pred boxes -> 1 target box, keep only the highest IoU match
-        unique_target_boxes, unique_indices = target_box_index.unique(return_inverse=True)
-        num_unique_target_boxes = unique_target_boxes.shape[0]
-        final_mapping = torch.empty(num_unique_target_boxes, 2, device=unique_indices.device, dtype=torch.long)
-        final_mapping[unique_indices, 0] = pred_box_index
-        final_mapping[unique_indices, 1] = target_box_index
+        if self.true_positive_limit:
+            unique_target_boxes, unique_indices = target_box_index.unique(return_inverse=True)
+            num_unique_target_boxes = unique_target_boxes.shape[0]
+            final_mapping = torch.empty(num_unique_target_boxes, 2, device=unique_indices.device, dtype=torch.long)
+            final_mapping[unique_indices, 0] = pred_box_index
+            final_mapping[unique_indices, 1] = target_box_index
+        else:
+            final_mapping = torch.cat([pred_box_index, target_box_index], dim=-1)
 
         tp[final_mapping[..., 0]] = True
         fn[final_mapping[..., 1]] = False
@@ -160,6 +170,11 @@ class BinaryLabelIoU(ConfusionMatrixIoU):
         iou_threshold (float):
             Intersection over union threshold for which a box should be declared a positive
 
+        true_positive_limit (bool):
+            By default, if multiple predicted boxes correctly overlap a target box only one predicted box will be
+            considered a true positive. If ``true_positive_limit=True``, consider all correctly overlapping boxes
+            as true positives
+
     Returns:
         Tuple of ``(predicted_score, true_binary_label)``
 
@@ -171,8 +186,8 @@ class BinaryLabelIoU(ConfusionMatrixIoU):
         * ``true_classes`` - :math:`(N_t, 1)`
     """
 
-    def __init__(self, iou_threshold: float = 0.5):
-        super().__init__(iou_threshold)
+    def __init__(self, iou_threshold: float = 0.5, true_positive_limit: bool = True):
+        super().__init__(iou_threshold, true_positive_limit)
 
     def __call__(
         self,
@@ -194,3 +209,60 @@ class BinaryLabelIoU(ConfusionMatrixIoU):
         target[:num_pred_boxes][tp] = 1
         target[num_pred_boxes:] = 1
         return pred, target
+
+
+# TODO can this be merged with BinaryLabelIoU?
+class CategoricalLabelIoU(ConfusionMatrixIoU):
+    r"""Given a set of predicted boxes (with scores and class labels) and a set of target boxes (with class labels),
+    creates a mapping of predicted probabilities to target probabilities. This method is intented to take anchor box
+    predictions and labels (particularly from CenterNet where overlap with a true box is not guaranteed) and produce
+    an output that can be passed to metrics that expect a predicted score to true label association.
+
+    .. warning::
+        This method is experimental
+
+    Args:
+        iou_threshold (float):
+            Intersection over union threshold for which a box should be declared a positive
+
+        true_positive_limit (bool):
+            By default, if multiple predicted boxes correctly overlap a target box only one predicted box will be
+            considered a true positive. If ``true_positive_limit=True``, consider all correctly overlapping boxes
+            as true positives
+
+    Returns:
+        Tuple of ``(predicted_score, true_binary_label)``
+
+    Shape
+        * ``pred_boxes`` - :math:`(N_p, 4)`
+        * ``pred_scores`` - :math:`(N_p, 1)`
+        * ``pred_classes`` - :math:`(N_p, 1)`
+        * ``true_boxes`` - :math:`(N_t, 4)`
+        * ``true_classes`` - :math:`(N_t, 1)`
+    """
+
+    def __init__(self, iou_threshold: float = 0.5, true_positive_limit: bool = True):
+        super().__init__(iou_threshold, true_positive_limit)
+
+    def __call__(
+        self,
+        pred_boxes: Tensor,
+        pred_scores: Tensor,
+        pred_classes: Tensor,
+        true_boxes: Tensor,
+        true_classes: Tensor,
+    ) -> Tuple[Tensor, Tensor]:
+        tp, fn = super().__call__(pred_boxes, pred_classes, true_boxes, true_classes)
+
+        num_pred_boxes = tp.numel()
+        num_fn = fn.sum()
+
+        pred = torch.empty(num_pred_boxes + num_fn, device=pred_boxes.device).type_as(pred_scores).fill_(0)
+        target = torch.empty(num_pred_boxes + num_fn, device=pred_boxes.device).type_as(pred_scores).fill_(-1)
+        is_correct = torch.zeros(num_pred_boxes + num_fn, device=pred_boxes.device).bool()
+
+        pred[:num_pred_boxes] = pred_scores.view(-1)
+        target[:num_pred_boxes][tp] = pred_classes[tp].view(-1)
+        target[num_pred_boxes:] = true_classes[fn].view(-1)
+        is_correct[:num_pred_boxes][tp] = True
+        return pred, is_correct, target
