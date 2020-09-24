@@ -22,7 +22,7 @@ class ConfusionMatrixIoU:
 
         true_positive_limit (bool):
             By default, if multiple predicted boxes correctly overlap a target box only one predicted box will be
-            considered a true positive. If ``true_positive_limit=True``, consider all correctly overlapping boxes
+            considered a true positive. If ``true_positive_limit=False``, consider all correctly overlapping boxes
             as true positives
 
     Returns:

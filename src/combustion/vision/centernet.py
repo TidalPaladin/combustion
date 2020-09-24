@@ -764,7 +764,7 @@ class CenterNetMixin:
 
             true_positive_limit (bool):
                 By default, only one predicted box overlapping a target box will be counted
-                as a true positive. If ``True``, allow multiple true positive boxes per
+                as a true positive. If ``False``, allow multiple true positive boxes per
                 target box.
 
             pad_value (float):
