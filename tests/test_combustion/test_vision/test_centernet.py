@@ -513,8 +513,8 @@ class TestCenterNetMixin:
         assert torch.allclose(pred_score, torch.tensor([0.99, 0.99, 0.99, 0.99, 0.99, 0.0]))
 
         tp = is_correct.sum()
-        fp = (target_class == -1).sum()
-        fn = ((target_class != -1) & (~is_correct)).sum()
+        fp = ((~is_correct) & (pred_score > 0)).sum()
+        fn = (pred_score == 0).sum()
 
         if true_positive_limit:
             assert tp == 3

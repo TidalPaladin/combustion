@@ -74,7 +74,6 @@ class ConfusionMatrixIoU:
         iou_argsort_indices = ious.argsort(dim=0, descending=True).view(-1)
         pred_box_index = pred_box_index[iou_argsort_indices]
         target_box_index = target_box_index[iou_argsort_indices]
-        ious = ious[iou_argsort_indices]
 
         # for multiple pred boxes -> 1 target box, keep only the highest IoU match
         if self.true_positive_limit:
@@ -172,7 +171,7 @@ class BinaryLabelIoU(ConfusionMatrixIoU):
 
         true_positive_limit (bool):
             By default, if multiple predicted boxes correctly overlap a target box only one predicted box will be
-            considered a true positive. If ``true_positive_limit=True``, consider all correctly overlapping boxes
+            considered a true positive. If ``true_positive_limit=False``, consider all correctly overlapping boxes
             as true positives
 
     Returns:
@@ -227,11 +226,11 @@ class CategoricalLabelIoU(ConfusionMatrixIoU):
 
         true_positive_limit (bool):
             By default, if multiple predicted boxes correctly overlap a target box only one predicted box will be
-            considered a true positive. If ``true_positive_limit=True``, consider all correctly overlapping boxes
+            considered a true positive. If ``true_positive_limit=False``, consider all correctly overlapping boxes
             as true positives
 
     Returns:
-        Tuple of ``(predicted_score, true_binary_label)``
+        Tuple of ``(predicted_score, is_correct, true_binary_label)``
 
     Shape
         * ``pred_boxes`` - :math:`(N_p, 4)`
@@ -251,7 +250,7 @@ class CategoricalLabelIoU(ConfusionMatrixIoU):
         pred_classes: Tensor,
         true_boxes: Tensor,
         true_classes: Tensor,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor, Tensor]:
         tp, fn = super().__call__(pred_boxes, pred_classes, true_boxes, true_classes)
 
         num_pred_boxes = tp.numel()
@@ -264,5 +263,6 @@ class CategoricalLabelIoU(ConfusionMatrixIoU):
         pred[:num_pred_boxes] = pred_scores.view(-1)
         target[:num_pred_boxes][tp] = pred_classes[tp].view(-1)
         target[num_pred_boxes:] = true_classes[fn].view(-1)
+        target[:num_pred_boxes][~tp] = pred_classes[~tp].view(-1)
         is_correct[:num_pred_boxes][tp] = True
         return pred, is_correct, target
