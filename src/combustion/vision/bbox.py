@@ -118,7 +118,7 @@ def visualize_bbox(
 
     # individual dimension checks
     check_dimension(bbox, dim=-1, size=4, name="bbox")
-    check_dimension(classes, dim=-1, size=1, name="classes")
+    classes is None or check_dimension(classes, dim=-1, size=1, name="classes")
     classes is None or check_dimension_match(bbox, classes, -2, "bbox", "classes")
     scores is None or check_dimension_match(bbox, scores, -2, "bbox", "scores")
     img_shape = img.shape[-2:]

@@ -41,8 +41,10 @@ def img(input_type, img_shape):
         raise pytest.UsageError(f"unknown type for fixture image: {img_t}")
 
 
-@pytest.fixture
-def label(input_type, img_shape):
+@pytest.fixture(params=["classes", "no_classes"])
+def label(request, input_type, img_shape):
+    if request.param == "no_classes":
+        return None
     label_t = input_type
     tensor = torch.Tensor([[1], [2]])
     if len(img_shape) == 4:
@@ -74,11 +76,16 @@ def class_names():
     return {x: str(x) for x in range(5)}
 
 
-@pytest.fixture
-def scores(input_type, label):
+@pytest.fixture(params=["scores", "no_scores"])
+def scores(request, input_type, img_shape):
+    if request.param == "no_scores":
+        return None
     torch.random.manual_seed(42)
     scores_t = input_type
-    tensor = torch.rand_like(torch.Tensor(label))
+    if len(img_shape) == 4:
+        tensor = torch.rand(img_shape[0], 2, 1)
+    else:
+        tensor = torch.rand(2, 1)
     if scores_t == "Tensor":
         return tensor
     elif scores_t == "np.array":
@@ -103,16 +110,20 @@ class TestVisualizeBbox:
             return torch.as_tensor(x).clone()
 
         img_c = copy(img)
-        label_c = copy(label)
         bbox_c = copy(bbox)
-        scores_c = copy(scores)
+        if label is not None:
+            label_c = copy(label)
+        if scores is not None:
+            scores_c = copy(scores)
 
         result = visualize_bbox(img, bbox=bbox, classes=label, scores=scores, class_names=class_names)
 
         assert torch.allclose(torch.as_tensor(img), img_c)
-        assert torch.allclose(torch.as_tensor(label), label_c)
         assert torch.allclose(torch.as_tensor(bbox), bbox_c)
-        assert torch.allclose(torch.as_tensor(scores), scores_c)
+        if label is not None:
+            assert torch.allclose(torch.as_tensor(label), label_c)
+        if scores is not None:
+            assert torch.allclose(torch.as_tensor(scores), scores_c)
 
     def test_visualize_bbox(self, img, label, bbox, class_names, scores):
         if not isinstance(img, torch.Tensor):
@@ -131,6 +142,8 @@ class TestVisualizeBbox:
             self.save(dest, result)
 
     def test_class_names(self, img, label, bbox):
+        if label is None:
+            pytest.skip()
         class_names = {1: "foo", 2: "bar"}
         no_names = visualize_bbox(img, bbox, label)
         names = visualize_bbox(img, bbox, label, class_names=class_names)
@@ -140,10 +153,12 @@ class TestVisualizeBbox:
             dest = os.path.join(self.DEST, "test_class_names.png")
             self.save(dest, names)
 
-    def test_multiple_scores(self, img, label, bbox):
+    def test_multiple_scores(self, img, label, bbox, scores):
         torch.random.manual_seed(42)
-        tensor1 = torch.rand_like(torch.as_tensor(label))
-        tensor2 = torch.rand_like(torch.as_tensor(label))
+        if scores is None:
+            pytest.skip()
+        tensor1 = torch.rand_like(torch.as_tensor(scores))
+        tensor2 = torch.rand_like(torch.as_tensor(scores))
         tensor = torch.cat([tensor1, tensor2], dim=-1)
 
         scores1 = visualize_bbox(img, bbox, label, scores=tensor1)
