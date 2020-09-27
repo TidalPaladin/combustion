@@ -168,3 +168,24 @@ class TestVisualizeBbox:
         if self.DEST is not None and img.ndim == 3:
             dest = os.path.join(self.DEST, "test_multiple_scores.png")
             self.save(dest, scores2)
+
+    @pytest.mark.usefixtures("cuda_or_skip")
+    def test_cuda(self, img, label, bbox, class_names, scores):
+        if not isinstance(img, torch.Tensor):
+            pytest.skip()
+
+        img = img.cuda()
+        bbox = bbox.cuda()
+        label = label.cuda() if label is not None else None
+        scores = scores.cuda() if scores is not None else None
+        result = visualize_bbox(img, bbox, label, scores, class_names)
+        assert isinstance(result, torch.Tensor)
+        assert result.dtype == torch.uint8
+        assert result.shape[-2:] == img.shape[-2:]
+        assert result.shape[-3] == 3
+        if img.ndim != 2:
+            assert result.ndim == img.ndim
+
+        if self.DEST is not None and img.ndim == 3:
+            dest = os.path.join(self.DEST, "test_visualize_bbox.png")
+            self.save(dest, result)

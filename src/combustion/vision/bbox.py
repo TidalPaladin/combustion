@@ -123,8 +123,10 @@ def visualize_bbox(
     scores is None or check_dimension_match(bbox, scores, -2, "bbox", "scores")
     img_shape = img.shape[-2:]
 
-    # convert to tensor
-    img, bbox, classes, scores = [torch.as_tensor(x) if x is not None else x for x in (img, bbox, classes, scores)]
+    # convert to cpu tensor
+    img, bbox, classes, scores = [
+        torch.as_tensor(x).cpu() if x is not None else x for x in (img, bbox, classes, scores)
+    ]
 
     # add a channel dimension to img if not present
     if img.ndim == 2:
