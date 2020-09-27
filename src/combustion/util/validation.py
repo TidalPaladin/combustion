@@ -30,7 +30,7 @@ def check_shapes_match(x: Array, y: Array, x_name: str, y_name: str) -> None:
     assert isinstance(x_name, str)
     assert isinstance(y_name, str)
     if x.shape != y.shape:
-        raise ValueError(f"expected {x_name}.shape == {y_name}.shape:\n" "{x.shape} vs {y.shape}")
+        raise ValueError(f"expected {x_name}.shape == {y_name}.shape:\n" f"{x.shape} vs {y.shape}")
 
 
 def check_ndim_match(x: Array, y: Array, x_name: str, y_name: str) -> None:
@@ -54,7 +54,7 @@ def check_ndim_match(x: Array, y: Array, x_name: str, y_name: str) -> None:
     assert isinstance(x_name, str)
     assert isinstance(y_name, str)
     if x.ndim != y.ndim:
-        raise ValueError(f"expected {x_name}.ndim == {y_name}.ndim:\n" "{x.shape} vs {y.shape}")
+        raise ValueError(f"expected {x_name}.ndim == {y_name}.ndim:\n" f"{x.shape} vs {y.shape}")
 
 
 def check_names_match(x: Array, y: Array, x_name: str, y_name: str):
@@ -66,7 +66,7 @@ def check_names_match(x: Array, y: Array, x_name: str, y_name: str):
     x_names = sorted(x.names)
     y_names = sorted(y.names)
     if not x_names == y_names:
-        raise ValueError(f"expected {x_name}.names == {y_name}.names:\n" "{x_names} vs {y_names}")
+        raise ValueError(f"expected {x_name}.names == {y_name}.names:\n" f"{x_names} vs {y_names}")
 
 
 def check_is_tensor(x: Any, name: str) -> None:
@@ -119,13 +119,13 @@ def check_shape(x: Array, shape: Union[Tuple[int, ...], List[int]], name: str) -
 
     # check tensor rank mismatch first
     if x.ndim != len(shape):
-        raise ValueError(f"expected {name}.shape == {shape}:\n" "{x.shape} vs {shape}")
+        raise ValueError(f"expected {name}.shape == {shape}:\n" f"{x.shape} vs {shape}")
 
     # check each dim, skip None entries in shape
     for i, (actual, expected) in enumerate(zip(x.shape, shape)):
         if expected is None:
             continue
-        raise ValueError(f"expected {name}.shape == {shape}:\n" "mismatch in dim {i}: {x.shape} vs {shape}")
+        raise ValueError(f"expected {name}.shape == {shape}:\n" f"mismatch in dim {i}: {x.shape} vs {shape}")
 
 
 def check_dimension(x: Array, dim: int, size: int, name: str) -> None:
@@ -150,7 +150,7 @@ def check_dimension(x: Array, dim: int, size: int, name: str) -> None:
     assert isinstance(name, str)
 
     if x.shape[dim] != size:
-        raise ValueError(f"expected {name}.shape[{dim}] == {size}\n" "found shape {x.shape}")
+        raise ValueError(f"expected {name}.shape[{dim}] == {size}\n" f"found shape {x.shape}")
 
 
 def check_dimension_within_range(x: Array, dim: int, bounds: Tuple[int, int], name: str) -> None:
@@ -178,7 +178,7 @@ def check_dimension_within_range(x: Array, dim: int, bounds: Tuple[int, int], na
 
     low, high = bounds
     if x.shape[dim] < low or x.shape[dim] > high:
-        raise ValueError(f"expected {low} < {name}.shape[{dim}] < {high}\n" "found shape {x.shape}")
+        raise ValueError(f"expected {low} < {name}.shape[{dim}] < {high}\n" f"found shape {x.shape}")
 
 
 def check_dimension_match(x: Array, y: Array, dim: int, x_name: str, y_name: str) -> None:
@@ -207,7 +207,7 @@ def check_dimension_match(x: Array, y: Array, dim: int, x_name: str, y_name: str
     assert isinstance(y_name, str)
 
     if x.shape[dim] != y.shape[dim]:
-        raise ValueError(f"expected {x_name}.shape[{dim}] == {y_name}.shape[{dim}]\n" "{x.shape} vs {y.shape}")
+        raise ValueError(f"expected {x_name}.shape[{dim}] == {y_name}.shape[{dim}]\n" f"{x.shape} vs {y.shape}")
 
 
 def check_names(x: Array, names: Union[List[str], Tuple[str, ...]], var_name) -> None:
@@ -218,4 +218,4 @@ def check_names(x: Array, names: Union[List[str], Tuple[str, ...]], var_name) ->
     expected = sorted(names)
     actual = sorted(x.names)
     if not actual == expected:
-        raise ValueError(f"expected {var_name}.names == {names}:\n" "{actual} vs {expected}")
+        raise ValueError(f"expected {var_name}.names == {names}:\n" f"{actual} vs {expected}")
