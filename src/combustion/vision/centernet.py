@@ -211,7 +211,7 @@ class PointsToAnchors:
             Default 0.0
 
         return_indices (bool):
-            If ``True`` is passed to :func:`forward`, also return a mask of points that were mapped to boxes
+            If ``True`` is passed to :func:`forward`, also return indices of the points that were mapped to boxes
 
     Shape:
         - Points: :math:`(*, C + 4, H, W)` where :math:`C` is the number of classes, and :math:`H, W`
@@ -247,8 +247,10 @@ class PointsToAnchors:
         # batched recursion
         if points.shape[-3] <= 4:
             raise ValueError(f"Expected points.shape[-3] > 4, found shape {points.shape}")
-        if points.ndim > 3:
+        if points.ndim == 4:
             return self._batched_recurse(points, return_indices)
+        elif points.ndim > 4:
+            raise ValueError(f"Expected points.ndim <=, found shape {points.ndim}")
 
         classes, regressions = points[:-4, :, :], points[-4:, :, :]
         height, width = classes.shape[-2:]
@@ -271,7 +273,7 @@ class PointsToAnchors:
         if return_indices:
             final_indices = torch.zeros_like(classes.view(-1), dtype=torch.bool)
             final_indices[nms_idx] = True
-            final_indices = final_indices.view_as(classes)
+            final_indices = final_indices.view_as(classes).nonzero(as_tuple=False)
 
         # % / width
         center_x = (nms_idx % (height * width) % width).unsqueeze(-1)
@@ -311,21 +313,33 @@ class PointsToAnchors:
         for elem in points:
             results.append(self(elem, return_indices))
 
+        # split apart the result
         if return_indices:
-            indices = torch.stack([x[1] for x in results], dim=0)
-            results = [x[0] for x in results]
+            boxes = [x[0] for x in results]
+            indices = [x[1] for x in results]
+        else:
+            boxes = results
+            indices = None
 
         # determine maximum number of boxes in example for padding
-        max_roi = max([t.shape[0] for t in results])
+        max_roi = max([t.shape[0] for t in boxes])
 
         # combine examples into output batch
         output = torch.empty(batch_size, max_roi, 6).fill_(-1).type_as(points)
-        for i, result in enumerate(results):
-            num_roi = result.shape[0]
-            output[i, :num_roi, ...] = result
+        for i, result in enumerate(boxes):
+            num_roi = result.shape[-2]
+            output[i, :num_roi, :] = result
 
         if return_indices:
-            return output, indices
+            output_indices = torch.empty(batch_size, max_roi, 4, device=output.device).fill_(-1).long()
+            for i, (src, dest) in enumerate(zip(indices, output_indices)):
+                # add batch index
+                batch_idx = torch.tensor([[i]]).type_as(src).expand(src.shape[-2], -1)
+                src = torch.cat([batch_idx, src], dim=-1)
+                dest[: src.shape[-2], :] = src.type_as(dest)
+
+        if return_indices:
+            return output, output_indices
         return output
 
 

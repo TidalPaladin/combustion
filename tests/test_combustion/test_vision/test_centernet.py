@@ -185,7 +185,7 @@ def test_points_to_anchors_return_indices(max_roi):
 
     to_anchors = PointsToAnchors(2, max_roi=max_roi)
     result, indices = to_anchors(heatmap, return_indices=True)
-    assert indices.shape == heatmap[..., :-4, :, :].shape
+    assert indices.shape[:-1] == result.shape[:-1]
 
 
 def test_overlapping_boxes():
