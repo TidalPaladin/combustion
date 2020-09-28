@@ -210,6 +210,9 @@ class PointsToAnchors:
             If given, discard boxes with classification scores less than or equal to `threshold`.
             Default 0.0
 
+        return_indices (bool):
+            If ``True`` is passed to :func:`forward`, also return a mask of points that were mapped to boxes
+
     Shape:
         - Points: :math:`(*, C + 4, H, W)` where :math:`C` is the number of classes, and :math:`H, W`
           are the height and width of the heatmap.
@@ -240,12 +243,12 @@ class PointsToAnchors:
         s += ")"
         return s
 
-    def __call__(self, points: Tensor) -> Tensor:
+    def __call__(self, points: Tensor, return_indices=False) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         # batched recursion
         if points.shape[-3] <= 4:
             raise ValueError(f"Expected points.shape[-3] > 4, found shape {points.shape}")
         if points.ndim > 3:
-            return self._batched_recurse(points)
+            return self._batched_recurse(points, return_indices)
 
         classes, regressions = points[:-4, :, :], points[-4:, :, :]
         height, width = classes.shape[-2:]
@@ -263,6 +266,12 @@ class PointsToAnchors:
 
         nms_idx = nms_idx[nms_scores > self.threshold]
         nms_scores = nms_scores[nms_scores > self.threshold]
+
+        # build a mask of indices that were mapped to boxes
+        if return_indices:
+            final_indices = torch.zeros_like(classes.view(-1), dtype=torch.bool)
+            final_indices[nms_idx] = True
+            final_indices = final_indices.view_as(classes)
 
         # % / width
         center_x = (nms_idx % (height * width) % width).unsqueeze(-1)
@@ -287,17 +296,24 @@ class PointsToAnchors:
         assert (y1 <= y2).all()
 
         output = torch.cat([x1, y1, x2, y2, nms_scores.unsqueeze(-1), cls.float()], dim=-1)
-        output = output[nms_scores > self.threshold]
-        return output
+        # output = output[nms_scores > self.threshold]
+        if return_indices:
+            return output, final_indices
+        else:
+            return output
 
-    def _batched_recurse(self, points: Tensor) -> Tensor:
+    def _batched_recurse(self, points: Tensor, return_indices: bool) -> Tensor:
         assert points.ndim > 3
         batch_size = points.shape[0]
 
         # recurse on examples in batch
         results = []
         for elem in points:
-            results.append(self(elem))
+            results.append(self(elem, return_indices))
+
+        if return_indices:
+            indices = torch.stack([x[1] for x in results], dim=0)
+            results = [x[0] for x in results]
 
         # determine maximum number of boxes in example for padding
         max_roi = max([t.shape[0] for t in results])
@@ -307,6 +323,9 @@ class PointsToAnchors:
         for i, result in enumerate(results):
             num_roi = result.shape[0]
             output[i, :num_roi, ...] = result
+
+        if return_indices:
+            return output, indices
         return output
 
 

@@ -173,6 +173,21 @@ def test_points_to_anchors_max_roi(max_roi):
         assert result.shape[-2] == 372
 
 
+# TODO this test should be more thorough
+
+
+@pytest.mark.parametrize("max_roi", [1, 2, None])
+def test_points_to_anchors_return_indices(max_roi):
+    torch.random.manual_seed(42)
+    image_shape = (32, 32)
+    num_classes = 3
+    heatmap = torch.rand(3, num_classes + 4, *image_shape)
+
+    to_anchors = PointsToAnchors(2, max_roi=max_roi)
+    result, indices = to_anchors(heatmap, return_indices=True)
+    assert indices.shape == heatmap[..., :-4, :, :].shape
+
+
 def test_overlapping_boxes():
     image_shape = (16, 16)
     num_classes = 3
