@@ -374,6 +374,18 @@ class TestCenterNetMixin:
         assert torch.allclose(batch[1, :2, :], target2)
         assert (batch[1, 2, :] == pad_value).all()
 
+    def test_batch_box_target_batched_inputs(self):
+        torch.random.manual_seed(42)
+        target1 = torch.randint(0, 10, (3, 3, 6))
+        target2 = torch.randint(0, 10, (2, 2, 6))
+
+        mixin = CenterNetMixin()
+        batch = mixin.batch_box_target([target1, target2])
+        assert batch.shape[-1] == 6
+        assert batch.shape[-2] == 3
+        assert batch.shape[0] == 5  # 3 + 2
+        assert (batch[-1, -1, :] == -1).all()
+
     @pytest.mark.parametrize("pad_value", [-1, -2])
     def test_unbatch_box_target(self, pad_value):
         torch.random.manual_seed(42)

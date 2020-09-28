@@ -698,7 +698,7 @@ class CenterNetMixin:
                 Padding value to use when creating the batch
 
         Shape:
-            * ``target`` - :math:`(N_i, 4 + C)` where :math:`N_i` is the number of boxes and :math:`C` is the
+            * ``target`` - :math:`(*, N_i, 4 + C)` where :math:`N_i` is the number of boxes and :math:`C` is the
               number of labels associated with each box.
 
             * Output - :math:`(B, N, 4 + c)`
@@ -708,12 +708,22 @@ class CenterNetMixin:
             check_is_tensor(elem, "target_elem")
             max_boxes = max(max_boxes, elem.shape[-2])
 
-        output_shape = [len(target)] + list(target[0].shape)
-        output_shape[-2] = max_boxes
+        # add a batch dim if not present
+        target = [x.view(1, *x.shape) if x.ndim < 3 else x for x in target]
+
+        # compute output batch size
+        batch_size = sum([x.shape[0] for x in target])
+
+        # create empty output tensor of correct shape
+        output_shape = (batch_size, max_boxes, target[0].shape[-1])
         batch = torch.empty(*output_shape, device=target[0].device, dtype=target[0].dtype).fill_(pad_value)
 
-        for i, elem in enumerate(target):
-            batch[i, : elem.shape[-2], :] = elem
+        # fill output tensor
+        start = 0
+        for elem in target:
+            end = start + elem.shape[0]
+            batch[start:end, : elem.shape[-2], :] = elem
+            start += elem.shape[0]
 
         return batch
 
