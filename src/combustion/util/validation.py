@@ -81,7 +81,7 @@ def check_is_tensor(x: Any, name: str) -> None:
     """
     assert isinstance(name, str)
     if not isinstance(x, Tensor):
-        raise TypeError(f"{name} must be type Tensor,\n" "got {type(x)}")
+        raise TypeError(f"{name} must be type Tensor,\n" f"got {type(x)}")
 
 
 def check_is_array(x: Array, name: str) -> None:
@@ -97,7 +97,7 @@ def check_is_array(x: Array, name: str) -> None:
     """
     assert isinstance(name, str)
     if not isinstance(x, (Tensor, np.ndarray)):
-        raise TypeError(f"{name} must be type Tensor or np.ndarray,\n" "got {type(x)}")
+        raise TypeError(f"{name} must be type Tensor or np.ndarray,\n" f"got {type(x)}")
 
 
 def check_shape(x: Array, shape: Union[Tuple[int, ...], List[int]], name: str) -> None:

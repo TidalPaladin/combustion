@@ -561,3 +561,24 @@ class TestCenterNetMixin:
 
         assert torch.allclose(result[..., 0], expected_pred)
         assert torch.allclose(result[..., 1], expected_target)
+
+    def test_split_regression(self):
+        torch.random.manual_seed(42)
+        regression = torch.rand(3, 4, 10, 10)
+
+        mixin = CenterNetMixin()
+        offset, size = mixin.split_regression(regression)
+
+        assert torch.allclose(offset, regression[..., :2, :, :])
+        assert torch.allclose(size, regression[..., 2:, :, :])
+
+    def test_combine_regression(self):
+        torch.random.manual_seed(42)
+        regression = torch.rand(3, 4, 10, 10)
+
+        mixin = CenterNetMixin()
+        offset = regression[..., :2, :, :]
+        size = regression[..., 2:, :, :]
+
+        result = mixin.combine_regression(offset, size)
+        assert torch.allclose(result, regression)

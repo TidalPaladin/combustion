@@ -430,6 +430,31 @@ class CenterNetMixin:
         return heatmap, bbox
 
     @staticmethod
+    def split_regression(regression: Tensor) -> Tuple[Tensor, Tensor]:
+        r"""Split a CenterNet regression prediction into offset and sizecomponents.
+
+        .. note::
+            This operation returns views of the original tensor.
+
+        Args:
+            regression (:class:`torch.Tensor`):
+                The target to split.
+
+        Returns:
+            Tuple of offset and size tensors
+
+        Shape:
+            * ``target`` - :math:`(*, 4, H, W)`
+            * Output - :math:`(*, 2, H, W)` and :math:`(*, 2, H, W)`
+        """
+        check_is_tensor(regression, "regression")
+        offset = regression[..., :2, :, :]
+        size = regression[..., 2:, :, :]
+        assert offset.shape[-3] == 2
+        assert size.shape[-3] == 2
+        return offset, size
+
+    @staticmethod
     def combine_box_target(bbox: Tensor, label: Tensor, *extra_labels) -> Tensor:
         r"""Combine a bounding box coordinates and labels into a single label.
 
@@ -510,6 +535,29 @@ class CenterNetMixin:
         if bbox.shape[-1] != 4:
             raise ValueError(f"Expected bbox.shape[-1] == 4, found shape {bbox.shape}")
         return torch.cat([bbox, scores, *extra_scores, cls], dim=-1)
+
+    @staticmethod
+    def combine_regression(offset: Tensor, size: Tensor) -> Tensor:
+        r"""Combines CenterNet offset and size predictions into a single tensor.
+
+        Args:
+            offset (:class:`torch.Tensor`):
+                Offset component of the heatmap
+
+            size (:class:`torch.Tensor`):
+                Size component of the heatmap
+
+        Returns:
+            Tuple of offset and size tensors
+
+        Shape:
+            * ``offset`` - :math:`(*, 2, H, W)`
+            * ``size`` - :math:`(*, 2, H, W)`
+            * Output - :math:`(*, 4, H, W)`
+        """
+        check_is_tensor(offset, "offset")
+        check_is_tensor(size, "size")
+        return torch.cat([offset, size], dim=-3)
 
     @staticmethod
     def heatmap_max_score(heatmap: Tensor) -> Tensor:
