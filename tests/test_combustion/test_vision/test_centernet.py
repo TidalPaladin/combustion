@@ -609,3 +609,66 @@ class TestCenterNetMixin:
 
         result = mixin.combine_regression(offset, size)
         assert torch.allclose(result, regression)
+
+    @pytest.mark.parametrize("return_inverse", [False, True])
+    @pytest.mark.parametrize("pad_value", [-1, -2])
+    @pytest.mark.parametrize("keep_classes", [[0], [0, 1], [0, 2]])
+    def test_filter_bbox_classes(self, return_inverse, pad_value, keep_classes):
+        torch.random.manual_seed(42)
+        mixin = CenterNetMixin()
+
+        possible_classes = set([0, 1, 2])
+        if return_inverse:
+            set(keep_classes)
+        else:
+            possible_classes - set(keep_classes)
+
+        classes1 = torch.tensor([0, 1, 2, 1, 0, 0, -1, -1, -1]).unsqueeze_(-1)
+        classes2 = torch.tensor([1, 0, 0, 1, 0, -1, -1, -1, -1]).unsqueeze_(-1)
+
+        target = torch.stack([classes1, classes2], dim=0)
+        bbox = torch.randint(0, 10, (2, target.shape[-2], 4))
+        target = torch.cat([bbox, target], dim=-1).float()
+
+        result = mixin.filter_bbox_classes(target, keep_classes=keep_classes, return_inverse=return_inverse)
+
+        for cls in possible_classes:
+            if return_inverse and cls in keep_classes:
+                assert not (result[..., -1] == cls).any()
+            if not return_inverse and cls not in keep_classes:
+                assert not (result[..., -1] == cls).any()
+
+    @pytest.mark.parametrize("with_regression", [False, True])
+    @pytest.mark.parametrize("return_inverse", [False, True])
+    @pytest.mark.parametrize("keep_classes", [[0], [0, 1], [0, 2]])
+    def test_filter_heatmap_classes(self, return_inverse, keep_classes, with_regression):
+        torch.random.manual_seed(42)
+        mixin = CenterNetMixin()
+
+        possible_classes = set([0, 1, 2])
+        if return_inverse:
+            drop_classes = set(keep_classes)
+            real_keep_classes = possible_classes - drop_classes
+        else:
+            drop_classes = possible_classes - set(keep_classes)
+            real_keep_classes = keep_classes
+
+        if with_regression:
+            heatmap = torch.rand(2, len(possible_classes) + 4, 32, 32)
+        else:
+            heatmap = torch.rand(2, len(possible_classes), 32, 32)
+
+        result = mixin.filter_heatmap_classes(
+            heatmap, keep_classes=keep_classes, return_inverse=return_inverse, with_regression=with_regression
+        )
+
+        assert result.shape[-3] == heatmap.shape[-3] - len(drop_classes)
+        assert result.shape[-2:] == heatmap.shape[-2:]
+        assert result.shape[0] == heatmap.shape[0]
+
+        if with_regression:
+            expected = heatmap[..., tuple(real_keep_classes) + (-4, -3, -2, -1), :, :]
+        else:
+            expected = heatmap[..., tuple(real_keep_classes), :, :]
+
+        assert torch.allclose(result, expected)

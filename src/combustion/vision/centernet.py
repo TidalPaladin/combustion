@@ -958,3 +958,90 @@ class CenterNetMixin:
 
         assert max_pred_scores.shape == target_class_present.shape
         return torch.stack([max_pred_scores, target_class_present.type_as(max_pred_scores)], dim=-1)
+
+    @staticmethod
+    def filter_bbox_classes(
+        target: Tensor, keep_classes: Iterable[int], pad_value: float = -1, return_inverse: bool = False
+    ) -> Tensor:
+        r"""Filters bounding boxes based on class, replacing bounding boxes that do not meet the criteria
+        with padding. Integer class ids should be the last column in ``target``.
+
+        Args:
+            target (:class:`torch.Tensor`):
+                Bounding boxes to filter
+
+            keep_classes (iterable of ints):
+                Integer id of the classes to keep
+
+            pad_value (float):
+                Value used to indicate padding in both input and output tensors
+
+            return_inverse (:class:`torch.Tensor`):
+                If ``True``, remove boxes with classes not in ``keep_classes``
+
+        Shape:
+            * ``target`` - :math:`(*, N, C)`
+            * Output - same as ``target``
+        """
+        check_is_tensor(target, "target")
+        if not isinstance(keep_classes, Iterable):
+            raise TypeError(f"Expected iterable for keep_classes, found {type(keep_classes)}")
+        if not keep_classes:
+            raise ValueError(f"Expected non-empty iterable for keep classes, found {keep_classes}")
+
+        locations_to_keep = torch.zeros_like(target[..., -1]).bool()
+        for keep_cls in keep_classes:
+            locations_for_cls = target[..., -1] == keep_cls
+            locations_to_keep.logical_or_(locations_for_cls)
+
+        if return_inverse:
+            locations_to_keep.logical_not_()
+
+        target = target.clone()
+        target[~locations_to_keep] = -1
+        return target
+
+    @staticmethod
+    def filter_heatmap_classes(
+        heatmap: Tensor, keep_classes: Iterable[int], return_inverse: bool = False, with_regression: bool = False
+    ) -> Tensor:
+        r"""Filters a CenterNet heatmap based on class, dropping class channels that do not meet the critera.
+
+        Args:
+            heatmap (:class:`torch.Tensor`):
+                Heatmap to filter
+
+            keep_classes (iterable of ints):
+                Integer id of the classes to keep
+
+            return_inverse (:class:`torch.Tensor`):
+                If ``True``, remove channels with classes not in ``keep_classes``
+
+            with_regression (bool):
+                If ``True``, expect :math:`C+4` channels in ``heatmap``
+
+        Shape:
+            * ``target`` - :math:`(*, C, H, W)` or :math:`(*, C+4, H, W)`, where :math:`C` is the number of classes
+            * Output - :math:`(*, C', H, W)` or :math:`(*, C'+4, H, W)`
+        """
+        check_is_tensor(heatmap, "heatmap")
+        if not isinstance(keep_classes, Iterable):
+            raise TypeError(f"Expected iterable for keep_classes, found {type(keep_classes)}")
+        if not keep_classes:
+            raise ValueError(f"Expected non-empty iterable for keep classes, found {keep_classes}")
+
+        if with_regression:
+            num_classes = heatmap.shape[-3] - 4
+        else:
+            num_classes = heatmap.shape[-3]
+        assert num_classes > 0
+
+        possible_classes = set(range(num_classes))
+        keep_classes = set(keep_classes) if not return_inverse else possible_classes - set(keep_classes)
+
+        keep_heatmap = heatmap[..., tuple(keep_classes), :, :]
+
+        if with_regression:
+            return torch.cat([keep_heatmap, heatmap[..., -4:, :, :]], dim=-3)
+        else:
+            return keep_heatmap.clone()
