@@ -3,10 +3,11 @@
 
 from typing import Union
 
+import torch
 from numpy import ndarray
 from torch import Tensor
 
-from .bbox import _check_input
+from combustion.util import check_is_array
 
 
 def to_8bit(img: Union[Tensor, ndarray], per_channel: bool = True, same_on_batch: bool = False) -> Tensor:
@@ -25,7 +26,8 @@ def to_8bit(img: Union[Tensor, ndarray], per_channel: bool = True, same_on_batch
           dimension.
     """
     return_tensor = isinstance(img, Tensor)
-    img: Tensor = _check_input(img, "img", ndim=(2, 4))
+    check_is_array(img, "img")
+    img: Tensor = torch.as_tensor(img)
     if not isinstance(per_channel, bool):
         raise TypeError(f"Expected bool for per_channel, found {type(per_channel)}")
     if not isinstance(same_on_batch, bool):

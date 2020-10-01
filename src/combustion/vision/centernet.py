@@ -1,10 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Optional, Tuple
+from typing import Iterable, List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor
+import torch.nn.functional as F
+from torch import ByteTensor, Tensor
+
+from combustion.util import alpha_blend, apply_colormap, check_is_tensor, check_ndim_match
+
+from .convert import to_8bit
+from .iou_assign import CategoricalLabelIoU
 
 
 try:
@@ -196,13 +202,16 @@ class PointsToAnchors:
         upsample (int):
             An integer factor by which the points will be upsampled to produce box coordinates.
 
-        max_roi (int):
+        max_roi (int or ``None``):
             The maximum number of boxes to include in the final output. Only the top `max_roi` scoring
-            points will be converted into anchor boxes.
+            points will be converted into anchor boxes. If ``None``, don't drop boxes below a score threshold.
 
         threshold (float, optional):
             If given, discard boxes with classification scores less than or equal to `threshold`.
             Default 0.0
+
+        return_indices (bool):
+            If ``True`` is passed to :func:`forward`, also return indices of the points that were mapped to boxes
 
     Shape:
         - Points: :math:`(*, C + 4, H, W)` where :math:`C` is the number of classes, and :math:`H, W`
@@ -219,10 +228,10 @@ class PointsToAnchors:
     def __init__(
         self,
         upsample: int,
-        max_roi: int,
+        max_roi: Optional[int] = None,
         threshold: float = 0.0,
     ):
-        self.max_roi = int(max_roi)
+        self.max_roi = int(max_roi) if max_roi is not None else None
         self.upsample = int(upsample)
         self.threshold = float(threshold)
 
@@ -234,10 +243,14 @@ class PointsToAnchors:
         s += ")"
         return s
 
-    def __call__(self, points: Tensor) -> Tensor:
+    def __call__(self, points: Tensor, return_indices=False) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         # batched recursion
-        if points.ndim > 3:
-            return self._batched_recurse(points)
+        if points.shape[-3] <= 4:
+            raise ValueError(f"Expected points.shape[-3] > 4, found shape {points.shape}")
+        if points.ndim == 4:
+            return self._batched_recurse(points, return_indices)
+        elif points.ndim > 4:
+            raise ValueError(f"Expected points.ndim <=, found shape {points.ndim}")
 
         classes, regressions = points[:-4, :, :], points[-4:, :, :]
         height, width = classes.shape[-2:]
@@ -247,10 +260,20 @@ class PointsToAnchors:
         classes = non_maxima_suppression2d(classes.unsqueeze(0), kernel_size=(3,) * 2).squeeze(0)
 
         # extract class / center x / center y indices of top k scores over heatmap
-        topk = min(self.max_roi, classes.numel())
-        nms_scores, nms_idx = classes.view(-1).topk(topk, dim=-1)
+        if self.max_roi is not None:
+            topk = min(self.max_roi, classes.numel())
+            nms_scores, nms_idx = classes.view(-1).topk(topk, dim=-1)
+        else:
+            nms_scores, nms_idx = classes.view(-1).sort(dim=-1, descending=True)
+
         nms_idx = nms_idx[nms_scores > self.threshold]
         nms_scores = nms_scores[nms_scores > self.threshold]
+
+        # build a mask of indices that were mapped to boxes
+        if return_indices:
+            final_indices = torch.zeros_like(classes.view(-1), dtype=torch.bool)
+            final_indices[nms_idx] = True
+            final_indices = final_indices.view_as(classes).nonzero(as_tuple=False)
 
         # % / width
         center_x = (nms_idx % (height * width) % width).unsqueeze(-1)
@@ -275,24 +298,752 @@ class PointsToAnchors:
         assert (y1 <= y2).all()
 
         output = torch.cat([x1, y1, x2, y2, nms_scores.unsqueeze(-1), cls.float()], dim=-1)
-        output = output[nms_scores > self.threshold]
-        return output
+        # output = output[nms_scores > self.threshold]
+        if return_indices:
+            return output, final_indices
+        else:
+            return output
 
-    def _batched_recurse(self, points: Tensor) -> Tensor:
+    def _batched_recurse(self, points: Tensor, return_indices: bool) -> Tensor:
         assert points.ndim > 3
         batch_size = points.shape[0]
 
         # recurse on examples in batch
         results = []
         for elem in points:
-            results.append(self(elem))
+            results.append(self(elem, return_indices))
+
+        # split apart the result
+        if return_indices:
+            boxes = [x[0] for x in results]
+            indices = [x[1] for x in results]
+        else:
+            boxes = results
+            indices = None
 
         # determine maximum number of boxes in example for padding
-        max_roi = max([t.shape[0] for t in results])
+        max_roi = max([t.shape[0] for t in boxes])
 
         # combine examples into output batch
         output = torch.empty(batch_size, max_roi, 6).fill_(-1).type_as(points)
-        for i, result in enumerate(results):
-            num_roi = result.shape[0]
-            output[i, :num_roi, ...] = result
+        for i, result in enumerate(boxes):
+            num_roi = result.shape[-2]
+            output[i, :num_roi, :] = result
+
+        if return_indices:
+            output_indices = torch.empty(batch_size, max_roi, 4, device=output.device).fill_(-1).long()
+            for i, (src, dest) in enumerate(zip(indices, output_indices)):
+                # add batch index
+                batch_idx = torch.tensor([[i]]).type_as(src).expand(src.shape[-2], -1)
+                src = torch.cat([batch_idx, src], dim=-1)
+                dest[: src.shape[-2], :] = src.type_as(dest)
+
+        if return_indices:
+            return output, output_indices
         return output
+
+
+class CenterNetMixin:
+    PAD_VALUE: float = -1
+
+    @staticmethod
+    def split_box_target(target: Tensor, split_label: Union[bool, Iterable[int]] = False) -> Tuple[Tensor, ...]:
+        r"""Split a bounding box label set into box coordinates and label tensors.
+
+        .. note::
+            This operation returns views of the original tensor.
+
+        Args:
+            target (:class:`torch.Tensor`):
+                The target to split.
+
+            split_label (bool or iterable of ints):
+                Whether to further decompose the label tensor. If ``split_label`` is ``True``, split
+                the label tensor along the last dimension. If an interable of ints is given, treat each
+                int as a split size arugment to :func:`torch.split` along the last dimension.
+
+        Shape:
+            * ``target`` - :math:`(*, N, 4 + C)` where :math:`N` is the number of boxes and :math:`C` is the
+              number of labels associated with each box.
+
+            * Output - :math:`(*, N, 4)` and :math:`(*, N, C)`
+        """
+        check_is_tensor(target, "target")
+        bbox = target[..., :4]
+        label = target[..., 4:]
+
+        if isinstance(split_label, bool) and not split_label:
+            return bbox, label
+
+        num_labels = label.shape[-1]
+
+        # setup split size of 1 if bool given
+        if isinstance(split_label, bool):
+            split_label = [
+                1,
+            ] * num_labels
+
+        lower_bound = 0
+        upper_bound = 0
+        final_label = []
+        for delta in split_label:
+            upper_bound = lower_bound + delta
+            final_label.append(label[..., lower_bound:upper_bound])
+            lower_bound = upper_bound
+        assert len(final_label) == len(split_label)
+        return tuple([bbox] + final_label)
+
+    @staticmethod
+    def split_bbox_scores_class(target: Tensor, split_scores: Union[bool, Iterable[int]] = False) -> Tuple[Tensor, ...]:
+        r"""Split a predicted bounding box into box coordinates, probability score, and predicted class.
+        This implementation supports multiple score assignments for each box. It is expected that ``target``
+        be ordered along the last dimension as ``bbox``, ``scores``, ``class``.
+
+        .. note::
+            This operation returns views of the original tensor.
+
+        Args:
+            target (:class:`torch.Tensor`):
+                The target to split.
+
+            split_scores (bool or iterable of ints):
+                Whether to further decompose the scores tensor. If ``split_scores`` is ``True``, split
+                the scores tensor along the last dimension. If an interable of ints is given, treat each
+                int as a split size arugment to :func:`torch.split` along the last dimension.
+
+        Shape:
+            * ``target`` - :math:`(*, N, 4 + S + 1)` where :math:`N` is the number of boxes and :math:`S` is the
+              number of scores associated with each box.
+            * Output - :math:`(*, N, 4)`, :math:`(*, N, S)`, and :math:`(*, N, 1)`
+        """
+        check_is_tensor(target, "target")
+        bbox = target[..., :4]
+        scores = target[..., 4:-1]
+        cls = target[..., -1:]
+
+        if isinstance(split_scores, bool) and not split_scores:
+            return bbox, scores, cls
+
+        num_scores = scores.shape[-1]
+
+        # setup split size of 1 if bool given
+        if isinstance(split_scores, bool):
+            split_scores = [
+                1,
+            ] * num_scores
+
+        lower_bound = 0
+        upper_bound = 0
+        final_scores = []
+        for delta in split_scores:
+            upper_bound = lower_bound + delta
+            final_scores.append(scores[..., lower_bound:upper_bound])
+            lower_bound = upper_bound
+        assert len(final_scores) == len(split_scores)
+        return tuple([bbox] + final_scores + [cls])
+
+    @staticmethod
+    def split_point_target(target: Tensor) -> Tuple[Tensor, Tensor]:
+        r"""Split a CenterNet target into heatmap and regression components.
+
+        .. note::
+            This operation returns views of the original tensor.
+
+        Args:
+            target (:class:`torch.Tensor`):
+                The target to split.
+
+        Shape:
+            * ``target`` - :math:`(*, C + 4, H, W)` where :math:`C` is the number of classes.
+            * Output - :math:`(*, C, H, W)` and :math:`(*, 4, H, W)`
+        """
+        check_is_tensor(target, "target")
+        heatmap = target[..., :-4, :, :]
+        bbox = target[..., -4:, :, :]
+        return heatmap, bbox
+
+    @staticmethod
+    def split_regression(regression: Tensor) -> Tuple[Tensor, Tensor]:
+        r"""Split a CenterNet regression prediction into offset and sizecomponents.
+
+        .. note::
+            This operation returns views of the original tensor.
+
+        Args:
+            regression (:class:`torch.Tensor`):
+                The target to split.
+
+        Returns:
+            Tuple of offset and size tensors
+
+        Shape:
+            * ``target`` - :math:`(*, 4, H, W)`
+            * Output - :math:`(*, 2, H, W)` and :math:`(*, 2, H, W)`
+        """
+        check_is_tensor(regression, "regression")
+        offset = regression[..., :2, :, :]
+        size = regression[..., 2:, :, :]
+        assert offset.shape[-3] == 2
+        assert size.shape[-3] == 2
+        return offset, size
+
+    @staticmethod
+    def combine_box_target(bbox: Tensor, label: Tensor, *extra_labels) -> Tensor:
+        r"""Combine a bounding box coordinates and labels into a single label.
+
+        Args:
+            bbox (:class:`torch.Tensor`):
+                Coordinates of the bounding box.
+
+            label (:class:`torch.Tensor`):
+                Label associated with each bounding box.
+
+        Shape:
+            * ``bbox`` - :math:`(*, N, 4)`
+            * ``label`` - :math:`(*, N, 1)`
+            * Output - :math:`(*, N, 4 + 1)`
+        """
+        # input validation
+        check_is_tensor(bbox, "bbox")
+        check_is_tensor(label, "label")
+        if bbox.shape[-1] != 4:
+            raise ValueError(f"Expected bbox.shape[-1] == 4, found shape {bbox.shape}")
+        if bbox.shape[:-1] != label.shape[:-1]:
+            raise ValueError(f"Expected bbox.shape[:-1] == label.shape[:-1], found shapes {bbox.shape}, {label.shape}")
+
+        return torch.cat([bbox, label, *extra_labels], dim=-1)
+
+    @staticmethod
+    def combine_point_target(heatmap: Tensor, regression: Tensor) -> Tensor:
+        r"""Combine a CenterNet heatmap and regression components into a single label.
+
+        Args:
+            heatmap (:class:`torch.Tensor`):
+                The CenterNet heatmap.
+
+            regression (:class:`torch.Tensor`):
+                The CenterNet regression map.
+
+        Shape:
+            * ``heatmap`` - :math:`(*, C, H, W)`
+            * ``regression`` - :math:`(*, 4, H, W)`
+            * Output - :math:`(*, C+4, H, W)`
+        """
+        # input validation
+        check_is_tensor(heatmap, "heatmap")
+        check_is_tensor(regression, "regression")
+        if regression.shape[-3] != 4:
+            raise ValueError(f"Expected regression.shape[-3] == 4, found shape {regression.shape}")
+
+        return torch.cat([heatmap, regression], dim=-3)
+
+    @staticmethod
+    def combine_bbox_scores_class(bbox: Tensor, cls: Tensor, scores: Tensor, *extra_scores) -> Tensor:
+        r"""Combine a bounding box coordinates and labels into a single label. Combined tensor
+        will be ordered along the last dimension as ``bbox``, ``scores``, ``cls``.
+
+        Args:
+            bbox (:class:`torch.Tensor`):
+                Coordinates of the bounding box.
+
+            cls (:class:`torch.Tensor`):
+                Class associated with each bounding box
+
+            scores (:class:`torch.Tensor`):
+                Probability associated with each bounding box.
+
+            *extra_scores (:class:`torch.Tensor`):
+                Additional scores to combine
+
+        Shape:
+            * ``bbox`` - :math:`(*, N, 4)`
+            * ``scores`` - :math:`(*, N, S)`
+            * ``cls`` - :math:`(*, N, 1)`
+            * Output - :math:`(*, N, 4 + S + 1)`
+        """
+        # input validation
+        check_is_tensor(bbox, "bbox")
+        check_is_tensor(scores, "scores")
+        check_is_tensor(cls, "cls")
+        if bbox.shape[-1] != 4:
+            raise ValueError(f"Expected bbox.shape[-1] == 4, found shape {bbox.shape}")
+        return torch.cat([bbox, scores, *extra_scores, cls], dim=-1)
+
+    @staticmethod
+    def combine_regression(offset: Tensor, size: Tensor) -> Tensor:
+        r"""Combines CenterNet offset and size predictions into a single tensor.
+
+        Args:
+            offset (:class:`torch.Tensor`):
+                Offset component of the heatmap
+
+            size (:class:`torch.Tensor`):
+                Size component of the heatmap
+
+        Returns:
+            Tuple of offset and size tensors
+
+        Shape:
+            * ``offset`` - :math:`(*, 2, H, W)`
+            * ``size`` - :math:`(*, 2, H, W)`
+            * Output - :math:`(*, 4, H, W)`
+        """
+        check_is_tensor(offset, "offset")
+        check_is_tensor(size, "size")
+        return torch.cat([offset, size], dim=-3)
+
+    @staticmethod
+    def heatmap_max_score(heatmap: Tensor) -> Tensor:
+        r"""Computes global maximum scores over a heatmap on a per-class basis.
+
+        Args:
+            heatmap (:class:`torch.Tensor`):
+                CenterNet heatmap
+
+        Shape:
+            * ``heatmap`` - :math:`(*, C+4, H, W)`
+            * Output - :math:`(*, C)`
+        """
+        check_is_tensor(heatmap, "heatmap")
+        heatmap = heatmap[..., :-4, :, :]
+        non_spatial_shape = heatmap.shape[:-2]
+        output = heatmap.view(*non_spatial_shape, -1).max(dim=-1).values
+        return output
+
+    @staticmethod
+    def visualize_heatmap(
+        heatmap: Tensor,
+        background: Optional[Tensor] = None,
+        cmap: str = "gnuplot",
+        same_on_batch: bool = True,
+        heatmap_alpha: float = 0.5,
+        background_alpha: float = 0.5,
+    ) -> List[ByteTensor]:
+        r"""Generates visualizations of a CenterNet heatmap. Can optionally overlay the
+        heatmap on top of a background image.
+
+        Args:
+            heatmap (:class:`torch.Tensor`):
+                The heatmap to visualize
+
+            background (:class:`torch.Tensor`):
+                An optional background image for the heatmap visualization
+
+            cmap (str):
+                Matplotlib colormap
+
+            same_on_batch (bool):
+                See :func:`combustion.vision.to_8bit`
+
+            heatmap_alpha (float):
+                See :func:`combustion.util.alpha_blend`
+
+            background_alpha (float):
+                See :func:`combustion.util.alpha_blend`
+
+        Returns:
+            List of tensors, where each tensor is a heatmap visualization for one class in the heatmap
+
+        Shape:
+            * ``heatmap`` - :math:`(N, C, H, W)` where :math:`C` is the number of classes in the heatmap.
+            * Output - :math:`(N, 3, H, W)`
+        """
+        check_is_tensor(heatmap, "heatmap")
+        if background is not None:
+            check_is_tensor(background, "heatmap")
+            # need background to be float [0, 1] for alpha blend w/ heatmap
+            background = to_8bit(background, same_on_batch=same_on_batch).float().div_(255).cpu()
+
+            if background.shape[-3] == 1:
+                repetitions = [
+                    1,
+                ] * background.ndim
+                repetitions[-3] = 3
+                background = background.repeat(*repetitions)
+
+        num_channels = heatmap.shape[-3]
+
+        result = []
+        for channel_idx in range(num_channels):
+            _ = heatmap[..., channel_idx : channel_idx + 1, :, :]
+            _ = to_8bit(_, same_on_batch=same_on_batch)
+
+            # output is float from [0, 1]
+            heatmap_channel = apply_colormap(_.cpu(), cmap=cmap)
+
+            # drop alpha channel
+            heatmap_channel = heatmap_channel[..., :3, :, :]
+
+            # alpha blend w/ background
+            if background is not None:
+                heatmap_channel = F.interpolate(
+                    heatmap_channel, size=background.shape[-2:], mode="bilinear", align_corners=True
+                )
+                heatmap_channel = alpha_blend(heatmap_channel, background, heatmap_alpha, background_alpha)[0]
+
+            heatmap_channel = heatmap_channel.mul_(255).byte()
+            result.append(heatmap_channel)
+
+        return result
+
+    @staticmethod
+    def batch_box_target(target: List[Tensor], pad_value: float = -1) -> Tensor:
+        r"""Combine multiple distinct bounding box targets into a single batched target.
+
+        Args:
+            target (list of :class:`torch.Tensor`):
+                List of bounding box targets to combine
+
+            pad_value (float):
+                Padding value to use when creating the batch
+
+        Shape:
+            * ``target`` - :math:`(*, N_i, 4 + C)` where :math:`N_i` is the number of boxes and :math:`C` is the
+              number of labels associated with each box.
+
+            * Output - :math:`(B, N, 4 + c)`
+        """
+        max_boxes = 0
+        for elem in target:
+            check_is_tensor(elem, "target_elem")
+            max_boxes = max(max_boxes, elem.shape[-2])
+
+        # add a batch dim if not present
+        target = [x.view(1, *x.shape) if x.ndim < 3 else x for x in target]
+
+        # compute output batch size
+        batch_size = sum([x.shape[0] for x in target])
+
+        # create empty output tensor of correct shape
+        output_shape = (batch_size, max_boxes, target[0].shape[-1])
+        batch = torch.empty(*output_shape, device=target[0].device, dtype=target[0].dtype).fill_(pad_value)
+
+        # fill output tensor
+        start = 0
+        for elem in target:
+            end = start + elem.shape[0]
+            batch[start:end, : elem.shape[-2], :] = elem
+            start += elem.shape[0]
+
+        return batch
+
+    @staticmethod
+    def unbatch_box_target(target: Tensor, pad_value: float = -1) -> List[Tensor]:
+        r"""Splits a padded batch of bounding boxtarget tensors into a list of unpadded target tensors
+
+        Args:
+            target (:class:`torch.Tensor`):
+                Batch of bounding box targets to split
+
+            pad_value (float):
+                Value used for padding when creating the batch
+
+        Shape:
+            * ``target`` - :math:`(B, N, 4 + C)` where :math:`N` is the number of boxes and :math:`C` is the
+              number of labels associated with each box.
+
+            * Output - :math:`(N, 4 + C)`
+        """
+        check_is_tensor(target, "target")
+
+        padding_indices = (target == pad_value).all(dim=-1)
+        non_padded_coords = (~padding_indices).nonzero(as_tuple=True)
+
+        flat_result = target[non_padded_coords]
+        split_size = non_padded_coords[0].unique(return_counts=True)[1]
+        return torch.split(flat_result, split_size.tolist(), dim=0)
+
+    @staticmethod
+    def flatten_box_target(target: Tensor, pad_value: float = -1) -> List[Tensor]:
+        r"""Flattens a batch of bounding box target tensors, removing padded locations
+
+        Args:
+            target (:class:`torch.Tensor`):
+                Batch of bounding box targets to split
+
+            pad_value (float):
+                Value used for padding when creating the batch
+
+        Shape:
+            * ``target`` - :math:`(B, N, 4 + C)` where :math:`N` is the number of boxes and :math:`C` is the
+              number of labels associated with each box.
+
+            * Output - :math:`(N_{tot}, 4 + C)`
+        """
+        check_is_tensor(target, "target")
+        padding_indices = (target == pad_value).all(dim=-1)
+        non_padded_coords = (~padding_indices).nonzero(as_tuple=True)
+        return target[non_padded_coords]
+
+    @staticmethod
+    def append_bbox_label(old_label: Tensor, new_label: Tensor) -> Tensor:
+        r"""Adds a new label element to an existing bounding box target.
+        The new label will be concatenated to the end of the last dimension in
+        ``old_label``.
+
+        Args:
+            old_label (:class:`torch.Tensor`):
+                The existing bounding box label
+
+            new_label (:class:`torch.Tensor`):
+                The label entry to add to ``old_label``
+
+        Shape:
+            * ``old_label`` - :math:`(*, N, C_0)`
+            * ``new_label`` - :math:`(B, N, C_1`)`
+            * Output - :math:`(B, N, C_0 + C_1)`
+        """
+        check_is_tensor(old_label, "old_label")
+        check_is_tensor(new_label, "new_label")
+        check_ndim_match(old_label, new_label, "old_label", "new_label")
+        if old_label.shape[:-1] != new_label.shape[:-1]:
+            raise ValueError(
+                "expected old_label.shape[:-1] == new_label.shape[:-1], " "found {old_label.shape}, {new_label.shape}"
+            )
+
+        return torch.cat([old_label, new_label], dim=-1)
+
+    @staticmethod
+    def append_heatmap_label(old_label: Tensor, new_label: Tensor) -> Tensor:
+        r"""Adds a new label element to an existing CenterNet target.
+        The new label will be concatenated to along the heatmap channel dimension
+        immediately preceeding the regression component of the heatmap.
+
+        Args:
+            old_label (:class:`torch.Tensor`):
+                The existing heatmap label
+
+            new_label (:class:`torch.Tensor`):
+                The heatmap channel to add to ``old_label``
+
+        Shape:
+            * ``old_label`` - :math:`(*, C_0 + 4, H, W)`
+            * ``new_label`` - :math:`(*, C_1, H, W)`
+            * Output - :math:`(*, C_0 + C_1 + 4, H, W)`
+        """
+        check_is_tensor(old_label, "old_label")
+        check_is_tensor(new_label, "new_label")
+        check_ndim_match(old_label, new_label, "old_label", "new_label")
+        return torch.cat([old_label[..., :-4, :, :], new_label, old_label[..., -4:, :, :]], dim=-3)
+
+    @staticmethod
+    def get_pred_target_pairs(
+        pred: Tensor,
+        target: Tensor,
+        upsample: int,
+        iou_threshold: float = 0.5,
+        true_positive_limit: bool = True,
+        pad_value: float = -1,
+    ) -> Tensor:
+        r"""Given a predicted CenterNet heatmap and target bounding box label, use box IoU to
+        create a paring of predicted and target boxes such that each predicted box has
+        an associated gold standard label.
+
+        .. warning::
+            This method should work with batched input, but such inputs are not thoroughly tested
+
+        Args:
+            pred (:class:`torch.Tensor`):
+                Predicted heatmap.
+
+            target (:class:`torch.Tensor`):
+                Target bounding boxes in format ``x1, y1, x2, y2, class``.
+
+            iou_threshold (float):
+                Intersection over union threshold for which a prediction can be considered a
+                true positive.
+
+            true_positive_limit (bool):
+                By default, only one predicted box overlapping a target box will be counted
+                as a true positive. If ``False``, allow multiple true positive boxes per
+                target box.
+
+            pad_value (float):
+                Value used for padding a batched input, and the value to use when padding
+                a batched output.
+
+        Returns:
+            Tensor paring a predicted probability with an integer class label. If input is a batch,
+            return a list with result tensors for each batch element.
+
+        Shape:
+            * ``pred`` - :math:`(*, C+4, H, W)`
+            * ``target`` - :math:`(*, N_i, 5)`
+            * Output - :math:`(*, N_o, 2)`
+        """
+        check_is_tensor(pred, "pred")
+        check_is_tensor(target, "target")
+        is_batch = pred.ndim > 3
+        assert pred.shape[-3] > 4
+
+        if is_batch:
+            assert target.ndim > 2, "pred batched but target not batched"
+            batch_result = []
+            for pred_i, target_i in zip(pred, target):
+                result = CenterNetMixin.get_pred_target_pairs(
+                    pred_i, target_i, upsample, iou_threshold, true_positive_limit, pad_value
+                )
+                batch_result.append(result)
+            return batch_result
+
+        # we might be operating on a batched example that was padded, so remove these padded locations
+        pad_locations = (target == -1).all(dim=-1)
+        target = target[~pad_locations, :]
+
+        # turn heatmap into anchor boxes with no threshold / max roi
+        # this generates all boxes that satisfy the > 8 nearest neighbors condition
+        xform = PointsToAnchors(upsample, max_roi=None, threshold=0.0)
+        pred = xform(pred)
+
+        # get a paring of predicted probability to target labels
+        # if we didn't detect a target box at any threshold, assume P_pred = 0.0
+        xform = CategoricalLabelIoU(iou_threshold, true_positive_limit)
+        pred_boxes, pred_scores, pred_cls = CenterNetMixin.split_bbox_scores_class(pred)
+        target_bbox, target_cls = CenterNetMixin.split_box_target(target)
+        pred_out, is_correct, target_out = xform(pred_boxes, pred_scores, pred_cls, target_bbox, target_cls)
+
+        assert pred_out.ndim == 1
+        assert target_out.ndim == 1
+        assert pred_out.shape == target_out.shape
+        return pred_out, target_out.long(), is_correct
+
+    @staticmethod
+    def get_global_pred_target_pairs(pred: Tensor, target: Tensor, pad_value: float = -1) -> Tensor:
+        r"""Given predicted CenterNet heatmap and target bounding box label, create a paring of
+        per-class global heatmap maxima to binary labels indicating whether or not the class was
+        present in the true label.
+
+        Args:
+            pred (:class:`torch.Tensor`):
+                Predicted heatmap.
+
+            target (:class:`torch.Tensor`):
+                Target bounding boxes in format ``x1, y1, x2, y2, class``.
+
+            pad_value (float):
+                Value used for padding a batched ``target`` input.
+
+        Returns:
+            Tensor paring a predicted probability with a binary indicator
+
+        Shape:
+            * ``pred`` - :math:`(*, C+4, H, W)`
+            * ``target`` - :math:`(*, N_i, 5)`
+            * Output - :math:`(*, C, 2)`
+        """
+        check_is_tensor(pred, "pred")
+        check_is_tensor(target, "target")
+        is_batch = pred.ndim > 3
+        assert pred.shape[-3] > 4
+
+        if is_batch:
+            assert target.ndim > 2, "pred batched but target not batched"
+            batch_result = []
+            for pred_i, target_i in zip(pred, target):
+                result = CenterNetMixin.get_global_pred_target_pairs(pred_i, target_i, pad_value)
+                batch_result.append(result)
+            return torch.stack(batch_result, dim=0)
+
+        # we might be operating on a batched example that was padded, so remove these padded locations
+        pad_locations = (target == -1).all(dim=-1)
+        target = target[~pad_locations, :]
+
+        # get the global max probability for each class in the heatmap
+        num_classes = pred.shape[-3] - 4
+        max_pred_scores = CenterNetMixin.heatmap_max_score(pred)
+
+        # get boolean mask of which classes were present in the target
+        target_class_present = torch.zeros(num_classes, device=target.device).bool()
+        target_class_present[target[..., -1].unique().long()] = True
+
+        assert max_pred_scores.shape == target_class_present.shape
+        return torch.stack([max_pred_scores, target_class_present.type_as(max_pred_scores)], dim=-1)
+
+    @staticmethod
+    def filter_bbox_classes(
+        target: Tensor, keep_classes: Iterable[int], pad_value: float = -1, return_inverse: bool = False
+    ) -> Tensor:
+        r"""Filters bounding boxes based on class, replacing bounding boxes that do not meet the criteria
+        with padding. Integer class ids should be the last column in ``target``.
+
+        Args:
+            target (:class:`torch.Tensor`):
+                Bounding boxes to filter
+
+            keep_classes (iterable of ints):
+                Integer id of the classes to keep
+
+            pad_value (float):
+                Value used to indicate padding in both input and output tensors
+
+            return_inverse (:class:`torch.Tensor`):
+                If ``True``, remove boxes with classes not in ``keep_classes``
+
+        Shape:
+            * ``target`` - :math:`(*, N, C)`
+            * Output - same as ``target``
+        """
+        check_is_tensor(target, "target")
+        if not isinstance(keep_classes, Iterable):
+            raise TypeError(f"Expected iterable for keep_classes, found {type(keep_classes)}")
+        if not keep_classes:
+            raise ValueError(f"Expected non-empty iterable for keep classes, found {keep_classes}")
+
+        locations_to_keep = torch.zeros_like(target[..., -1]).bool()
+        for keep_cls in keep_classes:
+            if not isinstance(keep_cls, (float, int)):
+                raise TypeError(f"Expected int or float for keep_classes elements, found {type(keep_cls)}")
+            locations_for_cls = torch.as_tensor(target[..., -1] == keep_cls)
+            locations_to_keep.logical_or_(locations_for_cls)
+
+        if return_inverse:
+            locations_to_keep.logical_not_()
+
+        target = target.clone()
+        target[~locations_to_keep] = -1
+        return target
+
+    @staticmethod
+    def filter_heatmap_classes(
+        heatmap: Tensor, keep_classes: Iterable[int], return_inverse: bool = False, with_regression: bool = False
+    ) -> Tensor:
+        r"""Filters a CenterNet heatmap based on class, dropping class channels that do not meet the critera.
+
+        Args:
+            heatmap (:class:`torch.Tensor`):
+                Heatmap to filter
+
+            keep_classes (iterable of ints):
+                Integer id of the classes to keep
+
+            return_inverse (:class:`torch.Tensor`):
+                If ``True``, remove channels with classes not in ``keep_classes``
+
+            with_regression (bool):
+                If ``True``, expect :math:`C+4` channels in ``heatmap``
+
+        Shape:
+            * ``target`` - :math:`(*, C, H, W)` or :math:`(*, C+4, H, W)`, where :math:`C` is the number of classes
+            * Output - :math:`(*, C', H, W)` or :math:`(*, C'+4, H, W)`
+        """
+        check_is_tensor(heatmap, "heatmap")
+        if not isinstance(keep_classes, Iterable):
+            raise TypeError(f"Expected iterable for keep_classes, found {type(keep_classes)}")
+        if not keep_classes:
+            raise ValueError(f"Expected non-empty iterable for keep classes, found {keep_classes}")
+
+        if with_regression:
+            num_classes = heatmap.shape[-3] - 4
+        else:
+            num_classes = heatmap.shape[-3]
+        assert num_classes > 0
+
+        possible_classes = set(range(num_classes))
+        keep_classes = set(keep_classes) if not return_inverse else possible_classes - set(keep_classes)
+
+        keep_heatmap = heatmap[..., tuple(keep_classes), :, :]
+
+        if with_regression:
+            return torch.cat([keep_heatmap, heatmap[..., -4:, :, :]], dim=-3)
+        else:
+            return keep_heatmap.clone()

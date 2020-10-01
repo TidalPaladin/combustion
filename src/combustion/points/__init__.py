@@ -7,6 +7,7 @@ from .transforms import RandomRotate, Rotate, center, random_rotate, rotate
 
 # torch-scatter doesn't install correctly unless combustion[points] is installed after combustion
 try:
+    from .cluster import scatter_mode
     from .projection import projection_mapping, projection_mask
 except ModuleNotFoundError:
 
@@ -14,6 +15,9 @@ except ModuleNotFoundError:
         raise ImportError("Operation requires torch_scatter, please install it with `pip install combustion[points]`")
 
     def projection_mapping(*args, **kwargs):
+        raise ImportError("Operation requires torch_scatter, please install it with `pip install combustion[points]`")
+
+    def scatter_mode(*args, **kwargs):
         raise ImportError("Operation requires torch_scatter, please install it with `pip install combustion[points]`")
 
 

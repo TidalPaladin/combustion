@@ -52,3 +52,9 @@ Ops
 
 .. autoclass:: combustion.vision.BinaryLabelIoU
     :members: 
+
+
+CenterNet
+----------------------------------
+.. autoclass:: combustion.vision.centernet.CenterNetMixin
+    :members: 

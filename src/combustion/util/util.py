@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from enum import IntEnum
-from typing import Iterable, Tuple, Union
+from typing import Any, Callable, Iterable, Tuple, Union
 
 from decorator import decorator
 
@@ -36,7 +36,20 @@ def replace_tuple(tup, pos, new):
     return tup[:pos] + (new,) + tup[pos + 1 :]
 
 
-def ntuple(count: int):
+def ntuple(count: int) -> Callable[[Union[Any, Tuple[Any, ...]]], Tuple[Any, ...]]:
+    r"""Returns a function that will accept either a single value or tuple of length ``count``
+    and return a tuple of length ``count``.
+
+    Args:
+        count (int):
+            Size of the output tuple
+
+    Example:
+        >>> twotuple = ntuple(2)
+        >>> twotuple(1) # (1, 1)
+        >>> twotuple((3, 3)) # (3, 3)
+    """
+
     def func(arg):
         if not isinstance(arg, Iterable):
             arg = (arg,) * count

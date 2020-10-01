@@ -69,6 +69,18 @@ def alpha_blend(
     """
     if src.shape != dest.shape:
         raise ValueError(f"src and dest shape mismatch: {src.shape} vs {dest.shape}")
+
+    if not src.is_floating_point():
+        if src.dtype == torch.uint8:
+            src = src.float().div_(255)
+        else:
+            raise ValueError(f"src must be floating point or a byte tensor, found {src.dtype}")
+    if not dest.is_floating_point():
+        if dest.dtype == torch.uint8:
+            dest = dest.float().div_(255)
+        else:
+            raise ValueError(f"dest must be floating point or a byte tensor, found {dest.dtype}")
+
     dest = dest.type_as(src)
 
     # source alpha preprocess
