@@ -127,15 +127,6 @@ class _EfficientDet(_EfficientNet):
                 prev_x = conv(prev_x)
                 captured_features.append(prev_x)
 
-        # match shapes along bifpn so other_levels == lower_level * 2 ** x
-        # TODO: is this the best way to handle shape matching?
-        base_shape = captured_features[-1].shape[2:]
-        num_levels = len(captured_features)
-        for i, feature_map in enumerate(captured_features):
-            target_shape = [int(s * 2 ** (num_levels - i - 1)) for s in base_shape]
-            feature_map = self.match([feature_map], target_shape)[0]
-            captured_features[i] = feature_map
-
         for bifpn in self.bifpn_layers:
             captured_features = bifpn(captured_features)
 
