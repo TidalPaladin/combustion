@@ -1,12 +1,39 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Optional
+from typing import Optional, Union
 
 import torch.nn as nn
 from torch import Tensor
 
 from combustion.nn import HardSigmoid
+from combustion.util import double, single, triple
+
+
+class _SEMeta(type):
+    def __new__(cls, name, bases, dct):
+        x = super().__new__(cls, name, bases, dct)
+        if "3d" in name:
+            x.Conv = nn.Conv3d
+            x.BatchNorm = nn.BatchNorm3d
+            x.AdaptiveAvgPool = nn.AdaptiveAvgPool3d
+            x.AdaptiveMaxPool = nn.AdaptiveMaxPool3d
+            x.Tuple = staticmethod(triple)
+        elif "2d" in name:
+            x.Conv = nn.Conv2d
+            x.BatchNorm = nn.BatchNorm2d
+            x.AdaptiveAvgPool = nn.AdaptiveAvgPool2d
+            x.AdaptiveMaxPool = nn.AdaptiveMaxPool2d
+            x.Tuple = staticmethod(double)
+        elif "1d" in name:
+            x.Conv = nn.Conv1d
+            x.BatchNorm = nn.BatchNorm1d
+            x.AdaptiveAvgPool = nn.AdaptiveAvgPool1d
+            x.AdaptiveMaxPool = nn.AdaptiveMaxPool1d
+            x.Tuple = staticmethod(single)
+        else:
+            raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
+        return x
 
 
 class _SqueezeExcite(nn.Module):
@@ -17,6 +44,8 @@ class _SqueezeExcite(nn.Module):
         out_channels: Optional[int] = None,
         first_activation: nn.Module = nn.ReLU(),
         second_activation: nn.Module = HardSigmoid(),
+        global_pool: bool = True,
+        pool_type: Union[str, type] = "avg",
     ):
         super().__init__()
         self.in_channels = abs(int(in_channels))
@@ -25,27 +54,69 @@ class _SqueezeExcite(nn.Module):
 
         mid_channels = int(max(1, in_channels // squeeze_ratio))
 
-        self.pool = self._get_pool()
-        self.linear = nn.Sequential(
-            nn.Linear(self.in_channels, mid_channels),
-            first_activation,
-            nn.Linear(mid_channels, self.out_channels),
-            second_activation,
-        )
+        # get pooling type from str or provided module type
+        if isinstance(pool_type, str):
+            if pool_type == "avg":
+                self.pool_type = self.AdaptiveAvgPool
+            elif pool_type == "max":
+                self.pool_type = self.AdaptiveMaxPool
+            else:
+                raise ValueError(f"Unknown pool type {pool_type}")
+        elif isinstance(pool_type, type):
+            self.pool_type = pool_type
+        else:
+            raise TypeError(f"Expected str or type for pool_type, found {type(pool_type)}")
+
+        # for global attention, squeeze uses global pooling and linear layers
+        if global_pool:
+            self.pool = self._get_global_pool()
+            self.squeeze = nn.Sequential(
+                nn.Linear(self.in_channels, mid_channels),
+                first_activation,
+            )
+            self.excite = nn.Sequential(
+                nn.Linear(mid_channels, self.out_channels),
+                second_activation,
+            )
+
+        # for pixel-wise attention, everything is 1x1 convolutional
+        else:
+            self.pool = None
+            self.squeeze = nn.Sequential(
+                self.Conv(self.in_channels, mid_channels, 1),
+                first_activation,
+            )
+            self.excite = nn.Sequential(
+                self.Conv(mid_channels, self.out_channels, 1),
+                second_activation,
+            )
 
     def forward(self, inputs: Tensor) -> Tensor:
-        batch_size, num_channels = inputs.shape[0], inputs.shape[1]
-        inputs.ndim - 2
+        batch_size, channels = inputs.shape[:2]
+        (batch_size, channels) + (1,) * (inputs.ndim - 2)
 
-        pooled = self.pool(inputs)
-        scale = self.linear(pooled.squeeze().view(batch_size, num_channels)).view_as(pooled)
-        return scale
+        # apply global pooling if desired
+        if self.pool is not None:
+            x = self.pool(inputs).view(batch_size, channels)
+        else:
+            x = inputs
 
-    def _get_pool(self):
-        raise NotImplementedError()
+        x = self.squeeze(x)
+        x = self.excite(x)
+
+        # restore removed dimensions if global pooling used
+        if self.pool is not None:
+            while x.ndim < inputs.ndim:
+                x = x.unsqueeze_(-1)
+
+        return x
+
+    def _get_global_pool(self) -> nn.Module:
+        target_size = self.Tuple(1)
+        return self.pool_type(target_size)
 
 
-class SqueezeExcite1d(_SqueezeExcite):
+class SqueezeExcite1d(_SqueezeExcite, metaclass=_SEMeta):
     r"""Implements the 1d squeeze and excitation block described in
     `Squeeze-and-Excitation Networks`_, with modifications described in
     `Searching for MobileNetV3`_. Squeeze and excitation layers aid in capturing
@@ -85,11 +156,8 @@ class SqueezeExcite1d(_SqueezeExcite):
         https://arxiv.org/abs/1905.02244
     """
 
-    def _get_pool(self):
-        return nn.AdaptiveAvgPool1d(output_size=(1,))
 
-
-class SqueezeExcite2d(_SqueezeExcite):
+class SqueezeExcite2d(_SqueezeExcite, metaclass=_SEMeta):
     r"""Implements the 2d squeeze and excitation block described in
     `Squeeze-and-Excitation Networks`_, with modifications described in
     `Searching for MobileNetV3`_. Squeeze and excitation layers aid in capturing
@@ -137,11 +205,8 @@ class SqueezeExcite2d(_SqueezeExcite):
     .. _Searching for MobileNetV3:
         https://arxiv.org/abs/1905.02244"""
 
-    def _get_pool(self):
-        return nn.AdaptiveAvgPool2d(output_size=(1, 1))
 
-
-class SqueezeExcite3d(_SqueezeExcite):
+class SqueezeExcite3d(_SqueezeExcite, metaclass=_SEMeta):
     r"""Implements the 3d squeeze and excitation block described in
     `Squeeze-and-Excitation Networks`_, with modifications described in
     `Searching for MobileNetV3`_. Squeeze and excitation layers aid in capturing
@@ -181,6 +246,3 @@ class SqueezeExcite3d(_SqueezeExcite):
     .. _Searching for MobileNetV3:
         https://arxiv.org/abs/1905.02244
     """
-
-    def _get_pool(self):
-        return nn.AdaptiveAvgPool3d(output_size=(1, 1, 1))

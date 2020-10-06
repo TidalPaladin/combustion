@@ -24,10 +24,32 @@ class TestMobileNetConvBlock1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
                 (3, 1, 2, 0.3, 8, 8, False), id="kernel=3,stride=1,dil=2,dc=0.3,squeeze=8,excite=8,skip=False"
             ),
             pytest.param((5, 1, 4, 0.3, 8, 8, False), id="kernel=5,stride=1,dil=4,dc=0.3,squeeze=8,excite=8,skip=True"),
+            pytest.param((5, 1, 4, 0.3, 8, 8, False), id="kernel=5,stride=1,dil=4,dc=0.3,squeeze=8,excite=8,skip=True"),
+            pytest.param(
+                (5, 1, 4, 0.3, 8, 8, False, False, "avg"),
+                id="kernel=5,stride=1,dil=4,dc=0.3,squeeze=8,excite=8,skip=True,global=False,type=avg",
+            ),
+            pytest.param(
+                (5, 1, 4, 0.3, 8, 8, False, True, "max"),
+                id="kernel=5,stride=1,dil=4,dc=0.3,squeeze=8,excite=8,skip=True,global=False,type=max",
+            ),
         ]
     )
     def model(self, model_type, request):
-        kernel, stride, dil, dc, squeeze, excite, skip = request.param
+        kernel = request.param[0]
+        stride = request.param[1]
+        dil = request.param[2]
+        dc = request.param[3]
+        squeeze = request.param[4]
+        excite = request.param[5]
+        skip = request.param[6]
+
+        if len(request.param) > 8:
+            request.param[7]
+            request.param[8]
+        else:
+            pass
+
         return model_type(
             4,
             4,

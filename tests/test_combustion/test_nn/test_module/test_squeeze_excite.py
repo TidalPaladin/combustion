@@ -9,13 +9,21 @@ from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
 class TestSqueezeExcite1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
+    @pytest.fixture(params=[True, False])
+    def global_pool(self, request):
+        return request.param
+
+    @pytest.fixture(params=["avg", "max"])
+    def pool_type(self, request):
+        return request.param
+
     @pytest.fixture
     def model_type(self):
         return SqueezeExcite1d
 
     @pytest.fixture
-    def model(self, model_type):
-        return model_type(4, 2)
+    def model(self, model_type, global_pool, pool_type):
+        return model_type(4, 2, global_pool=global_pool, pool_type=pool_type)
 
     @pytest.fixture
     def data(self):
@@ -40,6 +48,10 @@ class TestSqueezeExcite1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
 
 
 class TestSqueezeExcite2d(TestSqueezeExcite1d):
+    @pytest.fixture(params=["avg", "max", torch.nn.AdaptiveAvgPool2d])
+    def pool_type(self, request):
+        return request.param
+
     @pytest.fixture
     def model_type(self):
         return SqueezeExcite2d

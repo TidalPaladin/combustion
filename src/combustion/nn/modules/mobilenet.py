@@ -53,6 +53,8 @@ class _MobileNetConvBlockNd(nn.Module):
         use_skipconn: bool = True,
         drop_connect_rate: float = 0.0,
         padding_mode: str = "zeros",
+        global_se: bool = True,
+        se_pool_type: Union[str, type] = "avg",
     ):
         super().__init__()
         kernel_size = self.Tuple(kernel_size)
@@ -70,6 +72,8 @@ class _MobileNetConvBlockNd(nn.Module):
         self._se_ratio = abs(float(squeeze_excite_ratio))
         self._expand_ratio = float(expand_ratio)
         self._use_skipconn = bool(use_skipconn)
+        self._global_se = bool(global_se)
+        self._se_pool_type = se_pool_type
 
         # same padding for spatial conv
         padding = tuple([(kernel - 1) // 2 * dil for kernel, dil in zip(kernel_size, dilation)])
@@ -103,7 +107,9 @@ class _MobileNetConvBlockNd(nn.Module):
 
         # Squeeze and Excitation layer, if desired
         if self._se_ratio is not None:
-            self.squeeze_excite = self.SqueezeExcite(out_filter, self._se_ratio)
+            self.squeeze_excite = self.SqueezeExcite(
+                out_filter, self._se_ratio, global_pool=self._global_se, pool_type=self._se_pool_type
+            )
         else:
             self.squeeze_excite = None
 
@@ -169,6 +175,8 @@ class _MobileNetConvBlockNd(nn.Module):
             "use_skipconn",
             "drop_connect_rate",
             "padding_mode",
+            "global_se",
+            "se_pool_type",
         ]
         kwargs = {attr: getattr(config, attr) for attr in attrs}
 
@@ -254,6 +262,13 @@ class MobileNetConvBlock2d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
             Padding mode to use for all non-pointwise convolution layers.
             See :class:`torch.nn.Conv2d` for more details.
 
+        global_se (bool):
+            When ``False``, perform pixel-level squeeze/excitation via a pointwise convolution.
+            By default, a channel-level squeeze/excitation is performed via a global pooling step.
+
+        se_pool_type (str or type):
+            Type of pooling to use for squeeze/excitation. This only has an effect when ``global_se`` is
+            ``True``. See :class:`combustion.nn.SqueezeExcite2d`.
 
     .. _Searching for MobileNetV3:
         https://arxiv.org/abs/1905.02244
@@ -320,6 +335,13 @@ class MobileNetBlockConfig:
             Padding mode to use for all non-pointwise convolution layers.
             See :class:`torch.nn.Conv2d` for more details.
 
+        global_se (bool):
+            When ``False``, perform pixel-level squeeze/excitation via a pointwise convolution.
+            By default, a channel-level squeeze/excitation is performed via a global pooling step.
+
+        se_pool_type (str or type):
+            Type of pooling to use for squeeze/excitation. This only has an effect when ``global_se`` is
+            ``True``. See :class:`combustion.nn.SqueezeExcite2d`.
     """
     input_filters: int
     output_filters: int
@@ -333,6 +355,8 @@ class MobileNetBlockConfig:
     use_skipconn: bool = True
     drop_connect_rate: float = 0.0
     padding_mode: str = "zeros"
+    global_se: bool = True
+    se_pool_type: Union[str, type] = "avg"
 
     num_repeats: int = 1
 
