@@ -3,13 +3,14 @@
 
 import math
 from copy import deepcopy
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 
-from combustion.nn import MobileNetBlockConfig
+from combustion.nn import DynamicSamePad, MobileNetBlockConfig
+from combustion.util import double, single, triple
 
 
 class _EfficientNetMeta(type):
@@ -19,14 +20,17 @@ class _EfficientNetMeta(type):
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
             x._get_blocks = MobileNetBlockConfig.get_3d_blocks
+            x.Tuple = triple
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
             x._get_blocks = MobileNetBlockConfig.get_2d_blocks
+            x.Tuple = double
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x._get_blocks = MobileNetBlockConfig.get_1d_blocks
+            x.Tuple = single
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
         return x
@@ -148,7 +152,7 @@ class _EfficientNet(nn.Module):
             bn_epsilon = first_block.bn_epsilon
 
             self.stem = nn.Sequential(
-                self.Conv(in_channels, output_filters, kernel_size=3, stride=2, bias=False),
+                DynamicSamePad(self.Conv(in_channels, output_filters, kernel_size=3, stride=2, bias=False, padding=1)),
                 self.BatchNorm(output_filters, momentum=bn_momentum, eps=bn_epsilon),
             )
 
@@ -291,7 +295,34 @@ class _EfficientNet(nn.Module):
             "width_divisor": width_divisor,
         }
         final_kwargs.update(kwargs)
-        return cls(**final_kwargs)
+        model = cls(**final_kwargs)
+        model.compound_coeff = compound_coeff
+        return model
+
+    def input_size(self, compound_coeff: Optional[int] = None) -> Tuple[int, ...]:
+        r"""Returns the expected input size for a given compound coefficient.
+        If a model was not created with :func:`from_predefined` a compound coefficient
+        must be provided manually.
+
+        Scaled resolution is computed as
+
+        .. math::
+            r = 512 + 128 * \phi
+
+        Args:
+            * compound_coeff (int):
+                Compound coefficient :math:`\phi` to compute image size for.
+
+        Returns:
+            Tuple of ints giving the expected input spatial resolution
+        """
+        if compound_coeff is not None:
+            x = int(compound_coeff)
+        elif hasattr(self, "compound_coeff"):
+            x = int(self.compound_coeff)
+        else:
+            raise ValueError("compound_coeff must be provided when model was not created via from_predefined()")
+        return self.__class__.Tuple(512 + 128 * x)
 
 
 class EfficientNet1d(_EfficientNet, metaclass=_EfficientNetMeta):

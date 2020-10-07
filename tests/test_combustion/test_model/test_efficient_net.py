@@ -36,6 +36,7 @@ class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
 
     def test_forward(self, model, data):
         output = model(data)
+        print(f"FPN Shapes: {[x.shape for x in output]}")
         assert isinstance(output, list)
         assert all([isinstance(x, Tensor) for x in output])
 
@@ -57,6 +58,17 @@ class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     def test_from_predefined(self, model_type, compound_coeff):
         model = model_type.from_predefined(compound_coeff)
         assert isinstance(model, model_type)
+        del model
+
+    @pytest.mark.parametrize("compound_coeff", [0, 1, 2])
+    def test_input_size(self, model_type, compound_coeff, data):
+        model = model_type.from_predefined(compound_coeff)
+        ndim = data.ndim - 2
+        actual1 = model.input_size()
+        actual2 = model.input_size(compound_coeff)
+        expected = (512 + compound_coeff * 128,) * ndim
+        assert actual1 == expected
+        assert actual2 == expected
         del model
 
 
