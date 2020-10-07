@@ -11,6 +11,7 @@ from combustion.util import double, single, triple
 
 from ..activations import HardSwish
 from .dropconnect import DropConnect
+from .dynamic_pad import DynamicSamePad
 from .squeeze_excite import SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
 
 
@@ -76,7 +77,7 @@ class _MobileNetConvBlockNd(nn.Module):
         self._se_pool_type = se_pool_type
 
         # same padding for spatial conv
-        padding = tuple([(kernel - 1) // 2 * dil for kernel, dil in zip(kernel_size, dilation)])
+        padding = tuple([kernel // 2 * dil - s // 2 for kernel, dil, s in zip(kernel_size, dilation, stride)])
 
         # Expansion phase (Inverted Bottleneck)
         in_filter, out_filter = self._input_filters, int(self._input_filters * self._expand_ratio)
@@ -101,6 +102,7 @@ class _MobileNetConvBlockNd(nn.Module):
             bias=False,
             padding_mode=padding_mode,
         )
+        depthwise = DynamicSamePad(depthwise)
         self.depthwise_conv = nn.Sequential(
             depthwise, self.BatchNorm(out_filter, momentum=self._bn_momentum, eps=self._bn_epsilon), self._activation
         )

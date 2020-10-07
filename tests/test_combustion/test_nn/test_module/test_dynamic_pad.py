@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from math import ceil
+from math import ceil, floor
 
 import pytest
 import torch
@@ -72,10 +72,15 @@ def test_forward(padding_mode, kernel_size, stride, shape, override):
         layer = DynamicSamePad(base_module, padding_mode, kernel_size=kernel_size, stride=stride)
     inputs = torch.rand(1, 1, *shape, requires_grad=True)
 
+    if kernel_size > 1:
+        expected_shape = tuple([floor(x / stride) for x in shape])
+    else:
+        expected_shape = tuple([ceil(x / stride) for x in shape])
+
     output = layer(inputs)
     assert isinstance(output, Tensor)
     assert tuple(output.shape[:2]) == (1, 1)
-    assert tuple(output.shape[2:]) == tuple([ceil(x / stride) for x in shape])
+    assert tuple(output.shape[2:]) == expected_shape
     assert output.requires_grad
 
 
@@ -121,7 +126,8 @@ class TestDynamicSamePadPatch:
         patch_dynamic_same_pad(module)
         output = module(inputs)
 
-        expected_shape = tuple([ceil(x / 2) * 2 for x in shape])
+        stride = 2
+        expected_shape = tuple([floor(x / stride) * 2 for x in shape])
         assert tuple(output.shape[-2:]) == expected_shape
 
 

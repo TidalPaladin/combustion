@@ -145,7 +145,11 @@ class DynamicSamePad(nn.Module):
 
         stride (int or tuple of ints):
             Explicit stride to use in padding calculation, overriding ``module.kernel_size`` if present.
-            By default, ``stride`` is set using ``module.stride``.
+            By default, ``kernel_size`` is set using ``module.kernel_size``.
+
+        dilation (int or tuple of ints):
+            Explicit dilation to use in padding calculation, overriding ``module.dilation`` if present.
+            By default, ``dilation`` is set using ``module.dilation``.
 
     Shapes:
         * Input - :math:`(B, C, *)`
@@ -175,6 +179,7 @@ class DynamicSamePad(nn.Module):
         pad_value: float = 0.0,
         kernel_size: Optional[Union[Tuple[float], float]] = None,
         stride: Optional[Union[Tuple[float], float]] = None,
+        dilation: Optional[Union[Tuple[float], float]] = None,
     ):
         super().__init__()
         name = module.__class__.__name__
@@ -188,6 +193,13 @@ class DynamicSamePad(nn.Module):
         self._module = module
         self._stride = self._to_tuple(module, stride if stride is not None else module.stride)
         self._kernel_size = self._to_tuple(module, kernel_size if kernel_size is not None else module.kernel_size)
+
+        if dilation is None:
+            if hasattr(module, "dilation"):
+                dilation = module.dilation
+            else:
+                dilation = 1
+        self._dilation = self._to_tuple(module, dilation)
 
         padding_mode = str(padding_mode).lower()
         if padding_mode not in ["constant", "reflect", "replicate", "circular"]:
@@ -212,14 +224,23 @@ class DynamicSamePad(nn.Module):
         inputs.ndim - 2
         stride = self._stride
         kernel_size = self._kernel_size
+        dilation = self._dilation
 
         # get padding amount on both edges for each dim in input
         padding: List[int] = []
-        for i, (s, k) in enumerate(zip(stride, kernel_size)):
+        for i, (s, k, d) in enumerate(zip(stride, kernel_size, dilation)):
             dim_shape = int(unpadded_dim_shapes[i])
+
             # pad to maintain size based on kernel_size + ensure padded is multiple of stride
-            low = k // 2 + floor(dim_shape % s / s)
-            high = k // 2 + ceil(dim_shape % s / s)
+            if k > 1:
+                total_padding = (k + (k - 1) * (d - 1) - 1) - (dim_shape % s)
+                low = floor(total_padding / 2)
+                high = ceil(total_padding / 2)
+            else:
+                low = 0
+                high = 0
+
+            # low = k // 2 + floor(dim_shape % s / s)
             padding.append(low)
             padding.append(high)
 

@@ -71,6 +71,7 @@ class TestMobileNetConvBlock1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
 
     def test_forward(self, model, data):
         output = model(data)
+        print(f"Output shape: {output.shape}")
         assert isinstance(output, torch.Tensor)
         assert output.shape[:2] == data.shape[:2]
         if all([x == 1 for x in model._stride]):
@@ -104,9 +105,9 @@ class TestMobileNetConvBlock2d(TestMobileNetConvBlock1d):
     def model_type(self):
         return MobileNetConvBlock2d
 
-    @pytest.fixture
-    def data(self):
-        return torch.rand(1, 4, 32, 32)
+    @pytest.fixture(params=[32, 31])
+    def data(self, request):
+        return torch.rand(1, 4, *((request.param,) * 2))
 
 
 class TestMobileNetConvBlock3d(TestMobileNetConvBlock1d):
