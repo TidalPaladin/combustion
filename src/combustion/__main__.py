@@ -230,9 +230,13 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
     an exception, other combinations will still be attempted. This behavior can be overriden by providing
     a ``check_exceptions`` bool value under ``config.trainer``. Such an override is useful when writing tests.
 
-    Automatic learning rate selection is handled automatically using :func:`auto_lr_find`.
+    Automatic learning rate selection is handled using :func:`auto_lr_find`.
 
     Training / testing is automatically performed based on the configuration keys present in ``config.dataset``.
+
+    Additionally, the following Hydra overrides are supported:
+        * ``trainer.load_from_checkpoint`` - Load model weights (but not training state) from a checkpoint
+        * ``trainer.test_only`` - Skip training even if a training dataset is given
 
     Args:
 
@@ -265,6 +269,9 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
         >>> if __name__ == "__main__":
         >>>     main()
         >>>     combustion.check_exceptions()
+
+    Example (inference-time command)::
+        ``python -m my_module trainer.load_from_checkpoint=foo.ckpt trainer.test_only=True``
     """
     train_results, test_results = None, None
     model: Optional[pl.LightningModule] = None
@@ -274,7 +281,8 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
         _log_versions()
         log.info("Configuration: \n%s", OmegaConf.to_yaml(cfg))
 
-        if "deterministic" in cfg.trainer.params.keys():
+        deterministic = cfg.trainer.params.get("deterministic", False)
+        if deterministic:
             seed_val = 42
             log.info("Determinstic training requested, seeding everything with %d", seed_val)
             pl.seed_everything(seed_val)
@@ -283,10 +291,25 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
         # see pytorch lightning docs: https://pytorch-lightning.rtfd.io/en/latest
         model: pl.LightningModule = HydraMixin.instantiate(cfg.model, cfg)
 
+        # load model checkpoint if requested and not resume_from_checkpoint
+        load_from_checkpoint = cfg.trainer.get("load_from_checkpoint", None)
+        resume_from_checkpoint = cfg.trainer.params.get("resume_from_checkpoint", None)
+        if load_from_checkpoint is not None:
+            if resume_from_checkpoint is not None:
+                log.info("Skipping checkpoint loading because resume_from_checkpoint was given")
+            else:
+                log.info("Loading checkpoint %s", load_from_checkpoint)
+                model = model.__class__.load_from_checkpoint(load_from_checkpoint)
+
         # run auto learning rate find if requested
-        if "auto_lr_find" in cfg.trainer["params"]:
-            if "fast_dev_run" in cfg.trainer["params"] and cfg.trainer["params"]["fast_dev_run"]:
-                log.info("Skipping auto learning rate find when fast_dev_run is set")
+        lr_find = cfg.trainer.params.get("auto_lr_find", False)
+        fast_dev_run = cfg.trainer.params.get("fast_dev_run", False)
+        test_only = cfg.trainer.get("test_only", False)
+        if lr_find:
+            if fast_dev_run:
+                log.info("Skipping auto learning rate find when fast_dev_run is true")
+            elif test_only:
+                log.info("Skipping auto learning rate find when test_only is true")
             else:
                 auto_lr_find(cfg, model)
 
@@ -296,9 +319,12 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
 
         # train
         if "train" in cfg.dataset:
-            log.info("Starting training")
-            train_results = trainer.fit(model)
-            log.info("Train results: %s", train_results)
+            if test_only:
+                log.info("test_only flag was set, skipping training")
+            else:
+                log.info("Starting training")
+                train_results = trainer.fit(model)
+                log.info("Train results: %s", train_results)
         else:
             log.info("No training dataset given")
 

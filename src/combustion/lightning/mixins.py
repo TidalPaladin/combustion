@@ -135,38 +135,43 @@ class HydraMixin:
             if "monitor" not in schedule.keys():
                 warnings.warn("'monitor' missing from lr schedule config")
 
-            # get number of optimizer steps per epoch, accounting for multiple batches per backward pass
-            accum_grad_batches = int(self.config.trainer["params"].get("accumulate_grad_batches", 1))
-            assert accum_grad_batches >= 1
-
+            test_only = self.config.trainer.get("test_only", False)
             dl = self.train_dataloader()
-            if dl is None:
-                raise RuntimeError("Could not create LR schedule because train_dataloader() returned None")
+            if dl is not None:
+                # get gpus / num_nodes / accum_grad_batches to compute optimizer steps per epoch
+                accum_grad_batches = int(self.config.trainer["params"].get("accumulate_grad_batches", 1))
+                assert accum_grad_batches >= 1
+                gpus = self.config.trainer["params"].get("gpus", 1)
+                if isinstance(gpus, Iterable):
+                    gpus = len(gpus)
+                gpus = max(gpus, 1)
+                num_nodes = self.config.trainer["params"].get("num_nodes", 1)
+                steps_per_epoch = math.ceil(len(dl) / (accum_grad_batches * gpus * num_nodes))
 
-            gpus = self.config.trainer["params"].get("gpus", 1)
-            if isinstance(gpus, Iterable):
-                gpus = len(gpus)
-            gpus = max(gpus, 1)
+                schedule_dict = {
+                    "interval": schedule.get("interval", "epoch"),
+                    "monitor": schedule.get("monitor", "val_loss"),
+                    "frequency": schedule.get("frequency", 1),
+                    "scheduler": instantiate(schedule, optim, max_lr=lr, steps_per_epoch=steps_per_epoch),
+                }
+                result = [optim], [schedule_dict]
 
-            num_nodes = self.config.trainer["params"].get("num_nodes", 1)
-            steps_per_epoch = math.ceil(len(dl) / (accum_grad_batches * gpus * num_nodes))
-
-            schedule_dict = {
-                "interval": schedule.get("interval", "epoch"),
-                "monitor": schedule.get("monitor", "val_loss"),
-                "frequency": schedule.get("frequency", 1),
-                "scheduler": instantiate(schedule, optim, max_lr=lr, steps_per_epoch=steps_per_epoch),
-            }
-            result = [optim], [schedule_dict]
+            else:
+                if not test_only:
+                    raise RuntimeError("Could not create LR schedule because train_dataloader() returned None")
+                result = optim
         else:
             result = optim
-
         return result
 
     def get_datasets(self, force: bool = False) -> Tuple[Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
         r"""Automatically prepares train/validation/test datasets based on a `Hydra <https://hydra.cc/>`_ configuration.
         The Hydra config should have an ``dataset`` section, and optionally a ``schedule`` section
         if learning rate scheduling is desired.
+
+        .. warning::
+            Statistics collection is deprecated and will be removed in a later release. Use
+            :class:`torch.nn.BatchNorm2d` with ``affine=False`` to collect running means/variances.
 
         The following keys can be provided to compute statistics on the training set
             * ``stats_sample_size`` - number of training examples to compute statistics over,
@@ -236,6 +241,17 @@ class HydraMixin:
 
         dataset_cfg = self.config.get("dataset")
 
+        # when in test_only mode, try to avoid setting up training/validation sets
+        # training set is only needed if test set is a split from training
+        test_only = "test_only" in self.config.trainer and self.config.trainer["test_only"]
+        if test_only and not isinstance(dataset_cfg["test"], (int, float)):
+            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+            self.train_ds = None
+            self.val_ds = None
+            self.test_ds = test_ds
+            self._has_datasets = True
+            return self.train_ds, self.val_ds, self.test_ds
+
         train_ds: Optional[Dataset] = (
             HydraMixin.instantiate(dataset_cfg["train"]) if "train" in dataset_cfg.keys() else None
         )
@@ -276,6 +292,9 @@ class HydraMixin:
 
         # collect sample statistics from the train ds and attach to self as a buffer
         if train_ds is not None and "stats_sample_size" in dataset_cfg.keys():
+            warnings.warn(
+                "stats_sample_size is deprecated, use torch.nn.BatchNorm(affine=False) instead", DeprecationWarning
+            )
             num_examples = dataset_cfg["stats_sample_size"]
             if num_examples == "all":
                 num_examples = len(train_ds)
