@@ -4,6 +4,7 @@ trainer:
   catch_exceptions: true
   test_only: false
   load_from_checkpoint: 
+  preprocess_train_path: 
   _target_: pytorch_lightning.Trainer
   params:
     max_epochs: 2

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import os
 import runpy
 import sys
 
@@ -61,6 +62,21 @@ def test_skip_loading_train_dataset(mocker):
     ]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
     m.assert_called_once()
+
+
+def test_preprocess_train(mocker, tmp_path):
+    pytest.importorskip("torchvision")
+    size = 100
+    sys.argv = [
+        sys.argv[0],
+        "trainer=test",
+        "trainer.catch_exceptions=False",
+        f"dataset.train.params.size={size}",
+        f"trainer.preprocess_train_path={tmp_path}",
+    ]
+    runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
+    num_files_written = len(os.listdir(tmp_path))
+    assert num_files_written >= size
 
 
 @pytest.mark.parametrize("resume_from_checkpoint", ["foo/bar.ckpt", None])

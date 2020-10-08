@@ -4,6 +4,7 @@
 import logging
 import os
 import sys
+from glob import glob
 from typing import Any, Callable, Optional, Tuple
 
 import hydra
@@ -16,6 +17,7 @@ from omegaconf import DictConfig, OmegaConf
 from packaging import version
 
 import combustion
+from combustion.data import save_torch
 from combustion.lightning import HydraMixin
 
 
@@ -290,6 +292,28 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
         # instantiate model (and optimizer) selected in yaml
         # see pytorch lightning docs: https://pytorch-lightning.rtfd.io/en/latest
         model: pl.LightningModule = HydraMixin.instantiate(cfg.model, cfg)
+
+        # preprocess data
+        preprocess_training_path = cfg.trainer.get("preprocess_train_path", None)
+        preprocess_training_epochs = cfg.trainer.get("preprocess_train_epochs", 1)
+        if preprocess_training_path is not None:
+            if not os.path.isdir(preprocess_training_path):
+                raise NotADirectoryError(preprocess_training_path)
+
+            # clean non-empty directory
+            if os.listdir(preprocess_training_path):
+                pattern = preprocess_training_path + "*example*.pth"
+                files = glob(pattern)
+                log.info("Cleaning destination directory")
+                [os.remove(f) for f in files]
+
+            log.info("Writing preprocessed training set to %s", preprocess_training_path)
+            model.prepare_data()
+            train_ds = model.train_dataloader().dataset
+            for i in range(preprocess_training_epochs):
+                save_torch(train_ds, preprocess_training_path, f"epoch_{i}_example_")
+            log.info("Finished writing preprocessed training set. Update Hydra config and rerun training.")
+            return
 
         # load model checkpoint if requested and not resume_from_checkpoint
         load_from_checkpoint = cfg.trainer.get("load_from_checkpoint", None)
