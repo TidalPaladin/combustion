@@ -12,6 +12,9 @@ from .loss import (
     focal_loss_with_logits,
 )
 from .modules import (
+    AttentionUpsample1d,
+    AttentionUpsample2d,
+    AttentionUpsample3d,
     BiFPN,
     BiFPN1d,
     BiFPN2d,
@@ -49,6 +52,9 @@ from .modules import (
 
 
 __all__ = [
+    "AttentionUpsample1d",
+    "AttentionUpsample2d",
+    "AttentionUpsample3d",
     "BiFPN",
     "BiFPN1d",
     "BiFPN2d",

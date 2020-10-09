@@ -74,6 +74,18 @@ BiFPN
 
   3d variant of :class:`combustion.nn.BiFPN2d`
 
+Global Attention Upsample
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. autoclass:: combustion.nn.AttentionUpsample2d
+
+.. class:: combustion.nn.AttentionUpsample1d
+
+  1d version of :class:`combustion.nn.AttentionUpsample2d`.
+
+.. class:: combustion.nn.AttentionUpsample3d
+
+  3d version of :class:`combustion.nn.AttentionUpsample2d`.
+
 MobileNetV3 Inverted Bottleneck
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -8,6 +8,7 @@ from .conv import DownSample3d, UpSample2d, UpSample3d
 from .dropconnect import DropConnect
 from .dynamic_pad import DynamicSamePad
 from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
+from .global_attention_upsample import AttentionUpsample1d, AttentionUpsample2d, AttentionUpsample3d
 from .match_shapes import MatchShapes
 from .mobilenet import MobileNetBlockConfig, MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d
 from .preprocessing import Standardize
@@ -16,6 +17,9 @@ from .squeeze_excite import SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
 
 
 __all__ = [
+    "AttentionUpsample1d",
+    "AttentionUpsample2d",
+    "AttentionUpsample3d",
     "BiFPN",
     "BiFPN1d",
     "BiFPN2d",
