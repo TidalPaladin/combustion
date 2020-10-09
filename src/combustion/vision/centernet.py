@@ -62,18 +62,25 @@ class AnchorsToPoints:
     """
 
     def __init__(
-        self, num_classes: int, downsample: int, iou_threshold: Optional[float] = 0.7, radius_div: Optional[float] = 3
+        self,
+        num_classes: int,
+        downsample: int,
+        iou_threshold: Optional[float] = 0.7,
+        radius_div: Optional[float] = 3,
+        min_sigma: float = 1e-6,
     ):
         self.num_classes = abs(int(num_classes))
         self.downsample = abs(int(downsample))
         self.iou_threshold = abs(float(iou_threshold))
         self.radius_div = abs(float(radius_div))
+        self.min_sigma = abs(float(min_sigma))
 
     def __repr__(self):
         s = f"AnchorsToPoints(num_classes={self.num_classes}"
         s += f", R={self.downsample}"
         s += f", iou={self.iou_threshold}"
         s += f", radius_div={self.radius_div}"
+        s += f", min_sigma={self.min_sigma}"
         s += ")"
         return s
 
@@ -159,7 +166,9 @@ class AnchorsToPoints:
         #   r = threshold * (x2 - x1) + x1 - x2
         #   sigma = r / c
         #   => sigma = [threshold * (x2 - x1) + x1 - x2] / c
-        sigma = (x2 - x1).mul_(self.iou_threshold).add_(x1).sub_(x2).div_(self.radius_div).abs_().clamp_(min=1e-6)
+        sigma = (
+            (x2 - x1).mul_(self.iou_threshold).add_(x1).sub_(x2).div_(self.radius_div).abs_().clamp_min_(self.min_sigma)
+        )
         heatmap = self._gaussian_splat(num_rois, center_x, center_y, sigma, out_height, out_width)
 
         # combine heatmaps of same classes within a batch using element-wise maximum
