@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -47,15 +47,15 @@ class _AttentionUpsample(nn.Module):
         self,
         low_filters: int,
         high_filters: int,
-        output_filters: int,
+        output_filters: Optional[int] = None,
         kernel_size: Union[int, Tuple[int, ...]] = 3,
         pool: bool = True,
-        low_activation: nn.Module = nn.ReLU(),
-        high_activation: nn.Module = HardSigmoid(),
+        activation: Optional[nn.Module] = HardSigmoid(),
         bn_momentum: float = 0.1,
         bn_epsilon: float = 1e-5,
     ):
         super().__init__()
+        output_filters = high_filters if output_filters is None else output_filters
         kernel_size = self.Tuple(kernel_size)
         self.upsample_mode = self.UpsampleMode
         self.align_corners = False
@@ -63,15 +63,13 @@ class _AttentionUpsample(nn.Module):
 
         self.low_level_path = nn.Sequential(
             DynamicSamePad(self.Conv(low_filters, output_filters, kernel_size, bias=False)),
-            self.BatchNorm(output_filters, momentum=bn_momentum, eps=bn_epsilon),
-            low_activation,
         )
 
         # gets weights for low_level
         self.high_level_path = nn.Sequential(
             self.AdaptiveAvgPool(1) if pool else nn.Identity(),
-            self.Conv(high_filters, output_filters, 1),
-            high_activation,
+            self.Conv(output_filters, output_filters, 1),
+            activation if activation is not None else nn.Identity(),
         )
 
         # pointwise conv when high_filters != output_filters
@@ -83,11 +81,11 @@ class _AttentionUpsample(nn.Module):
     def forward(self, low_level: Tensor, high_level: Tensor) -> Tensor:
         low_level = self.low_level_path(low_level)
 
-        # get weights from high level path
-        weights = self.high_level_path(high_level)
-
         # pointwise conv when high_filters != output_filters
         high_level = self.high_level_conv(high_level)
+
+        # get weights from high level path
+        weights = self.high_level_path(high_level)
 
         # upsample high_level feature map and weights to match low_level if needed
         if high_level.shape[2:] != low_level.shape[2:]:
@@ -127,8 +125,9 @@ class AttentionUpsample2d(_AttentionUpsample, metaclass=_GAUMeta):
         high_filters (int):
             Number of input filters for high level feature maps
 
-        output_filters (int):
-            Number of output channels
+        output_filters (optional, int):
+            Number of output channels. If ``output_filters=None``, assume
+            ``output_filters == high_filters``.
 
         kernel_size (int or tuple of ints):
             Kernel size for the low-level convolution
@@ -138,11 +137,7 @@ class AttentionUpsample2d(_AttentionUpsample, metaclass=_GAUMeta):
             for the low level feature maps. When ``pool=False``, do not apply a
             global average pool when computing attention weights.
 
-        low_activation (:class:`torch.nn.Module`):
-            Activation function to use along the low level pathway. By default,
-            :class:`torch.nn.ReLU` is used.
-
-        high_activation (:class:`torch.nn.Module`):
+        activation (:class:`torch.nn.Module`):
             Activation function to use for attention weights. By default,
             :class:`torch.nn.HardSigmoid` is used. Note that the textbook
             GAU layer used :class:`torch.nn.ReLU`.
