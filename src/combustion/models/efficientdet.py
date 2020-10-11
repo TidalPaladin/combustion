@@ -61,7 +61,7 @@ class _EfficientDet(_EfficientNet):
         # convolutions mapping backbone feature maps to constant number of channels
         fpn_convs = []
         output_filters = self.round_filters(fpn_filters, 1.0, width_divisor, min_width)
-        self.__fpn_filters = fpn_filters
+        self.__fpn_filters = output_filters
         for i, config in enumerate(block_configs):
             if i + 1 in fpn_levels:
                 input_filters = config.output_filters
