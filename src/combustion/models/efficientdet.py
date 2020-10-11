@@ -58,15 +58,10 @@ class _EfficientDet(_EfficientNet):
         self.fpn_levels = fpn_levels
         block_configs = deepcopy(block_configs)
 
-        for config in block_configs:
-            # update config according to scale coefficients
-            config.input_filters = self.round_filters(config.input_filters, width_coeff, width_divisor, min_width)
-            config.output_filters = self.round_filters(config.output_filters, width_coeff, width_divisor, min_width)
-            config.num_repeats = self.round_repeats(depth_coeff, config.num_repeats)
-
         # convolutions mapping backbone feature maps to constant number of channels
         fpn_convs = []
         output_filters = self.round_filters(fpn_filters, 1.0, width_divisor, min_width)
+        self.__fpn_filters = fpn_filters
         for i, config in enumerate(block_configs):
             if i + 1 in fpn_levels:
                 input_filters = config.output_filters
@@ -92,6 +87,13 @@ class _EfficientDet(_EfficientNet):
             bifpn = self.BiFPN(output_filters, levels=len(fpn_levels), **fpn_kwargs)
             bifpn_layers.append(bifpn)
         self.bifpn_layers = nn.ModuleList(bifpn_layers)
+
+    @property
+    def fpn_filters(self) -> int:
+        r"""Number of filters in each level of the BiFPN. When using a custom head, use this
+        property to determine the number of filters in the head's input.
+        """
+        return self.__fpn_filters
 
     def extract_features(self, inputs: Tensor) -> List[Tensor]:
         r"""Runs the EfficientDet stem and body to extract features, returning a list of

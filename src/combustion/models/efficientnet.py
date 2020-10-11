@@ -133,13 +133,20 @@ class _EfficientNet(nn.Module):
     ):
         super().__init__()
         self._checkpoint = checkpoint
-        block_configs = deepcopy(block_configs)
+        self.__block_configs = tuple(deepcopy(block_configs))
+        self.__width_coeff = float(width_coeff)
+        self.__depth_coeff = float(depth_coeff)
 
+        output_filters = []
         for config in block_configs:
             # update config according to scale coefficients
             config.input_filters = self.round_filters(config.input_filters, width_coeff, width_divisor, min_width)
             config.output_filters = self.round_filters(config.output_filters, width_coeff, width_divisor, min_width)
             config.num_repeats = self.round_repeats(depth_coeff, config.num_repeats)
+            output_filters.append(config.output_filters)
+
+        self.__input_filters = block_configs[0].input_filters
+        self.__output_filters = tuple(output_filters)
 
         # Conv stem (default stem used if none given)
         if stem is not None:
@@ -165,6 +172,37 @@ class _EfficientNet(nn.Module):
 
         # Head
         self.head = head
+
+    @property
+    def input_filters(self) -> int:
+        r"""Number of input filters for the first level of backbone. When using a custom stem, use this
+        property to determine the number of filters in the stem's output.
+        """
+        return self.__input_filters
+
+    @property
+    def output_filters(self) -> Tuple[int, ...]:
+        r"""Number of filters in each level of the BiFPN. When using a custom head, use this
+        property to determine the number of filters in the head's input.
+        """
+        return self.__output_filters
+
+    @property
+    def block_configs(self) -> Tuple[MobileNetBlockConfig, ...]:
+        r"""Number of filters in each level of the BiFPN. When using a custom head, use this
+        property to determine the number of filters in the head's input.
+        """
+        return self.__block_configs
+
+    @property
+    def width_coeff(self) -> float:
+        r"""Width coefficient for scaling"""
+        return self.__width_coeff
+
+    @property
+    def depth_coeff(self) -> float:
+        r"""Depth coefficient for scaling"""
+        return self.__depth_coeff
 
     def extract_features(self, inputs: Tensor, return_all: bool = False) -> List[Tensor]:
         r"""Runs the EfficientNet stem and body to extract features, returning a list of
