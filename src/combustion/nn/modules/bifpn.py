@@ -10,6 +10,7 @@ from torch import Tensor
 
 from combustion.util import double, single, triple
 
+from ..activations import HardSwish
 from ..modules.match_shapes import MatchShapes
 
 
@@ -122,7 +123,7 @@ class _BiFPN(nn.Module):
         epsilon: float = 1e-4,
         bn_momentum: float = 0.9997,
         bn_epsilon: float = 4e-5,
-        activation: nn.Module = torch.nn.ReLU(),
+        activation: nn.Module = HardSwish(),
         upsample_mode: Optional[str] = None,
     ):
         super().__init__()
@@ -145,10 +146,10 @@ class _BiFPN(nn.Module):
 
         def conv(num_channels):
             return nn.Sequential(
+                activation,
                 self.Conv(num_channels, num_channels, kernel_size, padding=padding, groups=num_channels, bias=False),
                 self.Conv(num_channels, num_channels, kernel_size=1, bias=False),
                 self.BatchNorm(num_features=num_channels, momentum=bn_momentum, eps=bn_epsilon),
-                activation,
             )
 
         level_modules = []
