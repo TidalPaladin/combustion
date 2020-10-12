@@ -11,7 +11,6 @@ from torch import Tensor
 from combustion.util import double, single, triple
 
 from ..activations import HardSwish
-from ..modules.match_shapes import MatchShapes
 
 
 class _BiFPNMeta(type):
@@ -20,19 +19,16 @@ class _BiFPNMeta(type):
         if "3d" in name:
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
-            x.MaxPool = nn.MaxPool3d
             x.Tuple = staticmethod(triple)
             x.DEFAULT_MODE = "trilinear"
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
-            x.MaxPool = nn.MaxPool2d
             x.Tuple = staticmethod(double)
             x.DEFAULT_MODE = "bilinear"
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
-            x.MaxPool = nn.MaxPool1d
             x.Tuple = staticmethod(single)
             x.DEFAULT_MODE = "linear"
         else:
@@ -47,8 +43,7 @@ class _BiFPN_Level(nn.Module):
         self,
         num_channels: int,
         upsample_mode: str,
-        conv: Optional[Callable[[int], nn.Module]] = None,
-        pool: Optional[Callable[[int], nn.Module]] = None,
+        conv: Callable[[int], nn.Module],
         epsilon: float = 1e-4,
         scale_factor: Union[int, Tuple[int, ...]] = 2,
         weight_2_count: int = 3,
@@ -58,20 +53,12 @@ class _BiFPN_Level(nn.Module):
         self.epsilon = float(epsilon)
         self.upsample_mode = str(upsample_mode)
 
-        self.conv_up = conv(num_channels)
-        self.conv_down = conv(num_channels)
-
         # Conv layers
         self.conv_up = conv(num_channels)
         self.conv_down = conv(num_channels)
 
-        # Feature scaling layers
-        self.feature_down = pool(kernel_size=scale_factor)
-        self.feature_up = pool(kernel_size=scale_factor)
-
         self.weight_1 = nn.Parameter(torch.ones(2))
         self.weight_2 = nn.Parameter(torch.ones(weight_2_count))
-        self.match = MatchShapes()
 
     def forward(
         self, same_level: Tensor, previous_level: Optional[Tensor] = None, next_level: Optional[Tensor] = None
@@ -96,19 +83,27 @@ class _BiFPN_Level(nn.Module):
         if previous_level is not None:
             weight_2 = torch.relu(self.weight_2)
             weight_2 = weight_2 / (torch.sum(weight_2, dim=0) + self.epsilon)
-            previous_level = self.feature_down(previous_level)
+            previous_level = self.pool(previous_level, target_shape)
 
             if output is not None:
                 # weight_2ed combination of current level, downward fpn output, lower level
-                output, previous_level = self.match([output, previous_level], target_shape)
                 output = self.conv_down(weight_2[0] * same_level + weight_2[1] * output + weight_2[2] * previous_level)
             # special case for top of pyramid
             else:
                 # weighted combination of current level, downward fpn output, lower level
-                previous_level = self.match([previous_level], target_shape)[0]
                 output = self.conv_down(weight_2[0] * same_level + weight_2[1] * previous_level)
 
         return output
+
+    def pool(self, inputs: Tensor, target_shape: List[int]) -> Tensor:
+        if len(target_shape) == 2:
+            return F.adaptive_max_pool2d(inputs, target_shape)
+        elif len(target_shape) == 3:
+            return F.adaptive_max_pool3d(inputs, target_shape)
+        elif len(target_shape) == 1:
+            return F.adaptive_max_pool1d(inputs, target_shape)
+        else:
+            raise RuntimeError(f"Invalid target_shape: {target_shape}")
 
 
 class _BiFPN(nn.Module):
@@ -155,9 +150,7 @@ class _BiFPN(nn.Module):
         level_modules = []
         for i in range(levels):
             weight_2_count = 3 if i > 0 else 2
-            level_modules.append(
-                _BiFPN_Level(num_channels, upsample_mode, conv, self.MaxPool, epsilon, stride, weight_2_count)
-            )
+            level_modules.append(_BiFPN_Level(num_channels, upsample_mode, conv, epsilon, stride, weight_2_count))
         self.bifpn = nn.ModuleList(level_modules)
 
     def forward(self, inputs: List[Tensor]) -> List[Tensor]:
