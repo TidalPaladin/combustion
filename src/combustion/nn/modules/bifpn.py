@@ -116,7 +116,7 @@ class _BiFPN(nn.Module):
         kernel_size: Union[int, Tuple[int, ...]] = 3,
         stride: Union[int, Tuple[int, ...]] = 2,
         epsilon: float = 1e-4,
-        bn_momentum: float = 0.9997,
+        bn_momentum: float = 0.001,
         bn_epsilon: float = 4e-5,
         activation: nn.Module = HardSwish(),
         upsample_mode: Optional[str] = None,
