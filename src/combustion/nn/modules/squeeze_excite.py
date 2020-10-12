@@ -143,7 +143,7 @@ class SqueezeExcite1d(_SqueezeExcite, metaclass=_SEMeta):
 
         second_activation (:class:`torch.nn.Module`):
             Activation to be applied following the excitation step.
-            Defaults to :class:`combustion.nn.HardSwish`.
+            Defaults to :class:`combustion.nn.HardSigmoid`.
 
     Shape
         * Input: :math:`(N, C_i, L)` where :math:`N` is the batch dimension and :math:`C_i` is the channel dimension.
@@ -192,7 +192,7 @@ class SqueezeExcite2d(_SqueezeExcite, metaclass=_SEMeta):
 
         second_activation (:class:`torch.nn.Module`):
             Activation to be applied following the excitation step.
-            Defaults to :class:`combustion.nn.HardSwish`.
+            Defaults to :class:`combustion.nn.HardSigmoid`.
 
     Shape
         * Input: :math:`(N, C_i, H, W)` where :math:`N` is the batch dimension and :math:`C_i`
@@ -233,7 +233,7 @@ class SqueezeExcite3d(_SqueezeExcite, metaclass=_SEMeta):
 
         second_activation (:class:`torch.nn.Module`):
             Activation to be applied following the excitation step.
-            Defaults to :class:`combustion.nn.HardSwish`.
+            Defaults to :class:`combustion.nn.HardSigmoid`.
 
     Shape
         * Input: :math:`(N, C_i, D, H, W)` where :math:`N` is the batch dimension and :math:`C_i`

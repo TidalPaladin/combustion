@@ -32,7 +32,8 @@ class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         block1 = MobileNetBlockConfig(4, 8, 3, num_repeats=2)
         block2 = MobileNetBlockConfig(8, 16, 3, num_repeats=1)
         blocks = [block1, block2]
-        model_type(blocks, 1.0, 1.0, checkpoint=checkpoint)
+        m = model_type(blocks, 1.0, 1.0, checkpoint=checkpoint)
+        del m
 
     def test_forward(self, model, data):
         output = model(data)

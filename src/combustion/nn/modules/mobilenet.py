@@ -53,7 +53,7 @@ class _MobileNetConvBlockNd(nn.Module):
         expand_ratio: float = 1,
         use_skipconn: bool = True,
         drop_connect_rate: float = 0.0,
-        padding_mode: str = "zeros",
+        padding_mode: str = "constant",
         global_se: bool = True,
         se_pool_type: Union[str, type] = "avg",
     ):
@@ -76,14 +76,11 @@ class _MobileNetConvBlockNd(nn.Module):
         self._global_se = bool(global_se)
         self._se_pool_type = se_pool_type
 
-        # same padding for spatial conv
-        padding = tuple([kernel // 2 * dil - s // 2 for kernel, dil, s in zip(kernel_size, dilation, stride)])
-
         # Expansion phase (Inverted Bottleneck)
         in_filter, out_filter = self._input_filters, int(self._input_filters * self._expand_ratio)
         if self._expand_ratio != 1:
             self.expand = nn.Sequential(
-                self.Conv(in_filter, out_filter, kernel_size=1, bias=False, padding_mode=padding_mode),
+                self.Conv(in_filter, out_filter, kernel_size=1, bias=False),
                 self.BatchNorm(out_filter, momentum=self._bn_momentum, eps=self._bn_epsilon),
                 self._activation,
             )
@@ -97,20 +94,23 @@ class _MobileNetConvBlockNd(nn.Module):
             self._kernel_size,
             stride=self._stride,
             dilation=self._dilation,
-            padding=padding,
             groups=out_filter,
             bias=False,
-            padding_mode=padding_mode,
         )
-        depthwise = DynamicSamePad(depthwise)
+        depthwise = DynamicSamePad(depthwise, padding_mode=padding_mode)
         self.depthwise_conv = nn.Sequential(
             depthwise, self.BatchNorm(out_filter, momentum=self._bn_momentum, eps=self._bn_epsilon), self._activation
         )
 
         # Squeeze and Excitation layer, if desired
         if self._se_ratio is not None:
+            ratio = self._se_ratio * self._expand_ratio
             self.squeeze_excite = self.SqueezeExcite(
-                out_filter, self._se_ratio, global_pool=self._global_se, pool_type=self._se_pool_type
+                out_filter,
+                ratio,
+                global_pool=self._global_se,
+                pool_type=self._se_pool_type,
+                first_activation=HardSwish(),
             )
         else:
             self.squeeze_excite = None
@@ -127,10 +127,9 @@ class _MobileNetConvBlockNd(nn.Module):
             final_out_filter,
             kernel_size=1,
             bias=False,
-            padding_mode=padding_mode,
         )
         self.pointwise_conv = nn.Sequential(
-            pointwise, self.BatchNorm(final_out_filter, momentum=self._bn_momentum, eps=self._bn_epsilon), HardSwish()
+            pointwise, self.BatchNorm(final_out_filter, momentum=self._bn_momentum, eps=self._bn_epsilon)
         )
 
     def forward(self, inputs: Tensor) -> Tensor:
@@ -356,7 +355,7 @@ class MobileNetBlockConfig:
     expand_ratio: float = 1.0
     use_skipconn: bool = True
     drop_connect_rate: float = 0.0
-    padding_mode: str = "zeros"
+    padding_mode: str = "constant"
     global_se: bool = True
     se_pool_type: Union[str, type] = "avg"
 

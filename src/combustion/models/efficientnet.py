@@ -319,8 +319,8 @@ class _EfficientNet(nn.Module):
             https://arxiv.org/abs/1905.11946
         """
         # from paper
-        alpha = 1.2
-        beta = 1.1
+        alpha = 1.1
+        beta = 1.0
         width_divisor = 8.0
 
         depth_coeff = alpha ** compound_coeff
