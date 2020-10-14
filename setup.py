@@ -109,7 +109,7 @@ def install(version):
             "numpy",
             "progress",
             "pytorch-lightning>=0.7.5",
-            "hydra-core>=1.0.0rc2",
+            "hydra-core>=1.0.0",
             TORCH,
             "packaging",
             "pynvml",

@@ -112,7 +112,12 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
     try:
         model.prepare_data()
         lr_trainer: pl.Trainer = HydraMixin.instantiate(cfg.trainer)
-        lr_finder = lr_trainer.lr_find(model)
+        if hasattr(lr_trainer, "tuner"):
+            # pl >= 1.0.0
+            lr_finder = lr_trainer.tuner.lr_find(model)
+        else:
+            # pl <= 1.0.0
+            lr_finder = lr_trainer.lr_find(model)
         lr = lr_finder.suggestion()
         log.info("Found learning rate %f", lr)
         cfg.optimizer["params"]["lr"] = lr
