@@ -6,7 +6,6 @@ from typing import Optional, Union
 import torch.nn as nn
 from torch import Tensor
 
-from combustion.nn import HardSigmoid
 from combustion.util import double, single, triple
 
 
@@ -43,7 +42,7 @@ class _SqueezeExcite(nn.Module):
         squeeze_ratio: float,
         out_channels: Optional[int] = None,
         first_activation: nn.Module = nn.ReLU(),
-        second_activation: nn.Module = HardSigmoid(),
+        second_activation: nn.Module = nn.Hardsigmoid(),
         global_pool: bool = True,
         pool_type: Union[str, type] = "avg",
     ):
@@ -143,7 +142,7 @@ class SqueezeExcite1d(_SqueezeExcite, metaclass=_SEMeta):
 
         second_activation (:class:`torch.nn.Module`):
             Activation to be applied following the excitation step.
-            Defaults to :class:`combustion.nn.HardSigmoid`.
+            Defaults to :class:`torch.nn.Hardsigmoid`.
 
     Shape
         * Input: :math:`(N, C_i, L)` where :math:`N` is the batch dimension and :math:`C_i` is the channel dimension.
@@ -192,7 +191,7 @@ class SqueezeExcite2d(_SqueezeExcite, metaclass=_SEMeta):
 
         second_activation (:class:`torch.nn.Module`):
             Activation to be applied following the excitation step.
-            Defaults to :class:`combustion.nn.HardSigmoid`.
+            Defaults to :class:`torch.nn.Hardsigmoid`.
 
     Shape
         * Input: :math:`(N, C_i, H, W)` where :math:`N` is the batch dimension and :math:`C_i`
@@ -233,7 +232,7 @@ class SqueezeExcite3d(_SqueezeExcite, metaclass=_SEMeta):
 
         second_activation (:class:`torch.nn.Module`):
             Activation to be applied following the excitation step.
-            Defaults to :class:`combustion.nn.HardSigmoid`.
+            Defaults to :class:`torch.nn.Hardsigmoid`.
 
     Shape
         * Input: :math:`(N, C_i, D, H, W)` where :math:`N` is the batch dimension and :math:`C_i`

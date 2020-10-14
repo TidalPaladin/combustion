@@ -9,7 +9,6 @@ from torch import Tensor
 
 from combustion.util import double, single, triple
 
-from ..activations import HardSwish
 from .dropconnect import DropConnect
 from .dynamic_pad import DynamicSamePad
 from .squeeze_excite import SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
@@ -48,7 +47,7 @@ class _MobileNetConvBlockNd(nn.Module):
         dilation: Union[int, Tuple[int]] = 1,
         bn_momentum: float = 0.1,
         bn_epsilon: float = 1e-5,
-        activation: nn.Module = HardSwish(),
+        activation: nn.Module = nn.Hardswish(),
         squeeze_excite_ratio: Optional[float] = 1,
         expand_ratio: float = 1,
         use_skipconn: bool = True,
@@ -110,7 +109,7 @@ class _MobileNetConvBlockNd(nn.Module):
                 ratio,
                 global_pool=self._global_se,
                 pool_type=self._se_pool_type,
-                first_activation=HardSwish(),
+                first_activation=nn.Hardswish(),
             )
         else:
             self.squeeze_excite = None
@@ -201,7 +200,7 @@ class MobileNetConvBlock1d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
 class MobileNetConvBlock2d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
     r"""Implementation of the MobileNet inverted bottleneck block as described
     in `Searching for MobileNetV3`_. This implementation includes enhancements from
-    MobileNetV3, such as the hard swish activation function (via :class:`combustion.nn.HardSwish`)
+    MobileNetV3, such as the hard swish activation function (via :class:`torch.nn.Hardswish`)
     and squeeze/excitation layers  (via :class:`combustion.nn.SqueezeExcite2d`).
 
     .. image:: ./mobilenet_v3.png

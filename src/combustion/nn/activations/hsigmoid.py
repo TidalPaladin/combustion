@@ -16,6 +16,9 @@ def hard_sigmoid(inputs: Tensor, inplace: bool = True) -> Tensor:
     .. math::
         f(x) = \frac{\text{ReLU6}(x + 3)}{6}
 
+    .. warning::
+        Deprecated in favor of :func:`torch.nn.functional.hardsigmoid`
+
     Hard sigmoid is a computationally efficient approximation to the sigmoid activation
     and is more suitable for quantization.
 
@@ -38,6 +41,9 @@ class HardSigmoid(nn.Module):
 
     .. math::
         f(x) = \frac{\text{ReLU6}(x + 3)}{6}
+
+    .. warning::
+        Deprecated in favor of :func:`torch.nn.HardSigmoid`
 
     Hard sigmoid is a computationally efficient approximation to the sigmoid activation
     and is more suitable for quantization.
