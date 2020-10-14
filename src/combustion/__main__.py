@@ -18,7 +18,7 @@ from packaging import version
 
 import combustion
 from combustion.data import save_torch
-from combustion.lightning import HydraMixin
+from combustion.lightning import HydraModule
 
 
 log = logging.getLogger("combustion")
@@ -111,7 +111,7 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
     lr = None
     try:
         model.prepare_data()
-        lr_trainer: pl.Trainer = HydraMixin.instantiate(cfg.trainer)
+        lr_trainer: pl.Trainer = HydraModule.instantiate(cfg.trainer)
         if hasattr(lr_trainer, "tuner"):
             # pl >= 1.0.0
             lr_finder = lr_trainer.tuner.lr_find(model)
@@ -296,7 +296,12 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
 
         # instantiate model (and optimizer) selected in yaml
         # see pytorch lightning docs: https://pytorch-lightning.rtfd.io/en/latest
-        model: pl.LightningModule = HydraMixin.instantiate(cfg.model, cfg)
+        try:
+            model: HydraModule = HydraModule.instantiate(cfg.model, cfg)
+        except RuntimeError:
+            log.error("Failed to instantiate model")
+            log.error("Model Config:\n%s", cfg.model.to_yaml())
+            log.error("Are you sure the model is a combustion.lightning.HydraModule subclass?")
 
         # preprocess data
         preprocess_training_path = cfg.trainer.get("preprocess_train_path", None)
@@ -328,6 +333,7 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
                 log.info("Skipping checkpoint loading because resume_from_checkpoint was given")
             else:
                 log.info("Loading checkpoint %s", load_from_checkpoint)
+                # TODO this still needs some work
                 model = model.__class__.load_from_checkpoint(load_from_checkpoint)
 
         # run auto learning rate find if requested
@@ -344,7 +350,7 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
 
         # instantiate trainer with params as selected in yaml
         # handles tensorboard, checkpointing, etc
-        trainer: pl.Trainer = HydraMixin.instantiate(cfg.trainer)
+        trainer: pl.Trainer = HydraModule.instantiate(cfg.trainer)
 
         # train
         if "train" in cfg.dataset:

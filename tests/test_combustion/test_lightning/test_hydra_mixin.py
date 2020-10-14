@@ -10,20 +10,17 @@ import torch.nn as nn
 from omegaconf import OmegaConf
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 
-from combustion.lightning import HydraMixin
+from combustion.lightning import HydraModule
 
 
-class Subclass(HydraMixin, pl.LightningModule):
+class Subclass(HydraModule):
     def __init__(self, config, **hparams):
-        super(Subclass, self).__init__()
-        self.hparams = hparams
-        self.config = config
+        super().__init__(config, **hparams)
         self.trainer = pl.Trainer()
         self.l = nn.Linear(10, 1)
         self.trainer.optimizer = torch.optim.Adam(self.l.parameters(), 0.002)
         if "criterion" in hparams.keys():
             self.criterion = hparams["criterion"]
-            del hparams["criterion"]
 
     def forward(self, x):
         return torch.rand_like(x, requires_grad=True)
@@ -136,6 +133,25 @@ def trainer():
     return pl.Trainer()
 
 
+def test_config_accessor(cfg):
+    hparams = cfg["model"]["params"]
+    model = Subclass(cfg, **hparams)
+    model.config = cfg
+    assert model.config == cfg
+
+
+def test_hparams_accessor(cfg):
+    hparams = cfg["model"]["params"]
+    model = Subclass(cfg, **hparams)
+    assert model.hparams == cfg.model.params
+
+
+def test_instantiated_hparams_accessor(cfg):
+    hparams = cfg["model"]["params"]
+    model = Subclass(cfg, **hparams)
+    assert model.instantiated_hparams == hparams
+
+
 def test_constructor_sets_hparams(cfg):
     hparams = cfg["model"]["params"]
     model = Subclass(cfg, **hparams)
@@ -164,7 +180,7 @@ def test_instantiate_with_hydra(cfg, hydra):
 def test_instantiate_report_error(hydra, target, exception):
     cfg = {"_target_": target}
     with pytest.raises(exception):
-        HydraMixin.instantiate(cfg)
+        HydraModule.instantiate(cfg)
 
 
 @pytest.mark.parametrize("scheduled", [True, False])
@@ -225,16 +241,16 @@ def test_recursive_instantiate(cfg, params, key):
     if params:
         cfg["model"]["params"]["test"]["params"] = {"reduction": "none"}
 
-    model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
-    assert isinstance(model.hparams["test"], torch.nn.BCELoss)
-    assert model.hparams["foo"] == 2
+    model = HydraModule.instantiate(cfg.model, cfg, foo=2)
+    assert isinstance(model.instantiated_hparams["test"], torch.nn.BCELoss)
+    assert model.instantiated_hparams["foo"] == 2
     assert model.config == cfg
 
 
 def test_recursive_instantiate_preserves_cfg(cfg):
     key = {"_target_": "torch.nn.BCELoss", "params": {"reduction": "none"}}
     cfg["model"]["params"]["test"] = key
-    model = HydraMixin.instantiate(cfg.model, cfg, foo=2)
+    model = HydraModule.instantiate(cfg.model, cfg, foo=2)
     assert "test" in model.config["model"]["params"].keys()
     assert model.config["model"]["params"]["test"] == key
 
@@ -259,7 +275,7 @@ def test_recursive_instantiate_interpolated():
             kernel_size: ${kernel_size}
     """
     cfg = OmegaConf.create(yaml)
-    model = HydraMixin.instantiate(cfg)
+    model = HydraModule.instantiate(cfg)
     assert isinstance(model, torch.nn.Module)
 
 
@@ -285,13 +301,13 @@ def test_recursive_instantiate_list(hydra, key):
         ],
     }
 
-    model = HydraMixin.instantiate(cfg)
+    model = HydraModule.instantiate(cfg)
     assert isinstance(model, torch.nn.Sequential)
 
 
 @pytest.mark.parametrize("check", ["train_ds", "val_ds", "test_ds"])
 def test_get_datasets(cfg, check):
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     model.get_datasets()
     assert hasattr(model, check)
     assert isinstance(getattr(model, check), torch.utils.data.Dataset)
@@ -299,7 +315,7 @@ def test_get_datasets(cfg, check):
 
 @pytest.mark.parametrize("force", [True, False])
 def test_get_datasets_forced(cfg, force, mocker):
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     mock = mocker.MagicMock(spec_set=bool, name="train_ds")
     model.get_datasets()
     model.train_ds = mock
@@ -322,7 +338,7 @@ def test_get_datasets_forced(cfg, force, mocker):
 def test_get_datasets_missing_items(cfg, missing, present):
     for k in missing:
         del cfg.dataset[k]
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     model.get_datasets()
 
 
@@ -330,7 +346,7 @@ def test_get_datasets_missing_items(cfg, missing, present):
 def test_train_dataloader(cfg, present):
     if not present:
         del cfg.dataset["train"]
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     model.get_datasets()
     dataloader = model.train_dataloader()
 
@@ -344,7 +360,7 @@ def test_train_dataloader(cfg, present):
 def test_val_dataloader(cfg, present):
     if not present:
         del cfg.dataset["validate"]
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     model.get_datasets()
     dataloader = model.val_dataloader()
 
@@ -358,7 +374,7 @@ def test_val_dataloader(cfg, present):
 def test_test_dataloader(cfg, present):
     if not present:
         del cfg.dataset["test"]
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     model.get_datasets()
     dataloader = model.test_dataloader()
 
@@ -380,7 +396,7 @@ def test_dataloader_from_subset(cfg, subset, split):
             cfg.dataset["validate"] = 10
         del cfg.dataset["test"]
 
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     model.get_datasets()
 
     if subset == "test":
@@ -422,7 +438,7 @@ def test_get_train_ds_statistics(cfg, dim, num_examples, index):
     cfg.dataset["stats_dim"] = dim
     cfg.dataset["stats_index"] = index
 
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     model.get_datasets()
     num_channels = model.train_ds[0][0].shape[dim]
 
@@ -446,7 +462,7 @@ def test_get_train_ds_statistics(cfg, dim, num_examples, index):
 )
 def test_get_train_ds_statistics_index_error_handling(cfg, index):
     cfg.dataset["stats_index"] = index
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     with pytest.raises(MisconfigurationException):
         model.get_datasets()
 
@@ -460,7 +476,7 @@ def test_get_train_ds_statistics_index_error_handling(cfg, index):
 )
 def test_get_train_ds_statistics_dim_error_handling(cfg, dim):
     cfg.dataset["stats_dim"] = dim
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     with pytest.raises(MisconfigurationException):
         model.get_datasets()
 
@@ -474,7 +490,7 @@ def test_get_train_ds_statistics_dim_error_handling(cfg, dim):
 )
 def test_get_train_ds_statistics_num_examples_error_handling(cfg, num_examples):
     cfg.dataset["stats_sample_size"] = num_examples
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     with pytest.raises(MisconfigurationException):
         model.get_datasets()
 
@@ -483,7 +499,7 @@ def test_statistics_set_only_once(cfg, mocker):
     cfg.dataset["stats_sample_size"] = 100
     cfg.dataset["stats_dim"] = -3
 
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     model.get_datasets()
     old_mean = model.channel_mean
 
@@ -501,7 +517,7 @@ def test_dataloader_override_batch_size(cfg, subset):
 
     cfg.dataset[subset]["batch_size"] = new_batch_size
 
-    model = HydraMixin.instantiate(cfg.model, cfg)
+    model = HydraModule.instantiate(cfg.model, cfg)
     model.get_datasets()
 
     if subset == "test":
@@ -567,14 +583,14 @@ class TestRuntimeBehavior:
 
     @pytest.fixture
     def trainer(self, cfg):
-        return HydraMixin.instantiate(cfg.trainer)
+        return HydraModule.instantiate(cfg.trainer)
 
     def test_train_only(self, cfg, trainer):
         for key in ["validate", "test"]:
             if key in cfg.dataset.keys():
                 del cfg.dataset[key]
 
-        model = HydraMixin.instantiate(cfg.model, cfg)
+        model = HydraModule.instantiate(cfg.model, cfg)
         trainer.fit(model)
 
     def test_train_validate(self, cfg, trainer):
@@ -582,9 +598,9 @@ class TestRuntimeBehavior:
             if key in cfg.dataset.keys():
                 del cfg.dataset[key]
 
-        model = HydraMixin.instantiate(cfg.model, cfg)
+        model = HydraModule.instantiate(cfg.model, cfg)
         trainer.fit(model)
 
     def test_train_validate_test(self, cfg, trainer):
-        model = HydraMixin.instantiate(cfg.model, cfg)
+        model = HydraModule.instantiate(cfg.model, cfg)
         trainer.fit(model)

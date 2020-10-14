@@ -9,7 +9,7 @@ import torch
 from omegaconf import DictConfig
 from torch.nn import functional as F
 
-from combustion.lightning import HydraMixin
+from combustion.lightning import HydraModule
 import combustion
 
 
@@ -17,16 +17,12 @@ log = logging.getLogger(__name__)
 
 
 # define the model
-class FakeModel(HydraMixin, pl.LightningModule):
+class FakeModel(HydraModule):
     def __init__(self, cfg, **hparams):
-        super(FakeModel, self).__init__()
-        self.config = cfg
-        self._hparams = DictConfig(hparams)
-        self.hparams = hparams
-
-        self.l1 = torch.nn.Conv2d(self._hparams.in_features, self._hparams.out_features, self._hparams.kernel)
+        super().__init__(cfg, **hparams)
+        self.l1 = torch.nn.Conv2d(self.hparams.in_features, self.hparams.out_features, self.hparams.kernel)
         self.l2 = torch.nn.AdaptiveAvgPool2d(1)
-        self.l3 = torch.nn.Linear(self._hparams.out_features, 10)
+        self.l3 = torch.nn.Linear(self.hparams.out_features, 10)
 
     def forward(self, x):
         _ = self.l1(x)

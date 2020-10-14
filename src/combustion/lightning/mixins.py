@@ -5,7 +5,7 @@ import math
 import warnings
 from copy import deepcopy
 from itertools import islice
-from typing import Any, Iterable, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, Optional, Tuple, Union
 
 import pytorch_lightning as pl
 import torch
@@ -28,9 +28,9 @@ def _has_instantiate_key(i: Iterable) -> bool:
     return any([_is_instantiate_key(k) for k in i])
 
 
-class HydraMixin:
+class HydraModule(pl.LightningModule):
     r"""
-    Mixin for creating :class:`pytorch_lightning.LightningModule`
+    Module for creating :class:`pytorch_lightning.LightningModule`
     using `Hydra <https://hydra.cc/>`_.
 
     The following :class:`pytorch_lightning.LightningModule` abstract methods are implemented:
@@ -40,15 +40,78 @@ class HydraMixin:
         * :attr:`train_dataloader`
         * :attr:`val_dataloader`
         * :attr:`test_dataloader`
+
+    Accessors are provided for Pytorch Lightning ``hparams`` field:
+
+        * :attr:`hparams` - Returns ``config.model.params`` from the Hydra config.
+        * :attr:`instantiated_hparams` - Returns the ``**kwargs`` used when instantiating the model.
+          When Hydra recursive instantiation is used, result will contain instantiated values.
+        * :attr:`instantiated_hparams.setter` - Should be assigned the kwarg dict used when calling
+          ``model.__init__()``.
+        * :attr:`hparams.setter` - Equivalent to ``instantiated_hparams.setter``.
+
+    Usage Pattern:
+        >>> class MyModel(HydraModule):
+        >>>
+        >>>     def __init__(self, config, **hparams):
+        >>>         super().__init__(config, **hparams)
+        >>>         # your model code here
+        >>>         ...
+
+    Alternate Usage Pattern (preserves operability without Hydra / Pytorch Lightning):
+        >>> class MyModel(nn.Module):
+        >>>     def __init__(self, arg1, arg2, ...):
+        >>>         # your model code here
+        >>>         ...
+        >>>
+        >>> class MyHydraModel(MyModel, HydraModule):
+        >>>     def __init__(self, config, **hparams):
+        >>>         # call MyModel/HydraModule init here
+        >>>         ...
     """
     _has_inspected: bool = False
     _has_datasets: bool = False
     train_ds: Optional[Dataset] = None
     val_ds: Optional[Dataset] = None
     test_ds: Optional[Dataset] = None
+    _config: Optional[DictConfig] = None
+    _hparams: Optional[DictConfig] = None
+
+    def __init__(self, config: DictConfig, **hparams):
+        super().__init__()
+        self.config = config
+        self.hparams = hparams
+
+    @property
+    def hparams(self) -> Optional[DictConfig]:
+        if "model" in self._config.keys():
+            return self._config.model.get("params", None)
+        return None
+
+    @hparams.setter
+    def hparams(self, val: Union[Dict[str, Any], DictConfig]) -> None:
+        if isinstance(val, DictConfig):
+            val = dict(val)
+        self._hparams = val
+
+    @property
+    def instantiated_hparams(self) -> Optional[Dict[str, Any]]:
+        return self._hparams
+
+    @instantiated_hparams.setter
+    def instantiated_hparams(self, val: DictConfig) -> None:
+        self._hparams = val
+
+    @property
+    def config(self) -> Optional[DictConfig]:
+        return self._config
+
+    @config.setter
+    def config(self, val: DictConfig):
+        self._config = val
 
     def __new__(cls, *args, **kwargs):
-        # because HydraMixin provides default overrides for test/val dataloader methods,
+        # because HydraModule provides default overrides for test/val dataloader methods,
         # lightning will complain if a test/val step methods aren't provided
         #
         # to handle this, we replace test/val dataloader methods if test/val step methods
@@ -56,13 +119,13 @@ class HydraMixin:
         if cls.validation_step == pl.LightningModule.validation_step:
             cls.val_dataloader = pl.LightningModule.val_dataloader
         else:
-            cls.val_dataloader = HydraMixin.val_dataloader
+            cls.val_dataloader = HydraModule.val_dataloader
         if cls.test_step == pl.LightningModule.test_step:
             cls.test_dataloader = pl.LightningModule.test_dataloader
         else:
-            cls.test_dataloader = HydraMixin.test_dataloader
+            cls.test_dataloader = HydraModule.test_dataloader
 
-        x = super(HydraMixin, cls).__new__(cls)
+        x = super(HydraModule, cls).__new__(cls)
         return x
 
     def get_lr(self, pos: int = 0, param_group: int = 0) -> float:
@@ -245,7 +308,7 @@ class HydraMixin:
         # training set is only needed if test set is a split from training
         test_only = "test_only" in self.config.trainer and self.config.trainer["test_only"]
         if test_only and not isinstance(dataset_cfg["test"], (int, float)):
-            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+            test_ds = HydraModule.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
             self.train_ds = None
             self.val_ds = None
             self.test_ds = test_ds
@@ -253,7 +316,7 @@ class HydraMixin:
             return self.train_ds, self.val_ds, self.test_ds
 
         train_ds: Optional[Dataset] = (
-            HydraMixin.instantiate(dataset_cfg["train"]) if "train" in dataset_cfg.keys() else None
+            HydraModule.instantiate(dataset_cfg["train"]) if "train" in dataset_cfg.keys() else None
         )
 
         # determine sizes validation/test sets if specified as a fraction of training set
@@ -281,14 +344,14 @@ class HydraMixin:
         elif splits["validate"] is not None:
             lengths = (splits["train"], splits["validate"])
             train_ds, val_ds = random_split(train_ds, lengths)
-            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+            test_ds = HydraModule.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
         elif splits["test"] is not None:
             lengths = (splits["train"], splits["test"])
             train_ds, test_ds = random_split(train_ds, lengths)
-            val_ds = HydraMixin.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
+            val_ds = HydraModule.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
         else:
-            val_ds = HydraMixin.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
-            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+            val_ds = HydraModule.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
+            test_ds = HydraModule.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
 
         # collect sample statistics from the train ds and attach to self as a buffer
         if train_ds is not None and "stats_sample_size" in dataset_cfg.keys():
@@ -455,7 +518,7 @@ class HydraMixin:
                 if isinstance(subconfig, (dict, DictConfig)) and "params" not in subconfig.keys():
                     subconfig["params"] = {}
                 subconfig._set_parent(config)
-                params[i] = HydraMixin.instantiate(subconfig)
+                params[i] = HydraModule.instantiate(subconfig)
             del config["params"]
             return instantiate(config, *params, *args, **kwargs)
 
@@ -469,13 +532,13 @@ class HydraMixin:
                 if "params" not in subconfig:
                     subconfig["params"] = {}
                 subconfig._set_parent(config)
-                subclasses[key] = HydraMixin.instantiate(subconfig)
+                subclasses[key] = HydraModule.instantiate(subconfig)
                 del config.get("params")[key]
 
             subclasses.update(kwargs)
 
-            # direct call to hydra instantiate
             try:
+                # direct call to hydra instantiate
                 return instantiate(config, *args, **subclasses)
 
             # hydra gives poor exception info
@@ -487,8 +550,10 @@ class HydraMixin:
                 target_name = re.search(r"'\S+'", msg).group().replace("'", "")
                 try:
                     __import__(target_name)
-                except RuntimeError:
+                except SyntaxError:
                     raise
+                except RuntimeError:
+                    pass
 
                 # raise the original exception if import works
                 raise
