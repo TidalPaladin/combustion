@@ -64,13 +64,30 @@ class TestAlphaBlend:
         out, out_alpha = alpha_blend(src, dest)
         assert (out_alpha == 1).all()
 
-    def test_output_channels(self):
+    def test_output_channels(self, cuda):
         dest = torch.zeros(1, 1, 10, 10).float()
         src = torch.zeros_like(dest).float()
+
+        if cuda:
+            dest = dest.cuda()
+            src = src.cuda()
 
         dest[0, 0, 0, 0] = 1.0
         src[0, 0, 1, 1] = 1.0
 
         out, out_alpha = alpha_blend(src, dest)
+        assert out.device == dest.device
         assert out[0, 0, 0, 0] == 0.5
         assert out[0, 0, 1, 1] == 0.5
+
+    def test_non_float_input(self):
+        dest = torch.zeros(1, 1, 10, 10).byte()
+        src = torch.zeros_like(dest)
+
+        dest[0, 0, 0, 0] = 255
+        src[0, 0, 1, 1] = 255
+
+        out, out_alpha = alpha_blend(src, dest)
+        assert out.dtype == torch.uint8
+        assert out[0, 0, 0, 0] == 127
+        assert out[0, 0, 1, 1] == 127

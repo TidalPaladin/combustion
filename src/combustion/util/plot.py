@@ -44,7 +44,7 @@ def apply_colormap(inputs: Tensor, cmap: str = "gnuplot") -> Tensor:
 def alpha_blend(
     src: Tensor, dest: Tensor, src_alpha: Union[float, Tensor] = 0.5, dest_alpha: Union[float, Tensor] = 1.0
 ) -> Tuple[Tensor, Tensor]:
-    r"""Alpha blends two tensors
+    r"""Alpha blends two tensors. Floating point or byte tensors are supported.
 
     Args:
         src (:class:`torch.Tensor`):
@@ -75,7 +75,9 @@ def alpha_blend(
             src = src.float().div_(255)
         else:
             raise ValueError(f"src must be floating point or a byte tensor, found {src.dtype}")
-    if not dest.is_floating_point():
+
+    floating_point_dest = dest.is_floating_point()
+    if not floating_point_dest:
         if dest.dtype == torch.uint8:
             dest = dest.float().div_(255)
         else:
@@ -99,6 +101,12 @@ def alpha_blend(
         dest_alpha = torch.tensor(dest_alpha, device=dest.device)
     dest_alpha = dest_alpha.type_as(dest).expand_as(src)
 
+    # perform blending
     output_alpha = src_alpha + (1 - src_alpha).mul_(dest_alpha)
     output_channels = (src * src_alpha + (1 - src_alpha).mul_(dest).mul_(dest_alpha)).div_(output_alpha)
+
+    # restore output dtype if needed
+    if not floating_point_dest:
+        output_channels = output_channels.mul_(255).byte()
+
     return output_channels, output_alpha
