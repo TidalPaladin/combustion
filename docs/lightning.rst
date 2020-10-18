@@ -13,7 +13,7 @@ Utilities to facilitate operation with
     :backlinks: top
 
 
-.. autoclass:: combustion.lightning.HydraMixin
+.. autoclass:: combustion.lightning.HydraModule
     :members:
 
 Callbacks
