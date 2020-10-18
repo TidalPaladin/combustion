@@ -102,6 +102,12 @@ MobileNetV3 Inverted Bottleneck
 
   3d version of :class:`combustion.nn.MobileNetConvBlock2d`.
 
+Object Contextual Representation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: combustion.nn.OCR
+  :members: create_region_target
+
 Squeeze and Excitation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

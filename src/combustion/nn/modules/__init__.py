@@ -11,6 +11,7 @@ from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d
 from .global_attention_upsample import AttentionUpsample1d, AttentionUpsample2d, AttentionUpsample3d
 from .match_shapes import MatchShapes
 from .mobilenet import MobileNetBlockConfig, MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d
+from .ocr import OCR
 from .preprocessing import Standardize
 from .raspp import RASPPLite1d, RASPPLite2d, RASPPLite3d
 from .squeeze_excite import SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
@@ -47,6 +48,7 @@ __all__ = [
     "MobileNetConvBlock1d",
     "MobileNetConvBlock2d",
     "MobileNetConvBlock3d",
+    "OCR",
     "SqueezeExcite1d",
     "SqueezeExcite2d",
     "SqueezeExcite3d",

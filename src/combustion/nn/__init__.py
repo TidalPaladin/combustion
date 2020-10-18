@@ -12,6 +12,7 @@ from .loss import (
     focal_loss_with_logits,
 )
 from .modules import (
+    OCR,
     AttentionUpsample1d,
     AttentionUpsample2d,
     AttentionUpsample3d,
@@ -98,4 +99,5 @@ __all__ = [
     "MobileNetConvBlock2d",
     "MobileNetConvBlock3d",
     "MobileNetBlockConfig",
+    "OCR",
 ]
