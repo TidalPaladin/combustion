@@ -34,6 +34,13 @@ class TestApplyColormap:
         greater_output = out1[:, 0, ...] <= out2[:, 0, ...]
         assert ~(torch.logical_xor(greater_input, greater_output)).all()
 
+    @pytest.mark.usefixtures("cuda_or_skip")
+    def test_cuda_tensor(self):
+        inputs = torch.rand(1, 1, 10, 10).cuda()
+        output = apply_colormap(inputs, "gray")
+        assert isinstance(output, Tensor)
+        assert output.device != "cpu"
+
 
 class TestAlphaBlend:
     @pytest.mark.parametrize(
