@@ -103,7 +103,8 @@ class TestVisualizeBbox:
     def save(self, path, result):
         import matplotlib.pyplot as plt
 
-        plt.imsave(path, result.permute(1, 2, 0).cpu().numpy())
+        if os.path.isdir(path):
+            plt.imsave(path, result.permute(1, 2, 0).cpu().numpy())
 
     def test_inputs_unchanged(self, img, label, bbox, class_names, scores):
         def copy(x):
