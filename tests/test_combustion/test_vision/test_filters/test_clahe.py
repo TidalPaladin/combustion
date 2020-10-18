@@ -7,9 +7,14 @@ from combustion.vision.filters import CLAHE
 
 
 @pytest.mark.parametrize("num_channels", [1, 3])
-def test_clahe(num_channels, cuda):
+@pytest.mark.parametrize("dtype", ["uint8", "float"])
+def test_clahe(num_channels, cuda, dtype):
     torch.random.manual_seed(42)
-    inputs = torch.rand(1, num_channels, 32, 64).mul_(255).byte()
+
+    inputs = torch.rand(1, num_channels, 32, 64)
+    if dtype == "byte":
+        inputs = inputs.mul_(255).byte()
+
     if cuda:
         inputs = inputs.cuda()
 
