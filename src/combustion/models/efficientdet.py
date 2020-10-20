@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from copy import deepcopy
 from typing import List, Optional
 
 import torch.nn as nn
@@ -56,24 +55,23 @@ class _EfficientDet(_EfficientNet):
             block_configs, width_coeff, depth_coeff, width_divisor, min_width, stem, head
         )
         self.fpn_levels = fpn_levels
-        block_configs = deepcopy(block_configs)
 
         # convolutions mapping backbone feature maps to constant number of channels
         fpn_convs = []
         output_filters = self.round_filters(fpn_filters, 1.0, width_divisor, min_width)
         self.__fpn_filters = output_filters
-        for i, config in enumerate(block_configs):
+        for i, config in enumerate(self.block_configs):
             if i + 1 in fpn_levels:
                 input_filters = config.output_filters
                 conv = self.Conv(input_filters, output_filters, kernel_size=1)
                 fpn_convs.append(conv)
 
         for i in fpn_levels:
-            if i == len(block_configs) + 1:
-                input_filters = block_configs[-1].output_filters
+            if i == len(self.block_configs) + 1:
+                input_filters = self.block_configs[-1].output_filters
                 conv = self.Conv(input_filters, output_filters, kernel_size=3, stride=2, padding=1)
                 fpn_convs.append(conv)
-            elif i > len(block_configs) + 1:
+            elif i > len(self.block_configs) + 1:
                 input_filters = output_filters
                 conv = self.Conv(input_filters, output_filters, kernel_size=3, stride=2, padding=1)
                 fpn_convs.append(nn.Sequential(nn.ReLU(), conv))
@@ -196,7 +194,9 @@ class _EfficientDet(_EfficientNet):
             "fpn_levels": fpn_levels,
         }
         final_kwargs.update(kwargs)
-        return cls(**final_kwargs)
+        result = cls(**final_kwargs)
+        result.compound_coeff = compound_coeff
+        return result
 
 
 class EfficientDet1d(_EfficientDet, metaclass=_EfficientDetMeta):

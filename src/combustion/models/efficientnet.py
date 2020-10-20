@@ -138,14 +138,14 @@ class _EfficientNet(nn.Module):
         self.__depth_coeff = float(depth_coeff)
 
         output_filters = []
-        for config in block_configs:
+        for config in self.block_configs:
             # update config according to scale coefficients
             config.input_filters = self.round_filters(config.input_filters, width_coeff, width_divisor, min_width)
             config.output_filters = self.round_filters(config.output_filters, width_coeff, width_divisor, min_width)
             config.num_repeats = self.round_repeats(depth_coeff, config.num_repeats)
             output_filters.append(config.output_filters)
 
-        self.__input_filters = block_configs[0].input_filters
+        self.__input_filters = self.block_configs[0].input_filters
         self.__output_filters = tuple(output_filters)
 
         # Conv stem (default stem used if none given)
@@ -153,7 +153,7 @@ class _EfficientNet(nn.Module):
             self.stem = stem
         else:
             in_channels = 3
-            first_block = next(iter(block_configs))
+            first_block = next(iter(self.block_configs))
             output_filters = first_block.input_filters
             bn_momentum = first_block.bn_momentum
             bn_epsilon = first_block.bn_epsilon
@@ -165,7 +165,7 @@ class _EfficientNet(nn.Module):
 
         # MobileNetV3 convolution blocks
         blocks = []
-        for config in block_configs:
+        for config in self.block_configs:
             conv_block = self.__class__._get_blocks(config)
             blocks.append(conv_block)
         self.blocks = nn.ModuleList(blocks)
@@ -319,8 +319,8 @@ class _EfficientNet(nn.Module):
             https://arxiv.org/abs/1905.11946
         """
         # from paper
-        alpha = 1.1
-        beta = 1.0
+        alpha = 1.2
+        beta = 1.1
         width_divisor = 8.0
 
         depth_coeff = alpha ** compound_coeff

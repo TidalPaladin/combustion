@@ -59,7 +59,19 @@ class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     def test_from_predefined(self, model_type, compound_coeff):
         model = model_type.from_predefined(compound_coeff)
         assert isinstance(model, model_type)
+        assert model.width_coeff == 1.1 ** compound_coeff
+        assert model.depth_coeff == 1.2 ** compound_coeff
         del model
+
+    def test_from_predefined_repeated_calls(self, model_type):
+        compound_coeff = 2
+        model1 = model_type.from_predefined(compound_coeff)
+        model2 = model_type.from_predefined(compound_coeff)
+        params1 = sum([x.numel() for x in model1.parameters()])
+        params2 = sum([x.numel() for x in model2.parameters()])
+        print(f"Params: {params1}")
+        assert params1 == params2
+        assert params1 > 5e6
 
     @pytest.mark.parametrize("compound_coeff", [0, 1, 2])
     def test_input_size(self, model_type, compound_coeff, data):

@@ -62,6 +62,7 @@ class EfficientDetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     def test_from_predefined(self, model_type, compound_coeff, data):
         model = model_type.from_predefined(compound_coeff)
         assert isinstance(model, model_type)
+        assert model.compound_coeff == compound_coeff
 
         output = model(data)
         assert isinstance(output, list)
@@ -71,6 +72,24 @@ class EfficientDetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
             assert out.shape[0] == 1
 
         del model
+
+    def test_from_predefined_repeated_calls(self, model_type, data):
+        model0_1 = model_type.from_predefined(0)
+        model2_1 = model_type.from_predefined(2)
+        model2_2 = model_type.from_predefined(2)
+        model0_2 = model_type.from_predefined(0)
+
+        params0_1 = sum([x.numel() for x in model0_1.parameters()])
+        params0_2 = sum([x.numel() for x in model0_2.parameters()])
+        params2_1 = sum([x.numel() for x in model2_1.parameters()])
+        params2_2 = sum([x.numel() for x in model2_2.parameters()])
+
+        assert params2_1 == params2_2
+        assert params0_1 == params0_2
+        assert params0_2 < params2_1
+
+        print(f"Params: {params2_1}")
+        assert params2_1 > 5e6
 
 
 class TestEfficientDet1d(EfficientDetBaseTest):
