@@ -1,6 +1,7 @@
 # @package _global_
 dataset:
   num_workers: 4
+  batch_size: 32
 
   train:
     _target_: torchvision.datasets.FakeData
@@ -11,6 +12,7 @@ dataset:
         _target_: torchvision.transforms.ToTensor
 
   validate:
+    batch_size: 4
     _target_: torchvision.datasets.FakeData
     params:
       size: 100
@@ -19,6 +21,7 @@ dataset:
         _target_: torchvision.transforms.ToTensor
 
   test:
+    batch_size: 4
     _target_: torchvision.datasets.FakeData
     params:
       size: 100

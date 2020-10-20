@@ -4,14 +4,12 @@
 import math
 import warnings
 from copy import deepcopy
-from itertools import islice
-from typing import Any, Dict, Iterable, Optional, Tuple, Union
+from typing import Any, Iterable, Optional, Tuple, Union
 
 import pytorch_lightning as pl
-import torch
-from hydra.errors import HydraException
 from hydra.utils import instantiate
 from omegaconf import DictConfig, ListConfig, OmegaConf
+from pytorch_lightning.core.saving import ModelIO
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset, random_split
@@ -28,7 +26,7 @@ def _has_instantiate_key(i: Iterable) -> bool:
     return any([_is_instantiate_key(k) for k in i])
 
 
-class HydraModule(pl.LightningModule):
+class HydraMixin(ModelIO):
     r"""
     Module for creating :class:`pytorch_lightning.LightningModule`
     using `Hydra <https://hydra.cc/>`_.
@@ -51,7 +49,7 @@ class HydraModule(pl.LightningModule):
         * :attr:`hparams.setter` - Equivalent to ``instantiated_hparams.setter``.
 
     Usage Pattern:
-        >>> class MyModel(HydraModule):
+        >>> class MyModel(HydraMixin):
         >>>
         >>>     def __init__(self, config, **hparams):
         >>>         super().__init__(config, **hparams)
@@ -64,54 +62,62 @@ class HydraModule(pl.LightningModule):
         >>>         # your model code here
         >>>         ...
         >>>
-        >>> class MyHydraModel(MyModel, HydraModule):
+        >>> class MyHydraModel(MyModel, HydraMixin):
         >>>     def __init__(self, config, **hparams):
-        >>>         # call MyModel/HydraModule init here
+        >>>         # call MyModel/HydraMixin init here
         >>>         ...
     """
-    _has_inspected: bool = False
     _has_datasets: bool = False
     train_ds: Optional[Dataset] = None
     val_ds: Optional[Dataset] = None
     test_ds: Optional[Dataset] = None
-    _config: Optional[DictConfig] = None
-    _hparams: Optional[DictConfig] = None
 
-    def __init__(self, config: DictConfig, **hparams):
-        super().__init__()
-        self.config = config
-        self.hparams = hparams
+    @staticmethod
+    def create_model(hparams):
+        r"""Creates a model using Hydra instantiation. The returned
+        object will be a subclass of the instantiated model, with overrides
+        to facilitate hydra-compatible checkpoint loading.
 
-    @property
-    def hparams(self) -> Optional[DictConfig]:
-        if "model" in self._config.keys():
-            return self._config.model.get("params", None)
-        return None
+        .. note::
+            You must call ``self.save_hyperparameters()`` in your LightningModule's init method.
 
-    @hparams.setter
-    def hparams(self, val: Union[Dict[str, Any], DictConfig]) -> None:
-        if isinstance(val, DictConfig):
-            val = dict(val)
-        self._hparams = val
+        Args:
+            hparams (DictConfig):
+                Hydra config to use when creating the model. Should at least provide
+                a ``hparams.model`` key
 
-    @property
-    def instantiated_hparams(self) -> Optional[Dict[str, Any]]:
-        return self._hparams
+        Returns:
+            Subclass of the instantiated model with ``__init__`` overriden to support Hydra
+            based checkpoint saving / loading.
+        """
+        # instantiate the actual model
+        model = HydraMixin.instantiate(hparams.model)
 
-    @instantiated_hparams.setter
-    def instantiated_hparams(self, val: DictConfig) -> None:
-        self._hparams = val
+        # create a wrapper class so that loading from checkpoint
+        # can accept a hydra config rather than model level hparams
+        class ModelWrapper(model.__class__):
+            def __init__(self, **hparams):
+                # warn user if model is not a HydraMixin
+                if not isinstance(model, HydraMixin):
+                    warnings.warn(
+                        f"Model type {type(model)} is not a HydraMixin instance. "
+                        "Default methods provided by combustion.lightning.HydraMixin will not be available"
+                    )
+                if not hasattr(model, "hparams"):
+                    raise RuntimeError("Please call self.save_hyperparameters() in your model's __init__ method")
 
-    @property
-    def config(self) -> Optional[DictConfig]:
-        return self._config
+                # construct the wrapped model by reading instantiated hyperparams
+                super().__init__(**model.hparams)
+                self.__class__.__name__ = f"ModelWrapper<{model.__class__.__name__}>"
 
-    @config.setter
-    def config(self, val: DictConfig):
-        self._config = val
+                # replace hparams property with hydra dictconfig
+                self.hparams = OmegaConf.create()
+                self.save_hyperparameters()
+
+        return ModelWrapper(**hparams)
 
     def __new__(cls, *args, **kwargs):
-        # because HydraModule provides default overrides for test/val dataloader methods,
+        # because HydraMixin provides default overrides for test/val dataloader methods,
         # lightning will complain if a test/val step methods aren't provided
         #
         # to handle this, we replace test/val dataloader methods if test/val step methods
@@ -119,13 +125,13 @@ class HydraModule(pl.LightningModule):
         if cls.validation_step == pl.LightningModule.validation_step:
             cls.val_dataloader = pl.LightningModule.val_dataloader
         else:
-            cls.val_dataloader = HydraModule.val_dataloader
+            cls.val_dataloader = HydraMixin.val_dataloader
         if cls.test_step == pl.LightningModule.test_step:
             cls.test_dataloader = pl.LightningModule.test_dataloader
         else:
-            cls.test_dataloader = HydraModule.test_dataloader
+            cls.test_dataloader = HydraMixin.test_dataloader
 
-        x = super(HydraModule, cls).__new__(cls)
+        x = super(HydraMixin, cls).__new__(cls)
         return x
 
     def get_lr(self, pos: int = 0, param_group: int = 0) -> float:
@@ -179,15 +185,11 @@ class HydraModule(pl.LightningModule):
                 final_div_factor: 10000.0
                 anneal_strategy: cos
         """
-
-        if not hasattr(self, "config"):
-            raise AttributeError("'config' attribute is required for configure_optimizers")
-
-        lr = self.config.optimizer["params"]["lr"]
-        optim = instantiate(self.config.optimizer, self.parameters())
+        lr = self.hparams.optimizer["params"]["lr"]
+        optim = instantiate(self.hparams.optimizer, self.parameters())
 
         # scheduler setup
-        schedule = self.config.get("schedule")
+        schedule = self.hparams.get("schedule")
         if schedule is not None:
             # interval/frequency keys required or schedule wont run
             for required_key in ["interval", "frequency"]:
@@ -198,17 +200,17 @@ class HydraModule(pl.LightningModule):
             if "monitor" not in schedule.keys():
                 warnings.warn("'monitor' missing from lr schedule config")
 
-            test_only = self.config.trainer.get("test_only", False)
+            test_only = self.hparams.trainer.get("test_only", False)
             dl = self.train_dataloader()
             if dl is not None:
                 # get gpus / num_nodes / accum_grad_batches to compute optimizer steps per epoch
-                accum_grad_batches = int(self.config.trainer["params"].get("accumulate_grad_batches", 1))
+                accum_grad_batches = int(self.hparams.trainer["params"].get("accumulate_grad_batches", 1))
                 assert accum_grad_batches >= 1
-                gpus = self.config.trainer["params"].get("gpus", 1)
+                gpus = self.hparams.trainer["params"].get("gpus", 1)
                 if isinstance(gpus, Iterable):
                     gpus = len(gpus)
                 gpus = max(gpus, 1)
-                num_nodes = self.config.trainer["params"].get("num_nodes", 1)
+                num_nodes = self.hparams.trainer["params"].get("num_nodes", 1)
                 steps_per_epoch = math.ceil(len(dl) / (accum_grad_batches * gpus * num_nodes))
 
                 schedule_dict = {
@@ -302,13 +304,13 @@ class HydraModule(pl.LightningModule):
         if self._has_datasets and not force:
             return self.train_ds, self.val_ds, self.test_ds
 
-        dataset_cfg = self.config.get("dataset")
+        dataset_cfg = self.hparams.get("dataset")
 
         # when in test_only mode, try to avoid setting up training/validation sets
         # training set is only needed if test set is a split from training
-        test_only = "test_only" in self.config.trainer and self.config.trainer["test_only"]
+        test_only = "test_only" in self.hparams.trainer and self.hparams.trainer["test_only"]
         if test_only and not isinstance(dataset_cfg["test"], (int, float)):
-            test_ds = HydraModule.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
             self.train_ds = None
             self.val_ds = None
             self.test_ds = test_ds
@@ -316,7 +318,7 @@ class HydraModule(pl.LightningModule):
             return self.train_ds, self.val_ds, self.test_ds
 
         train_ds: Optional[Dataset] = (
-            HydraModule.instantiate(dataset_cfg["train"]) if "train" in dataset_cfg.keys() else None
+            HydraMixin.instantiate(dataset_cfg["train"]) if "train" in dataset_cfg.keys() else None
         )
 
         # determine sizes validation/test sets if specified as a fraction of training set
@@ -344,37 +346,14 @@ class HydraModule(pl.LightningModule):
         elif splits["validate"] is not None:
             lengths = (splits["train"], splits["validate"])
             train_ds, val_ds = random_split(train_ds, lengths)
-            test_ds = HydraModule.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
         elif splits["test"] is not None:
             lengths = (splits["train"], splits["test"])
             train_ds, test_ds = random_split(train_ds, lengths)
-            val_ds = HydraModule.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
+            val_ds = HydraMixin.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
         else:
-            val_ds = HydraModule.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
-            test_ds = HydraModule.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
-
-        # collect sample statistics from the train ds and attach to self as a buffer
-        if train_ds is not None and "stats_sample_size" in dataset_cfg.keys():
-            warnings.warn(
-                "stats_sample_size is deprecated, use torch.nn.BatchNorm(affine=False) instead", DeprecationWarning
-            )
-            num_examples = dataset_cfg["stats_sample_size"]
-            if num_examples == "all":
-                num_examples = len(train_ds)
-            elif isinstance(num_examples, (float, int)):
-                num_examples = int(num_examples)
-            else:
-                raise MisconfigurationException(f"Unexpected value for dataset.stats_sample_size: {num_examples}")
-
-            dim = int(dataset_cfg["stats_dim"]) if "stats_dim" in dataset_cfg.keys() else 0
-            index = int(dataset_cfg["stats_index"]) if "stats_index" in dataset_cfg.keys() else 0
-
-            if num_examples < 0:
-                raise MisconfigurationException(f"Expected dataset.stats_sample_size >= 0, found {num_examples}")
-            elif num_examples > 0:
-                self._inspect_dataset(train_ds, num_examples, dim, index)
-            else:
-                warnings.warn("dataset.stats_sample_size = 0, not collecting dataset staistics")
+            val_ds = HydraMixin.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
+            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
 
         self.train_ds = train_ds
         self.val_ds = val_ds
@@ -397,21 +376,21 @@ class HydraModule(pl.LightningModule):
     def _dataloader(self, dataset: Optional[Dataset], split: str) -> Optional[DataLoader]:
         if dataset is not None:
             # try loading keys from dataset config
-            assert split in self.config.dataset, f"split {split} missing from dataset config"
-            if isinstance(self.config.dataset[split], (DictConfig, dict)):
-                dataset_config = dict(self.config.dataset[split])
+            assert split in self.hparams.dataset, f"split {split} missing from dataset config"
+            if isinstance(self.hparams.dataset[split], (DictConfig, dict)):
+                dataset_config = dict(self.hparams.dataset[split])
 
             # fallback to using training config, but force shuffle=False for test/val
             else:
-                dataset_config = dict(self.config.dataset["train"])
+                dataset_config = dict(self.hparams.dataset["train"])
                 dataset_config["shuffle"] = False
 
             num_workers = dataset_config.get("num_workers", 1)
             pin_memory = dataset_config.get("pin_memory", False)
             drop_last = dataset_config.get("drop_last", False)
             shuffle = dataset_config.get("shuffle", False)
-            batch_size = dataset_config.get("batch_size", self.hparams["batch_size"])
             collate_fn = dataset_config.get("collate_fn", None)
+            batch_size = dataset_config.get("batch_size", self.hparams.dataset["batch_size"])
 
             return DataLoader(
                 dataset,
@@ -424,56 +403,6 @@ class HydraModule(pl.LightningModule):
             )
         else:
             return None
-
-    def _inspect_dataset(self, dataset: Dataset, sample_size: int, dim: int = 0, index: int = 0) -> None:
-        if self._has_inspected:
-            return
-
-        # get an example from dataset and ensure it is an iterable
-        try:
-            _ = dataset[0]
-            if not isinstance(_, Iterable):
-                _ = (_,)
-        except RuntimeError:
-            raise MisconfigurationException("Failed to get training example for statistics collection")
-
-        # get the tensor requested by `index`
-        try:
-            _ = _[index]
-        except IndexError:
-            raise MisconfigurationException(
-                f"Statistics requested for index {index}, but example had only {len(_)} elements"
-            )
-
-        # convert reverse (negative) indexing to forward indexing
-        ndims = _.ndim
-        original_dim = dim
-        if dim < 0:
-            dim = ndims + dim
-
-        # get permutation such that the non-reduced dimension is first
-        permuted_dims = [dim] + list(set(range(ndims)) - set([dim]))
-
-        if dim >= ndims or dim < 0:
-            raise MisconfigurationException(
-                f"Statistics requested over dimension {original_dim}, but only {ndims} dims are present"
-            )
-        num_channels = _.shape[dim]
-
-        # randomly draw sample_size examples from the given dataset and permute
-        examples = torch.cat(
-            [x[index].permute(*permuted_dims).view(num_channels, -1) for x in islice(iter(dataset), sample_size)], -1
-        )
-
-        # compute sample statistics and attach to self as a buffer
-        var, mean = torch.var_mean(examples, dim=-1)
-        maximum, minimum = examples.max(dim=-1).values, examples.min(dim=-1).values
-
-        self.register_buffer("channel_mean", mean.to(self.device))
-        self.register_buffer("channel_variance", var.to(self.device))
-        self.register_buffer("channel_max", maximum.to(self.device))
-        self.register_buffer("channel_min", minimum.to(self.device))
-        self._has_inspected = True
 
     @staticmethod
     def instantiate(config: Union[DictConfig, dict], *args, **kwargs) -> Any:
@@ -518,7 +447,7 @@ class HydraModule(pl.LightningModule):
                 if isinstance(subconfig, (dict, DictConfig)) and "params" not in subconfig.keys():
                     subconfig["params"] = {}
                 subconfig._set_parent(config)
-                params[i] = HydraModule.instantiate(subconfig)
+                params[i] = HydraMixin.instantiate(subconfig)
             del config["params"]
             return instantiate(config, *params, *args, **kwargs)
 
@@ -532,28 +461,9 @@ class HydraModule(pl.LightningModule):
                 if "params" not in subconfig:
                     subconfig["params"] = {}
                 subconfig._set_parent(config)
-                subclasses[key] = HydraModule.instantiate(subconfig)
+                subclasses[key] = HydraMixin.instantiate(subconfig)
                 del config.get("params")[key]
 
             subclasses.update(kwargs)
 
-            try:
-                # direct call to hydra instantiate
-                return instantiate(config, *args, **subclasses)
-
-            # hydra gives poor exception info
-            # try a manual import of failed target and report the real error
-            except HydraException as ex:
-                import re
-
-                msg = str(ex)
-                target_name = re.search(r"'\S+'", msg).group().replace("'", "")
-                try:
-                    __import__(target_name)
-                except SyntaxError:
-                    raise
-                except RuntimeError:
-                    pass
-
-                # raise the original exception if import works
-                raise
+            return instantiate(config, *args, **subclasses)

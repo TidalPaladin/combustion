@@ -5,4 +5,3 @@ model:
     in_features: 1
     out_features: 10
     kernel: 3
-    batch_size: 32

@@ -79,35 +79,34 @@ def test_preprocess_train(mocker, tmp_path):
     assert num_files_written >= size
 
 
-@pytest.mark.parametrize("resume_from_checkpoint", ["foo/bar.ckpt", None])
-def test_load_checkpoint(mocker, resume_from_checkpoint):
-    checkpoint = "path/to/checkpoint.ckpt"
-    m = mocker.MagicMock(spec_set=pl.LightningModule.load_from_checkpoint)
-    mocker.patch("pytorch_lightning.LightningModule.load_from_checkpoint", m)
-    mocker.patch("pytorch_lightning.Trainer.fit")
-    mocker.patch("pytorch_lightning.Trainer.test")
+def test_load_checkpoint(tmp_path):
+    callback = pl.callbacks.ModelCheckpoint(tmp_path)
+    trainer = pl.Trainer(default_root_dir=tmp_path, checkpoint_callback=callback, max_epochs=1)
+
     sys.argv = [
         sys.argv[0],
         "trainer=test",
         "trainer.catch_exceptions=False",
-        f"trainer.load_from_checkpoint={checkpoint}",
+        "trainer.params.max_epochs=2",
+        "trainer.params.fast_dev_run=false",
+        f"trainer.params.default_root_dir={tmp_path}",
     ]
-    if resume_from_checkpoint is not None:
-        sys.argv += [f"trainer.params.resume_from_checkpoint={resume_from_checkpoint}"]
 
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
-    if resume_from_checkpoint is not None:
-        m.assert_not_called()
-    else:
-        m.assert_called_once_with(checkpoint)
-    pl.Trainer.fit.assert_called_once()
-    pl.Trainer.test.assert_called_once()
+    # rename checkpoint file, = in epoch=X.ckpt breaks hydra
+    checkpoint = os.path.join(tmp_path, "epoch=1.ckpt")
+    dest = os.path.join(tmp_path, "epoch1.ckpt")
+    os.rename(checkpoint, dest)
+    checkpoint = dest
+
+    sys.argv.append(f"trainer.load_from_checkpoint={checkpoint}")
+    runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
 def test_initialize_checks_hydra_version(mocker):
     mocker.patch("hydra.__version__", new="1.0.0rc1")
-    sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.batch_size=8,32"]
+    sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.in_channels=8,32"]
     with pytest.raises(ImportError):
         runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
@@ -121,13 +120,13 @@ def test_lr_auto_find():
         "trainer=test",
         "trainer.params.auto_lr_find=True",
         "trainer.params.fast_dev_run=False",
-        "model.params.batch_size=8",
+        "dataset.batch_size=8",
     ]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
 def test_multirun():
-    sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.batch_size=8,32"]
+    sys.argv = [sys.argv[0], "-m", "trainer=test", "dataset.batch_size=8,32"]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
@@ -137,7 +136,7 @@ def test_multirun_from_yaml():
 
 
 def test_multirun_handles_exception():
-    sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.batch_size=-1, 8"]
+    sys.argv = [sys.argv[0], "-m", "trainer=test", "dataset.batch_size=-1, 8"]
     with pytest.raises(MultiRunError):
         runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
@@ -145,7 +144,7 @@ def test_multirun_handles_exception():
 @pytest.mark.parametrize("ex", [KeyboardInterrupt, SystemExit])
 def test_multirun_abort(mocker, ex):
     mocker.patch("pytorch_lightning.Trainer.fit", side_effect=ex)
-    sys.argv = [sys.argv[0], "-m", "trainer=test", "model.params.batch_size=-1, 8"]
+    sys.argv = [sys.argv[0], "-m", "trainer=test", "dataset.batch_size=-1, 8"]
     with pytest.raises(ex):
         runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 

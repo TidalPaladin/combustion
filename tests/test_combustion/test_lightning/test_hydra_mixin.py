@@ -7,20 +7,18 @@ import pytest
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from omegaconf import OmegaConf
-from pytorch_lightning.utilities.exceptions import MisconfigurationException
 
-from combustion.lightning import HydraModule
+from combustion.lightning import HydraMixin
 
 
-class Subclass(HydraModule):
-    def __init__(self, config, **hparams):
-        super().__init__(config, **hparams)
+class Subclass(HydraMixin, pl.LightningModule):
+    def __init__(self, in_features, out_features, criterion=None):
+        super().__init__()
         self.trainer = pl.Trainer()
-        self.l = nn.Linear(10, 1)
+        self.l = nn.Linear(in_features, out_features)
         self.trainer.optimizer = torch.optim.Adam(self.l.parameters(), 0.002)
-        if "criterion" in hparams.keys():
-            self.criterion = hparams["criterion"]
+        self.criterion = criterion
+        self.save_hyperparameters()
 
     def forward(self, x):
         return torch.rand_like(x, requires_grad=True)
@@ -67,7 +65,6 @@ def cfg(torch):
             "params": {
                 "in_features": 10,
                 "out_features": 10,
-                "batch_size": 32,
                 "criterion": {"_target_": "torch.nn.BCEWithLogitsLoss", "params": {}},
             },
         },
@@ -91,6 +88,7 @@ def cfg(torch):
             "stats_dim": 0,
             "train": {
                 "num_workers": 4,
+                "batch_size": 32,
                 "_target_": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
@@ -100,6 +98,7 @@ def cfg(torch):
             },
             "validate": {
                 "num_workers": 4,
+                "batch_size": 32,
                 "_target_": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
@@ -109,6 +108,7 @@ def cfg(torch):
             },
             "test": {
                 "num_workers": 4,
+                "batch_size": 32,
                 "_target_": "torchvision.datasets.FakeData",
                 "params": {
                     "size": 100,
@@ -133,43 +133,13 @@ def trainer():
     return pl.Trainer()
 
 
-def test_config_accessor(cfg):
-    hparams = cfg["model"]["params"]
-    model = Subclass(cfg, **hparams)
-    model.config = cfg
-    assert model.config == cfg
-
-
-def test_hparams_accessor(cfg):
-    hparams = cfg["model"]["params"]
-    model = Subclass(cfg, **hparams)
-    assert model.hparams == cfg.model.params
-
-
-def test_instantiated_hparams_accessor(cfg):
-    hparams = cfg["model"]["params"]
-    model = Subclass(cfg, **hparams)
-    assert model.instantiated_hparams == hparams
-
-
-def test_constructor_sets_hparams(cfg):
-    hparams = cfg["model"]["params"]
-    model = Subclass(cfg, **hparams)
-    for k, v in hparams.items():
-        assert model.hparams[k] == v
-
-
-def test_constructor_sets_config(cfg):
-    hparams = cfg["model"]["params"]
-    model = Subclass(cfg, **hparams)
-    assert model.config == cfg
-
-
-def test_instantiate_with_hydra(cfg, hydra):
-    model = hydra.utils.instantiate(cfg.model, cfg)
+def test_create_model(cfg, hydra):
+    model = HydraMixin.create_model(cfg)
     assert isinstance(model, Subclass)
+    assert model.hparams.keys() == cfg.keys()
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize(
     ["target", "exception"],
     [
@@ -180,15 +150,15 @@ def test_instantiate_with_hydra(cfg, hydra):
 def test_instantiate_report_error(hydra, target, exception):
     cfg = {"_target_": target}
     with pytest.raises(exception):
-        HydraModule.instantiate(cfg)
+        HydraMixin.instantiate(cfg)
 
 
 @pytest.mark.parametrize("scheduled", [True, False])
 def test_configure_optimizer(torch, cfg, hydra, scheduled):
-    hparams = cfg["model"]["params"]
+    cfg["model"]["params"]
     if not scheduled:
         del cfg["schedule"]
-    model = Subclass(cfg, **hparams)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
 
     if not scheduled:
@@ -203,9 +173,9 @@ def test_configure_optimizer(torch, cfg, hydra, scheduled):
 
 @pytest.mark.parametrize("missing", ["interval", "frequency"])
 def test_configure_optimizer_missing_keys(torch, cfg, hydra, missing):
-    hparams = cfg["model"]["params"]
+    cfg["model"]["params"]
     del cfg["schedule"][missing]
-    model = Subclass(cfg, **hparams)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
 
     with pytest.raises(pl.utilities.exceptions.MisconfigurationException):
@@ -213,9 +183,9 @@ def test_configure_optimizer_missing_keys(torch, cfg, hydra, missing):
 
 
 def test_configure_optimizer_warn_no_monitor_key(torch, cfg, hydra):
-    hparams = cfg["model"]["params"]
+    cfg["model"]["params"]
     del cfg["schedule"]["monitor"]
-    model = Subclass(cfg, **hparams)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
 
     with pytest.warns(UserWarning):
@@ -227,7 +197,7 @@ def test_get_lr(scheduled, cfg, hydra):
     if not scheduled:
         del cfg["schedule"]
 
-    model = hydra.utils.instantiate(cfg.model, cfg)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
     model.configure_optimizers()
     assert model.get_lr() == cfg["optimizer"]["params"]["lr"]
@@ -236,47 +206,22 @@ def test_get_lr(scheduled, cfg, hydra):
 @pytest.mark.parametrize("params", [True, False])
 @pytest.mark.parametrize("key", ["cls", "target", "_target_"])
 def test_recursive_instantiate(cfg, params, key):
-    cfg["model"]["params"]["test"] = {key: "torch.nn.BCELoss", "params": {}}
+    cfg["model"]["params"]["criterion"] = {key: "torch.nn.BCELoss", "params": {}}
 
     if params:
-        cfg["model"]["params"]["test"]["params"] = {"reduction": "none"}
+        cfg["model"]["params"]["criterion"]["params"] = {"reduction": "none"}
 
-    model = HydraModule.instantiate(cfg.model, cfg, foo=2)
-    assert isinstance(model.instantiated_hparams["test"], torch.nn.BCELoss)
-    assert model.instantiated_hparams["foo"] == 2
-    assert model.config == cfg
+    model = HydraMixin.create_model(cfg)
+    assert isinstance(model.criterion, torch.nn.BCELoss)
+    assert model.hparams.keys() == cfg.keys()
 
 
 def test_recursive_instantiate_preserves_cfg(cfg):
     key = {"_target_": "torch.nn.BCELoss", "params": {"reduction": "none"}}
-    cfg["model"]["params"]["test"] = key
-    model = HydraModule.instantiate(cfg.model, cfg, foo=2)
-    assert "test" in model.config["model"]["params"].keys()
-    assert model.config["model"]["params"]["test"] == key
-
-
-@pytest.mark.skip
-def test_recursive_instantiate_interpolated():
-    yaml = r"""
-    in_channels: 4
-    out_channels: 8
-    kernel_size: 3
-    _target_: torch.nn.Sequential
-    params:
-        - _target_: torch.nn.Conv2d
-          params:
-            in_channels: ${in_channels}
-            out_channels: ${out_channels}
-            kernel_size: ${kernel_size}
-        - _target_: torch.nn.Conv2d
-          params:
-            in_channels: ${in_channels}
-            out_channels: ${out_channels}
-            kernel_size: ${kernel_size}
-    """
-    cfg = OmegaConf.create(yaml)
-    model = HydraModule.instantiate(cfg)
-    assert isinstance(model, torch.nn.Module)
+    cfg["model"]["params"]["criterion"] = key
+    model = HydraMixin.create_model(cfg)
+    assert "criterion" in model.hparams["model"]["params"].keys()
+    assert model.hparams["model"]["params"]["criterion"] == key
 
 
 @pytest.mark.parametrize("key", ["cls", "target", "_target_"])
@@ -301,13 +246,13 @@ def test_recursive_instantiate_list(hydra, key):
         ],
     }
 
-    model = HydraModule.instantiate(cfg)
+    model = HydraMixin.instantiate(cfg)
     assert isinstance(model, torch.nn.Sequential)
 
 
 @pytest.mark.parametrize("check", ["train_ds", "val_ds", "test_ds"])
 def test_get_datasets(cfg, check):
-    model = HydraModule.instantiate(cfg.model, cfg)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
     assert hasattr(model, check)
     assert isinstance(getattr(model, check), torch.utils.data.Dataset)
@@ -315,7 +260,7 @@ def test_get_datasets(cfg, check):
 
 @pytest.mark.parametrize("force", [True, False])
 def test_get_datasets_forced(cfg, force, mocker):
-    model = HydraModule.instantiate(cfg.model, cfg)
+    model = HydraMixin.create_model(cfg)
     mock = mocker.MagicMock(spec_set=bool, name="train_ds")
     model.get_datasets()
     model.train_ds = mock
@@ -338,7 +283,7 @@ def test_get_datasets_forced(cfg, force, mocker):
 def test_get_datasets_missing_items(cfg, missing, present):
     for k in missing:
         del cfg.dataset[k]
-    model = HydraModule.instantiate(cfg.model, cfg)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
 
 
@@ -346,7 +291,7 @@ def test_get_datasets_missing_items(cfg, missing, present):
 def test_train_dataloader(cfg, present):
     if not present:
         del cfg.dataset["train"]
-    model = HydraModule.instantiate(cfg.model, cfg)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
     dataloader = model.train_dataloader()
 
@@ -360,7 +305,7 @@ def test_train_dataloader(cfg, present):
 def test_val_dataloader(cfg, present):
     if not present:
         del cfg.dataset["validate"]
-    model = HydraModule.instantiate(cfg.model, cfg)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
     dataloader = model.val_dataloader()
 
@@ -374,7 +319,7 @@ def test_val_dataloader(cfg, present):
 def test_test_dataloader(cfg, present):
     if not present:
         del cfg.dataset["test"]
-    model = HydraModule.instantiate(cfg.model, cfg)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
     dataloader = model.test_dataloader()
 
@@ -396,7 +341,7 @@ def test_dataloader_from_subset(cfg, subset, split):
             cfg.dataset["validate"] = 10
         del cfg.dataset["test"]
 
-    model = HydraModule.instantiate(cfg.model, cfg)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
 
     if subset == "test":
@@ -411,113 +356,14 @@ def test_dataloader_from_subset(cfg, subset, split):
         assert getattr(dataloader, key) == getattr(train_dl, key)
 
 
-@pytest.mark.parametrize(
-    "dim",
-    [
-        pytest.param(0, id="dim=0"),
-        pytest.param(-3, id="dim=-3"),
-    ],
-)
-@pytest.mark.parametrize(
-    "num_examples",
-    [
-        pytest.param(100, id="num_examples=100"),
-        pytest.param(0, id="num_examples=0"),
-        pytest.param("all", id="num_examples=all"),
-    ],
-)
-@pytest.mark.parametrize(
-    "index",
-    [
-        pytest.param(0, id="index=0"),
-        pytest.param(-2, id="index=-2"),
-    ],
-)
-def test_get_train_ds_statistics(cfg, dim, num_examples, index):
-    cfg.dataset["stats_sample_size"] = num_examples
-    cfg.dataset["stats_dim"] = dim
-    cfg.dataset["stats_index"] = index
-
-    model = HydraModule.instantiate(cfg.model, cfg)
-    model.get_datasets()
-    num_channels = model.train_ds[0][0].shape[dim]
-
-    for attr in ["channel_mean", "channel_variance", "channel_max", "channel_min"]:
-        if isinstance(num_examples, str) or num_examples > 0:
-            assert hasattr(model, attr)
-            x = getattr(model, attr)
-            assert isinstance(x, torch.Tensor)
-            assert x.shape[0] == num_channels
-        else:
-            assert not hasattr(model, attr)
-
-
-@pytest.mark.parametrize(
-    "index",
-    [
-        pytest.param(10),
-        pytest.param(4),
-        pytest.param(-4),
-    ],
-)
-def test_get_train_ds_statistics_index_error_handling(cfg, index):
-    cfg.dataset["stats_index"] = index
-    model = HydraModule.instantiate(cfg.model, cfg)
-    with pytest.raises(MisconfigurationException):
-        model.get_datasets()
-
-
-@pytest.mark.parametrize(
-    "dim",
-    [
-        pytest.param(10),
-        pytest.param(-10),
-    ],
-)
-def test_get_train_ds_statistics_dim_error_handling(cfg, dim):
-    cfg.dataset["stats_dim"] = dim
-    model = HydraModule.instantiate(cfg.model, cfg)
-    with pytest.raises(MisconfigurationException):
-        model.get_datasets()
-
-
-@pytest.mark.parametrize(
-    "num_examples",
-    [
-        pytest.param("BAD"),
-        pytest.param(-1),
-    ],
-)
-def test_get_train_ds_statistics_num_examples_error_handling(cfg, num_examples):
-    cfg.dataset["stats_sample_size"] = num_examples
-    model = HydraModule.instantiate(cfg.model, cfg)
-    with pytest.raises(MisconfigurationException):
-        model.get_datasets()
-
-
-def test_statistics_set_only_once(cfg, mocker):
-    cfg.dataset["stats_sample_size"] = 100
-    cfg.dataset["stats_dim"] = -3
-
-    model = HydraModule.instantiate(cfg.model, cfg)
-    model.get_datasets()
-    old_mean = model.channel_mean
-
-    model.channel_mean *= 0.0
-    model.get_datasets()
-    new_mean = model.channel_mean
-
-    assert torch.allclose(old_mean, new_mean)
-
-
 @pytest.mark.parametrize("subset", ["test", "validate"])
 def test_dataloader_override_batch_size(cfg, subset):
-    model_batch_size = cfg.model["params"]["batch_size"]
+    model_batch_size = cfg.dataset.train["batch_size"]
     new_batch_size = model_batch_size + 1
 
     cfg.dataset[subset]["batch_size"] = new_batch_size
 
-    model = HydraModule.instantiate(cfg.model, cfg)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
 
     if subset == "test":
@@ -550,9 +396,9 @@ def test_schedule_length_correct(torch, cfg, hydra, gpus, gpu_count, accum_grad_
     cfg["dataset"]["train"]["params"]["size"] = 10000
     cfg["dataset"]["validate"]["params"]["size"] = 10000
     cfg["dataset"]["test"]["params"]["size"] = 10000
-    hparams = cfg["model"]["params"]
+    cfg["model"]["params"]
 
-    model = Subclass(cfg, **hparams)
+    model = HydraMixin.create_model(cfg)
     model.get_datasets()
     _, schedulers = model.configure_optimizers()
     schedule = schedulers[0]
@@ -583,14 +429,14 @@ class TestRuntimeBehavior:
 
     @pytest.fixture
     def trainer(self, cfg):
-        return HydraModule.instantiate(cfg.trainer)
+        return HydraMixin.instantiate(cfg.trainer)
 
     def test_train_only(self, cfg, trainer):
         for key in ["validate", "test"]:
             if key in cfg.dataset.keys():
                 del cfg.dataset[key]
 
-        model = HydraModule.instantiate(cfg.model, cfg)
+        model = HydraMixin.create_model(cfg)
         trainer.fit(model)
 
     def test_train_validate(self, cfg, trainer):
@@ -598,9 +444,9 @@ class TestRuntimeBehavior:
             if key in cfg.dataset.keys():
                 del cfg.dataset[key]
 
-        model = HydraModule.instantiate(cfg.model, cfg)
+        model = HydraMixin.create_model(cfg)
         trainer.fit(model)
 
     def test_train_validate_test(self, cfg, trainer):
-        model = HydraModule.instantiate(cfg.model, cfg)
+        model = HydraMixin.create_model(cfg)
         trainer.fit(model)

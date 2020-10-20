@@ -12,4 +12,10 @@ trainer:
     auto_lr_find: false
     deterministic: false
     limit_train_batches: 10
+    checkpoint_callback:
+      _target_: pytorch_lightning.callbacks.ModelCheckpoint
+      params:
+        filepath: ${trainer.params.default_root_dir}
+
     resume_from_checkpoint:
+    default_root_dir:

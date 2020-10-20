@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 import logging
 
 import hydra
@@ -13,13 +12,12 @@ from combustion.lightning import HydraMixin
 import combustion
 
 
-log = logging.getLogger(__name__)
-
-
-# define the model
-class FakeModel(HydraMixin, pl.LightningModule):
-    def __init__(self, in_features, out_features, kernel):
+class FakeModel(HydraMixin):
+    def __init__(self, hparams: DictConfig):
         super().__init__()
+        in_features = hparams.model.params.in_features
+        out_features = hparams.model.params.out_features
+        kernel = hparams.model.params.kernel
         self.l1 = torch.nn.Conv2d(in_features, out_features, kernel)
         self.l2 = torch.nn.AdaptiveAvgPool2d(1)
         self.l3 = torch.nn.Linear(out_features, 10)
@@ -40,7 +38,8 @@ class FakeModel(HydraMixin, pl.LightningModule):
 
         # sample progress bar override with lr logging
         bar = {"lr": self.get_lr()}
-        return loss
+
+        return {"loss": loss, "log": tensorboard_logs, "progress_bar": bar}
 
     def validation_step(self, batch, batch_nb):
         # OPTIONAL
@@ -51,7 +50,8 @@ class FakeModel(HydraMixin, pl.LightningModule):
     def validation_epoch_end(self, outputs):
         # OPTIONAL
         avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-        return avg_loss
+        tensorboard_logs = {"val_loss": avg_loss}
+        return {"avg_val_loss": avg_loss, "log": tensorboard_logs}
 
     def test_step(self, batch, batch_nb):
         # OPTIONAL
@@ -64,16 +64,3 @@ class FakeModel(HydraMixin, pl.LightningModule):
         avg_loss = torch.stack([x["test_loss"] for x in outputs]).mean()
         logs = {"test_loss": avg_loss}
         return {"avg_test_loss": avg_loss, "log": logs, "progress_bar": logs}
-
-
-combustion.initialize(config_path="./conf", config_name="config")
-
-
-@hydra.main(config_path="./conf", config_name="config")
-def main(cfg):
-    return combustion.main(cfg)
-
-
-if __name__ == "__main__":
-    main()
-    combustion.check_exceptions()

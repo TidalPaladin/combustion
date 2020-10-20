@@ -3,6 +3,7 @@
 
 import logging
 import os
+import re
 import sys
 from glob import glob
 from typing import Any, Callable, Optional, Tuple
@@ -18,7 +19,7 @@ from packaging import version
 
 import combustion
 from combustion.data import save_torch
-from combustion.lightning import HydraModule
+from combustion.lightning import HydraMixin
 
 
 log = logging.getLogger("combustion")
@@ -111,7 +112,7 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
     lr = None
     try:
         model.prepare_data()
-        lr_trainer: pl.Trainer = HydraModule.instantiate(cfg.trainer)
+        lr_trainer: pl.Trainer = HydraMixin.instantiate(cfg.trainer)
         if hasattr(lr_trainer, "tuner"):
             # pl >= 1.0.0
             lr_finder = lr_trainer.tuner.lr_find(model)
@@ -193,7 +194,7 @@ def initialize(config_path: str, config_name: str, caller_stack_depth: int = 1) 
     # split argv into dict
     overrides_dict = {}
     for x in overrides:
-        key, value = x.split("=")
+        key, value = re.split(r"=|\s", x, maxsplit=1)
         overrides_dict[key] = value
 
     # use compose api to inspect multirun values
@@ -297,11 +298,10 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
         # instantiate model (and optimizer) selected in yaml
         # see pytorch lightning docs: https://pytorch-lightning.rtfd.io/en/latest
         try:
-            model: HydraModule = HydraModule.instantiate(cfg.model, cfg)
+            model: pl.LightningModule = HydraMixin.create_model(cfg)
         except RuntimeError:
             log.error("Failed to instantiate model")
             log.error("Model Config:\n%s", cfg.model.to_yaml())
-            log.error("Are you sure the model is a combustion.lightning.HydraModule subclass?")
 
         # preprocess data
         preprocess_training_path = cfg.trainer.get("preprocess_train_path", None)
@@ -350,7 +350,7 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
 
         # instantiate trainer with params as selected in yaml
         # handles tensorboard, checkpointing, etc
-        trainer: pl.Trainer = HydraModule.instantiate(cfg.trainer)
+        trainer: pl.Trainer = HydraMixin.instantiate(cfg.trainer)
 
         # train
         if "train" in cfg.dataset:
