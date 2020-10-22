@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from copy import deepcopy
 from typing import Optional, Tuple, Union
 
 import torch.nn as nn
@@ -69,7 +70,7 @@ class _AttentionUpsample(nn.Module):
         self.high_level_path = nn.Sequential(
             self.AdaptiveAvgPool(1) if pool else nn.Identity(),
             self.Conv(output_filters, output_filters, 1),
-            activation if activation is not None else nn.Identity(),
+            deepcopy(activation) if activation is not None else nn.Identity(),
         )
 
         # pointwise conv when high_filters != output_filters

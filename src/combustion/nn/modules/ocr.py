@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from copy import deepcopy
 
 import torch
 import torch.nn as nn
@@ -79,34 +80,34 @@ class OCR(nn.Module):
         self.pixel_conv = nn.Sequential(
             nn.Conv2d(in_channels, key_channels, 1, bias=False),
             nn.BatchNorm2d(key_channels),
-            activation,
+            deepcopy(activation),
             nn.Conv2d(key_channels, key_channels, 1, bias=False),
             nn.BatchNorm2d(key_channels),
-            activation,
+            deepcopy(activation),
         )
 
         # key produced from soft object regions
         self.object_key_conv = nn.Sequential(
             nn.Conv2d(in_channels, key_channels, 1, bias=False),
             nn.BatchNorm2d(key_channels),
-            activation,
+            deepcopy(activation),
             nn.Conv2d(key_channels, key_channels, 1, bias=False),
             nn.BatchNorm2d(key_channels),
-            activation,
+            deepcopy(activation),
         )
 
         # value produced from soft object regions
         self.object_value_conv = nn.Sequential(
             nn.Conv2d(in_channels, key_channels, 1, bias=False),
             nn.BatchNorm2d(key_channels),
-            activation,
+            deepcopy(activation),
         )
 
         # conv for context tensor produced from attention
         self.context_conv = nn.Sequential(
             nn.Conv2d(key_channels, in_channels, 1, bias=False),
             nn.BatchNorm2d(in_channels),
-            activation,
+            deepcopy(activation),
         )
 
         # final conv that produces augmented pixel representations
@@ -114,7 +115,7 @@ class OCR(nn.Module):
         self.augmentation_conv = nn.Sequential(
             nn.Conv2d(2 * in_channels, out_channels, kernel_size=1, bias=False),
             nn.BatchNorm2d(out_channels),
-            activation,
+            deepcopy(activation),
         )
 
     def forward(self, pixels: Tensor, regions: Tensor) -> Tensor:

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from copy import deepcopy
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
@@ -141,7 +142,7 @@ class _BiFPN(nn.Module):
 
         def conv(num_channels):
             return nn.Sequential(
-                activation,
+                deepcopy(activation),
                 self.Conv(num_channels, num_channels, kernel_size, padding=padding, groups=num_channels, bias=False),
                 self.Conv(num_channels, num_channels, kernel_size=1, bias=False),
                 self.BatchNorm(num_features=num_channels, momentum=bn_momentum, eps=bn_epsilon),

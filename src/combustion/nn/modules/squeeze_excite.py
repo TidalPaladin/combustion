@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from copy import deepcopy
 from typing import Optional, Union
 
 import torch.nn as nn
@@ -71,11 +72,11 @@ class _SqueezeExcite(nn.Module):
             self.pool = self._get_global_pool()
             self.squeeze = nn.Sequential(
                 nn.Linear(self.in_channels, mid_channels),
-                first_activation,
+                deepcopy(first_activation),
             )
             self.excite = nn.Sequential(
                 nn.Linear(mid_channels, self.out_channels),
-                second_activation,
+                deepcopy(second_activation),
             )
 
         # for pixel-wise attention, everything is 1x1 convolutional
@@ -83,11 +84,11 @@ class _SqueezeExcite(nn.Module):
             self.pool = None
             self.squeeze = nn.Sequential(
                 self.Conv(self.in_channels, mid_channels, 1),
-                first_activation,
+                deepcopy(first_activation),
             )
             self.excite = nn.Sequential(
                 self.Conv(mid_channels, self.out_channels, 1),
-                second_activation,
+                deepcopy(second_activation),
             )
 
     def forward(self, inputs: Tensor) -> Tensor:
