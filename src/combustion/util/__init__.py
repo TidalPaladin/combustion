@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from .compute import percent_change, percent_error_change
 from .decorators import input, output
 from .plot import alpha_blend, apply_colormap
 from .util import Dim, double, ntuple, one_diff_tuple, replace_tuple, single, triple
@@ -33,6 +34,8 @@ __all__ = [
     "output",
     "Dim",
     "one_diff_tuple",
+    "percent_change",
+    "percent_error_change",
     "ntuple",
     "single",
     "double",

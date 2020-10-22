@@ -9,6 +9,8 @@ Misc utils
 Others
 ----------------------------------
 .. autofunction:: combustion.util.ntuple
+.. autofunction:: combustion.util.percent_change
+.. autofunction:: combustion.util.percent_error_change
 
 Validation
 ----------------------------------
