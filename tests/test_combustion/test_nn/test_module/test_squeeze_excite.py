@@ -28,7 +28,7 @@ class TestSqueezeExcite1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     @pytest.fixture
     def data(self):
         torch.random.manual_seed(42)
-        return torch.rand(1, 4, 32)
+        return torch.rand(2, 4, 32)
 
     def test_forward(self, model, data):
         output = model(data)
@@ -59,7 +59,7 @@ class TestSqueezeExcite2d(TestSqueezeExcite1d):
     @pytest.fixture
     def data(self):
         torch.random.manual_seed(42)
-        return torch.rand(1, 4, 32, 32)
+        return torch.rand(2, 4, 32, 32)
 
 
 class TestSqueezeExcite3d(TestSqueezeExcite1d):
@@ -70,4 +70,4 @@ class TestSqueezeExcite3d(TestSqueezeExcite1d):
     @pytest.fixture
     def data(self):
         torch.random.manual_seed(42)
-        return torch.rand(1, 4, 32, 32, 9)
+        return torch.rand(2, 4, 32, 32, 9)

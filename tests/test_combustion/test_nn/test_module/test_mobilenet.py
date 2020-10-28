@@ -64,7 +64,7 @@ class TestMobileNetConvBlock1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
 
     @pytest.fixture
     def data(self):
-        return torch.rand(1, 4, 32)
+        return torch.rand(2, 4, 32)
 
     def test_construct(self, model_type):
         model_type(4, 4, 3, drop_connect_rate=0.1, squeeze_excite_ratio=2, expand_ratio=2)
@@ -107,7 +107,7 @@ class TestMobileNetConvBlock2d(TestMobileNetConvBlock1d):
 
     @pytest.fixture(params=[32, 31])
     def data(self, request):
-        return torch.rand(1, 4, *((request.param,) * 2))
+        return torch.rand(2, 4, *((request.param,) * 2))
 
 
 class TestMobileNetConvBlock3d(TestMobileNetConvBlock1d):
@@ -117,7 +117,7 @@ class TestMobileNetConvBlock3d(TestMobileNetConvBlock1d):
 
     @pytest.fixture
     def data(self):
-        return torch.rand(1, 4, 32, 32, 32)
+        return torch.rand(2, 4, 32, 32, 32)
 
 
 class TestMobileNetBlockConfig:
@@ -132,7 +132,7 @@ class TestMobileNetBlockConfig:
     @pytest.fixture
     def data(self):
         torch.random.manual_seed(42)
-        return torch.rand(1, 4, 32, 32)
+        return torch.rand(2, 4, 32, 32)
 
     def test_get_1d_blocks(self, config, data, num_repeats):
         output = config.get_1d_blocks()

@@ -70,45 +70,28 @@ class _SqueezeExcite(nn.Module):
         # for global attention, squeeze uses global pooling and linear layers
         if global_pool:
             self.pool = self._get_global_pool()
-            self.squeeze = nn.Sequential(
-                nn.Linear(self.in_channels, mid_channels),
-                deepcopy(first_activation),
-            )
-            self.excite = nn.Sequential(
-                nn.Linear(mid_channels, self.out_channels),
-                deepcopy(second_activation),
-            )
-
-        # for pixel-wise attention, everything is 1x1 convolutional
         else:
             self.pool = None
-            self.squeeze = nn.Sequential(
-                self.Conv(self.in_channels, mid_channels, 1),
-                deepcopy(first_activation),
-            )
-            self.excite = nn.Sequential(
-                self.Conv(mid_channels, self.out_channels, 1),
-                deepcopy(second_activation),
-            )
+
+        self.squeeze = nn.Sequential(
+            self.Conv(self.in_channels, mid_channels, 1),
+            deepcopy(first_activation),
+        )
+        self.excite = nn.Sequential(
+            self.Conv(mid_channels, self.out_channels, 1),
+            deepcopy(second_activation),
+        )
 
     def forward(self, inputs: Tensor) -> Tensor:
-        batch_size, channels = inputs.shape[:2]
-        (batch_size, channels) + (1,) * (inputs.ndim - 2)
 
         # apply global pooling if desired
         if self.pool is not None:
-            x = self.pool(inputs).view(batch_size, channels)
+            x = self.pool(inputs)
         else:
             x = inputs
 
         x = self.squeeze(x)
         x = self.excite(x)
-
-        # restore removed dimensions if global pooling used
-        if self.pool is not None:
-            while x.ndim < inputs.ndim:
-                x = x.unsqueeze_(-1)
-
         return x
 
     def _get_global_pool(self) -> nn.Module:
