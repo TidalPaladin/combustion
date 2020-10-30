@@ -23,21 +23,18 @@ class _GAUMeta(type):
             x.AdaptiveAvgPool = nn.AdaptiveAvgPool3d
             x.AdaptiveMaxPool = nn.AdaptiveMaxPool3d
             x.Tuple = staticmethod(triple)
-            x.UpsampleMode = "trilinear"
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
             x.AdaptiveAvgPool = nn.AdaptiveAvgPool2d
             x.AdaptiveMaxPool = nn.AdaptiveMaxPool2d
             x.Tuple = staticmethod(double)
-            x.UpsampleMode = "bilinear"
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x.AdaptiveAvgPool = nn.AdaptiveAvgPool1d
             x.AdaptiveMaxPool = nn.AdaptiveMaxPool1d
             x.Tuple = staticmethod(single)
-            x.UpsampleMode = "linear"
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
         return x
@@ -58,7 +55,6 @@ class _AttentionUpsample(nn.Module):
         super().__init__()
         output_filters = high_filters if output_filters is None else output_filters
         kernel_size = self.Tuple(kernel_size)
-        self.upsample_mode = self.UpsampleMode
         self.align_corners = False
         self._pool = pool
 
@@ -90,14 +86,10 @@ class _AttentionUpsample(nn.Module):
 
         # upsample high_level feature map and weights to match low_level if needed
         if high_level.shape[2:] != low_level.shape[2:]:
-            high_level = F.interpolate(
-                high_level, low_level.shape[2:], mode=self.upsample_mode, align_corners=self.align_corners
-            )
+            high_level = F.interpolate(high_level, low_level.shape[2:], mode="nearest")
 
             if not self._pool:
-                weights = F.interpolate(
-                    weights, low_level.shape[2:], mode=self.upsample_mode, align_corners=self.align_corners
-                )
+                weights = F.interpolate(weights, low_level.shape[2:], mode="nearest")
 
         return high_level + low_level * weights
 
@@ -118,6 +110,9 @@ class AttentionUpsample2d(_AttentionUpsample, metaclass=_GAUMeta):
         were extracted by deep levels of the FPN backbone, while low level features
         are those that were extracted in the shallow levels of the backbone.
 
+    .. note::
+        This implementation uses the ``"nearest"`` upsampling mode. It is inclear
+        what upsampling method was used in the original implementation.
 
     Args:
         low_filters (int):
