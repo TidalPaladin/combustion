@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from .centernet import CenterNetLoss
+from .ciou import CompleteIoULoss
 from .focal import (
     CategoricalFocalLoss,
     FocalLoss,
@@ -16,6 +17,7 @@ __all__ = [
     "CenterNetLoss",
     "CategoricalFocalLoss",
     "categorical_focal_loss",
+    "CompleteIoULoss",
     "focal_loss_with_logits",
     "focal_loss",
     "FocalLoss",
