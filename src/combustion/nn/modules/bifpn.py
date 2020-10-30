@@ -21,17 +21,14 @@ class _BiFPNMeta(type):
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
             x.Tuple = staticmethod(triple)
-            x.DEFAULT_MODE = "trilinear"
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
             x.Tuple = staticmethod(double)
-            x.DEFAULT_MODE = "bilinear"
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x.Tuple = staticmethod(single)
-            x.DEFAULT_MODE = "linear"
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
         return x
@@ -77,7 +74,7 @@ class _BiFPN_Level(nn.Module):
             weight_1 = weight_1 / (torch.sum(weight_1, dim=0) + self.epsilon)
 
             # weighted combination of current level and higher level
-            next_level = F.interpolate(next_level, target_shape, mode=self.upsample_mode, align_corners=False)
+            next_level = F.interpolate(next_level, target_shape, mode=self.upsample_mode)
             output = self.conv_up(weight_1[0] * same_level + weight_1[1] * next_level)
 
         # input + lower level + last bifpn level (if one exists)
@@ -120,7 +117,7 @@ class _BiFPN(nn.Module):
         bn_momentum: float = 0.001,
         bn_epsilon: float = 4e-5,
         activation: nn.Module = HardSwish(),
-        upsample_mode: Optional[str] = None,
+        upsample_mode: str = "nearest",
     ):
         super().__init__()
         if float(epsilon) <= 0.0:
@@ -130,10 +127,7 @@ class _BiFPN(nn.Module):
         if int(levels) < 1:
             raise ValueError(f"levels must be int > 0, found {levels}")
 
-        if upsample_mode is not None:
-            upsample_mode = str(upsample_mode)
-        else:
-            upsample_mode = self.__class__.DEFAULT_MODE
+        upsample_mode = str(upsample_mode)
 
         self.levels = levels
         kernel_size = self.Tuple(kernel_size)
