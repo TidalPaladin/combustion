@@ -103,17 +103,24 @@ class FCOSLoss:
         centerness_pred: Tuple[Tensor, ...],
         fcos_target: Tuple[Tuple[Tensor, Tensor, Tensor], ...],
     ) -> Tuple[Tensor, Tensor, Tensor]:
-        cls_loss = [self.cls_criterion(pred, true) for pred, (true, _, _) in zip(cls_pred, fcos_target)]
-        centerness_loss = [
-            self.centerness_criterion(pred, true) for pred, (_, _, true) in zip(centerness_pred, fcos_target)
-        ]
 
-        reg_loss = [
-            self.reg_criterion(pred.view(4, -1).permute(1, 0), true.view(4, -1).permute(1, 0))
-            .view(pred.shape[1:])
-            .unsqueeze_(0)
-            for pred, (_, true, _) in zip(reg_pred, fcos_target)
-        ]
+        cls_loss, reg_loss, centerness_loss = [], [], []
+        z = zip(cls_pred, reg_pred, centerness_pred, fcos_target)
+        for cls_pred_i, reg_pred_i, centerness_pred_i, (cls_true, reg_true, centerness_true) in z:
+            _cls_loss = self.cls_criterion(cls_pred_i, cls_true)
+            _reg_loss = (
+                self.reg_criterion(reg_pred_i.view(4, -1).permute(1, 0), reg_true.view(4, -1).permute(1, 0))
+                .view(reg_pred_i.shape[1:])
+                .unsqueeze_(0)
+            )
+            _centerness_loss = self.centerness_criterion(centerness_pred_i, centerness_true)
+
+            _reg_loss[(reg_true == IGNORE).all(dim=-3, keepdim=True)] = 0
+            _centerness_loss[centerness_true == IGNORE] = 0
+
+            cls_loss.append(_cls_loss)
+            reg_loss.append(_reg_loss)
+            centerness_loss.append(_centerness_loss)
 
         cls_loss = sum([x.sum() for x in cls_loss])
         reg_loss = sum([x.sum() for x in reg_loss])
