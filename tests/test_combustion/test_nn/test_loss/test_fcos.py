@@ -190,7 +190,7 @@ class TestFCOSLoss:
         pred_reg = [torch.rand(4, *size, requires_grad=True).mul(512).round() for size in sizes]
         pred_centerness = [torch.rand(1, *size, requires_grad=True) for size in sizes]
 
-        criterion = FCOSLoss(strides, sizes, num_classes)
+        criterion = FCOSLoss(strides, num_classes)
         cls_loss, reg_loss, centerness_loss = criterion.compute_from_box_target(
             pred_cls, pred_reg, pred_centerness, target_bbox, target_cls
         )
@@ -238,7 +238,7 @@ class TestFCOSLoss:
         pred_reg = [torch.rand(2, 4, *size, requires_grad=True).mul(512).round() for size in sizes]
         pred_centerness = [torch.rand(2, 1, *size, requires_grad=True) for size in sizes]
 
-        criterion = FCOSLoss(strides, sizes, num_classes)
+        criterion = FCOSLoss(strides, num_classes)
         cls_loss, reg_loss, centerness_loss = criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
 
         assert isinstance(cls_loss, Tensor)

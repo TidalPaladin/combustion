@@ -32,7 +32,6 @@ class FCOSLoss:
     def __init__(
         self,
         strides: Tuple[int, ...],
-        size_targets: Tuple[Tuple[int, int], ...],
         num_classes: int,
         interest_range: Tuple[Tuple[int, int], ...] = DEFAULT_INTEREST_RANGE,
         gamma: float = 2.0,
@@ -41,7 +40,6 @@ class FCOSLoss:
         pad_value: float = -1,
     ):
         self.strides = tuple([int(x) for x in strides])
-        self.size_targets = tuple([(int(x), int(y)) for x, y in size_targets])
         self.interest_range = tuple([(int(x), int(y)) for x, y in interest_range])
         self.num_classes = int(num_classes)
         self.pad_value = pad_value
@@ -94,7 +92,8 @@ class FCOSLoss:
         target_bbox: Tensor,
         target_cls: Tensor,
     ) -> Tuple[Tensor, Tensor, Tensor]:
-        fcos_targets = self.create_targets(target_bbox, target_cls)
+        size_targets = tuple([x.shape[-2:] for x in cls_pred])
+        fcos_targets = self.create_targets(target_bbox, target_cls, size_targets)
         return self.compute_from_fcos_target(cls_pred, reg_pred, centerness_pred, fcos_targets)
 
     def compute_from_fcos_target(
@@ -123,12 +122,10 @@ class FCOSLoss:
         return cls_loss, reg_loss, centerness_loss
 
     def create_targets(
-        self,
-        bbox: Tensor,
-        cls: Tensor,
+        self, bbox: Tensor, cls: Tensor, size_targets: Tuple[Tuple[int, int], ...]
     ) -> Tuple[Tuple[Tensor, Tensor, Tensor], ...]:
         class_targets, reg_targets, centerness_targets = [], [], []
-        for irange, stride, size_target in zip(self.interest_range, self.strides, self.size_targets):
+        for irange, stride, size_target in zip(self.interest_range, self.strides, size_targets):
             _cls, _reg, _centerness = FCOSLoss.create_target_for_level(
                 bbox, cls, self.num_classes, stride, size_target, irange, self.radius
             )
