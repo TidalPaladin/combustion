@@ -5,6 +5,7 @@ from .activations import HardSigmoid, HardSwish, Swish
 from .loss import (
     CategoricalFocalLoss,
     CenterNetLoss,
+    FCOSLoss,
     FocalLoss,
     FocalLossWithLogits,
     categorical_focal_loss,
@@ -85,6 +86,7 @@ __all__ = [
     "focal_loss",
     "FocalLoss",
     "FocalLossWithLogits",
+    "FCOSLoss",
     "RASPPLite1d",
     "RASPPLite2d",
     "RASPPLite3d",

@@ -93,5 +93,9 @@ class CompleteIoULoss(nn.Module):
         https://arxiv.org/abs/1911.08287
     """
 
-    def forward(self, inputs: Tensor, targets: Tensor, reduction: str = "mean") -> Tensor:
-        return complete_iou_loss(inputs, targets, reduction)
+    def __init__(self, reduction: str = "mean"):
+        super().__init__()
+        self.reduction = reduction
+
+    def forward(self, inputs: Tensor, targets: Tensor) -> Tensor:
+        return complete_iou_loss(inputs, targets, self.reduction)
