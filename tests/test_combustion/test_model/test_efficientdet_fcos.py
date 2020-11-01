@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import pytest
 import gc
+
+import pytest
 import torch
 from torch import Tensor
-
 
 from combustion.models import EfficientDetFCOS
 from combustion.nn import MobileNetBlockConfig
@@ -62,7 +62,6 @@ class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
             assert reg.shape[0] == batch_size
             assert cen.shape[0] == batch_size
 
-
     def test_backward(self, model, data):
         output = model(data)
         scalar = sum([t.sum() for f in output for t in f])
@@ -93,21 +92,14 @@ class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         print(f"Params: {params2_1}")
         assert params2_1 > 5e6
 
-    @pytest.mark.parametrize("stride,m", [
-        pytest.param(8, 0),
-        pytest.param(16, 64),
-    ])
-    def test_create_targets_for_level(self, stride, m, num_classes):
-        boxes = torch.tensor([
-            [0, 0, 32, 32],
-            [32, 32, 64, 64],
-            [10, 12, 19, 20],
-            [2, 2, 4, 4],
-        ]).unsqueeze_(0)
-        labels = torch.tensor([0, 1, 0, 1]).unsqueeze_(-1).unsqueeze_(0)
+    def test_create_boxes(self, model_type):
+        num_classes = 2
+        strides = [8, 16, 32, 64, 128]
+        base_size = 512
+        sizes = [(base_size // stride,) * 2 for stride in strides]
 
-        boxes = boxes.float()
-        labels = labels.float()
+        pred_cls = [torch.rand(2, num_classes, *size, requires_grad=True) for size in sizes]
+        pred_reg = [torch.rand(2, 4, *size, requires_grad=True).mul(512).round() for size in sizes]
+        pred_centerness = [torch.rand(2, 1, *size, requires_grad=True) for size in sizes]
 
-        targets = EfficientDetFCOS.create_targets_for_level(boxes, labels, stride, m, (256, 256), num_classes)
-        assert False
+        boxes, locations = model_type.create_boxes(pred_cls, pred_reg, pred_centerness, strides)

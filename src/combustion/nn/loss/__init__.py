@@ -23,5 +23,5 @@ __all__ = [
     "focal_loss",
     "FocalLoss",
     "FocalLossWithLogits",
-    "FCOSLoss"
+    "FCOSLoss",
 ]

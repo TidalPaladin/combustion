@@ -2,25 +2,29 @@
 # -*- coding: utf-8 -*-
 
 import pytest
-import gc
 import torch
 from torch import Tensor
 
-from combustion.nn import MobileNetBlockConfig, FCOSLoss
+from combustion.nn import FCOSLoss
+
 
 class TestFCOSLoss:
-
-    @pytest.mark.parametrize("stride,center_radius,size_target", [
-        pytest.param(1, None, (10, 10)),
-        pytest.param(2, 1, (10, 10)),
-        pytest.param(1, 2, (15, 15)),
-        pytest.param(1, None, (10, 15)),
-    ])
+    @pytest.mark.parametrize(
+        "stride,center_radius,size_target",
+        [
+            pytest.param(1, None, (10, 10)),
+            pytest.param(2, 1, (10, 10)),
+            pytest.param(1, 2, (15, 15)),
+            pytest.param(1, None, (10, 15)),
+        ],
+    )
     def test_bbox_to_mask(self, stride, center_radius, size_target):
-        bbox = torch.tensor([
-            [0, 0, 9, 9],
-            [2, 2, 5, 5],
-        ])
+        bbox = torch.tensor(
+            [
+                [0, 0, 9, 9],
+                [2, 2, 5, 5],
+            ]
+        )
         result = FCOSLoss.bbox_to_mask(bbox, stride, size_target, center_radius)
 
         assert isinstance(result, Tensor)
@@ -34,7 +38,7 @@ class TestFCOSLoss:
             ws2 = w2.floor_divide(stride)
 
             if center_radius is None:
-                pos_region = res[hs1+1:hs2, ws1+1:ws2]
+                pos_region = res[hs1 + 1 : hs2, ws1 + 1 : ws2]
             else:
                 x1 = (box[0] + box[2]).floor_divide_(2) - center_radius * stride
                 x2 = (box[0] + box[2]).floor_divide_(2) + center_radius * stride
@@ -44,22 +48,26 @@ class TestFCOSLoss:
                 y1.floor_divide_(stride)
                 x2.floor_divide_(stride)
                 y2.floor_divide_(stride)
-                pos_region = res[y1+1:y2, x1+1:x2]
+                pos_region = res[y1 + 1 : y2, x1 + 1 : x2]
 
-            assert (pos_region == True).all()
+            assert pos_region.all()
             assert res.sum() - pos_region.sum() == 0
 
-
-    @pytest.mark.parametrize("size_target,stride", [
-        pytest.param((15, 15), 1),
-        pytest.param((10, 10), 2),
-        pytest.param((16, 16), 4),
-    ])
+    @pytest.mark.parametrize(
+        "size_target,stride",
+        [
+            pytest.param((15, 15), 1),
+            pytest.param((10, 10), 2),
+            pytest.param((16, 16), 4),
+        ],
+    )
     def test_create_regression_target(self, size_target, stride):
-        bbox = torch.tensor([
-            [0, 0, 9, 9],
-            [2, 3, 8, 7],
-        ]).mul_(stride)
+        bbox = torch.tensor(
+            [
+                [0, 0, 9, 9],
+                [2, 3, 8, 7],
+            ]
+        ).mul_(stride)
         result = FCOSLoss.create_regression_target(bbox, stride, size_target)
 
         assert isinstance(result, Tensor)
@@ -72,7 +80,7 @@ class TestFCOSLoss:
             hs2 = h2.floor_divide(stride)
             ws2 = w2.floor_divide(stride)
 
-            pos_region = res[..., hs1+1:hs2, ws1+1:ws2]
+            pos_region = res[..., hs1 + 1 : hs2, ws1 + 1 : ws2]
             if pos_region.numel():
                 assert (pos_region >= 0).all()
                 assert pos_region.max() <= box.max()
@@ -107,17 +115,21 @@ class TestFCOSLoss:
             assert res[3, hs1, ws2] == h2 - h1, "right target at top right corner"
             assert res[3, hs2, ws2] == discretized_box[3], "right target at bottom right corner"
 
-
-    @pytest.mark.parametrize("stride,center_radius,size_target", [
-        pytest.param(1, None, (10, 10)),
-        pytest.param(1, 1, (15, 15)),
-    ])
+    @pytest.mark.parametrize(
+        "stride,center_radius,size_target",
+        [
+            pytest.param(1, None, (10, 10)),
+            pytest.param(1, 1, (15, 15)),
+        ],
+    )
     def test_create_classification_target(self, stride, center_radius, size_target):
-        bbox = torch.tensor([
-            [0, 0, 9, 9],
-            [3, 4, 8, 6],
-            [4, 4, 6, 6],
-        ])
+        bbox = torch.tensor(
+            [
+                [0, 0, 9, 9],
+                [3, 4, 8, 6],
+                [4, 4, 6, 6],
+            ]
+        )
         cls = torch.tensor([0, 0, 1]).unsqueeze_(-1)
         mask = FCOSLoss.bbox_to_mask(bbox, stride, size_target, center_radius)
         num_classes = 2
@@ -127,21 +139,27 @@ class TestFCOSLoss:
         assert isinstance(result, Tensor)
         assert result.shape == torch.Size([num_classes, *size_target])
 
-
-    @pytest.mark.parametrize("stride,center_radius,size_target", [
-        pytest.param(1, None, (10, 10)),
-        pytest.param(1, 1, (15, 15)),
-    ])
+    @pytest.mark.parametrize(
+        "stride,center_radius,size_target",
+        [
+            pytest.param(1, None, (10, 10)),
+            pytest.param(1, 1, (15, 15)),
+        ],
+    )
     def test_create_target_for_level(self, stride, center_radius, size_target):
-        bbox = torch.tensor([
-            [0, 0, 9, 9],
-            [3, 4, 8, 6],
-            [4, 4, 6, 6],
-        ])
+        bbox = torch.tensor(
+            [
+                [0, 0, 9, 9],
+                [3, 4, 8, 6],
+                [4, 4, 6, 6],
+            ]
+        )
         cls = torch.tensor([0, 0, 1]).unsqueeze_(-1)
         num_classes = 2
 
-        cls, reg, centerness = FCOSLoss.create_target_for_level(bbox, cls, num_classes, stride, size_target, [-1, 64], center_radius)
+        cls, reg, centerness = FCOSLoss.create_target_for_level(
+            bbox, cls, num_classes, stride, size_target, [-1, 64], center_radius
+        )
 
         assert cls.shape == torch.Size([num_classes, *size_target])
         assert reg.shape == torch.Size([4, *size_target])
@@ -153,12 +171,14 @@ class TestFCOSLoss:
         assert ((centerness >= 0) | (centerness == -1)).all()
 
     def test_compute_loss(self):
-        target_bbox = torch.tensor([
-            [0, 0, 9, 9],
-            [3, 4, 8, 6],
-            [4, 4, 6, 6],
-            [32, 32, 88, 88],
-        ])
+        target_bbox = torch.tensor(
+            [
+                [0, 0, 9, 9],
+                [3, 4, 8, 6],
+                [4, 4, 6, 6],
+                [32, 32, 88, 88],
+            ]
+        )
         target_cls = torch.tensor([0, 0, 1, 0]).unsqueeze_(-1)
 
         num_classes = 2
@@ -172,11 +192,7 @@ class TestFCOSLoss:
 
         criterion = FCOSLoss(strides, sizes, num_classes)
         cls_loss, reg_loss, centerness_loss = criterion.compute_from_box_target(
-            pred_cls, 
-            pred_reg, 
-            pred_centerness, 
-            target_bbox, 
-            target_cls
+            pred_cls, pred_reg, pred_centerness, target_bbox, target_cls
         )
 
         assert isinstance(cls_loss, Tensor)
@@ -191,20 +207,27 @@ class TestFCOSLoss:
         loss.backward()
 
     def test_call(self):
-        target_bbox = torch.tensor([[
-            [0, 0, 9, 9],
-            [3, 4, 8, 6],
-            [-1, -1, -1, -1],
-        ], [
-            [32, 32, 88, 88],
-            [-1, -1, -1, -1],
-            [-1, -1, -1, -1],
-        ]])
+        target_bbox = torch.tensor(
+            [
+                [
+                    [0, 0, 9, 9],
+                    [3, 4, 8, 6],
+                    [-1, -1, -1, -1],
+                ],
+                [
+                    [32, 32, 88, 88],
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                ],
+            ]
+        )
 
-        target_cls = torch.tensor([
-            [0, 1, -1],
-            [0, -1, -1],
-        ]).unsqueeze_(-1)
+        target_cls = torch.tensor(
+            [
+                [0, 1, -1],
+                [0, -1, -1],
+            ]
+        ).unsqueeze_(-1)
 
         num_classes = 2
         strides = [8, 16, 32, 64, 128]
@@ -216,13 +239,7 @@ class TestFCOSLoss:
         pred_centerness = [torch.rand(2, 1, *size, requires_grad=True) for size in sizes]
 
         criterion = FCOSLoss(strides, sizes, num_classes)
-        cls_loss, reg_loss, centerness_loss = criterion(
-            pred_cls, 
-            pred_reg, 
-            pred_centerness, 
-            target_bbox, 
-            target_cls
-        )
+        cls_loss, reg_loss, centerness_loss = criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
 
         assert isinstance(cls_loss, Tensor)
         assert isinstance(reg_loss, Tensor)

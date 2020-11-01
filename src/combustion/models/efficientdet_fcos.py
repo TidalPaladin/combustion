@@ -2,38 +2,20 @@
 # -*- coding: utf-8 -*-
 
 
-import torch
 from typing import List, Optional, Tuple
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from combustion.nn import BiFPN1d, BiFPN2d, BiFPN3d, MatchShapes, MobileNetBlockConfig
+from combustion.nn import MobileNetBlockConfig
+from combustion.vision.centernet import CenterNetMixin
 
 from .efficientdet import EfficientDet2d
 
-class FCOSMixin:
-
-    @staticmethod
-    def create_boxes(
-        cls: Tuple[Tensor, ...],
-        reg: Tuple[Tensor, ...],
-        centerness: Tuple[Tensor, ...],
-        strides: Tuple[int, ...],
-        threshold: float = 0.05,
-        pad_value: float = -1
-    ) -> Tensor:
-        for i, (c, r, cent) in enumerate(zip(cls, reg, centerness)):
-            cls = cls * cent.expand_as(cls)
-            batch, cls, center_y, center_x = (c >= threshold).nonzero(as_tuple=True)
-            stride = strides[i]
-
-            center_y = center
-            x = x_s * stride
 
 class MultiLevelHead(nn.Module):
-
     def __init__(self, in_channels, num_classes, num_repeats: int = 4):
         super().__init__()
         cls_head, reg_head = [], []
@@ -58,28 +40,25 @@ class MultiLevelHead(nn.Module):
         centerness = [x[..., 0:1, :, :] for x in reg_pred]
 
         # apply ReLU and reweight
-        reg_pred = [F.relu(x[..., 1:, :, :]) * (i-1 ** 2) for i, x in enumerate(reg_pred)]
+        reg_pred = [F.relu(x[..., 1:, :, :]) * (i - 1 ** 2) for i, x in enumerate(reg_pred)]
 
         return cls_pred, reg_pred, centerness
 
-    def _get_repeat(self, in_channels: int, out_channels: int, act: nn.Module = nn.Hardswish(), is_last: bool = False) -> nn.Module:
+    def _get_repeat(
+        self, in_channels: int, out_channels: int, act: nn.Module = nn.Hardswish(), is_last: bool = False
+    ) -> nn.Module:
         layers = [
             nn.Conv2d(in_channels, in_channels, 3, padding=1, bias=False, groups=in_channels),
             nn.Conv2d(in_channels, out_channels, 1, bias=is_last),
         ]
 
         if not is_last:
-            layers += [
-                nn.BatchNorm2d(in_channels),
-                act 
-            ]
+            layers += [nn.BatchNorm2d(in_channels), act]
 
         return nn.Sequential(*layers)
 
 
-
 class EfficientDetFCOS(EfficientDet2d):
-
     def __init__(
         self,
         num_classes: int,
@@ -93,7 +72,7 @@ class EfficientDetFCOS(EfficientDet2d):
         min_width: Optional[int] = None,
         stem: Optional[nn.Module] = None,
         fpn_kwargs: dict = {},
-        head_repeats: Optional[int] = None
+        head_repeats: Optional[int] = None,
     ):
         super().__init__(
             block_configs,
@@ -106,7 +85,7 @@ class EfficientDetFCOS(EfficientDet2d):
             min_width,
             stem,
             nn.Identity(),
-            fpn_kwargs
+            fpn_kwargs,
         )
 
         if head_repeats is None:
@@ -182,7 +161,6 @@ class EfficientDetFCOS(EfficientDet2d):
         result.compound_coeff = compound_coeff
         return result
 
-
     @staticmethod
     def create_boxes(
         cls: Tuple[Tensor, ...],
@@ -190,15 +168,41 @@ class EfficientDetFCOS(EfficientDet2d):
         centerness: Tuple[Tensor, ...],
         strides: Tuple[int, ...],
         threshold: float = 0.05,
-        pad_value: float = -1
-    ) -> Tensor:
-        for i, (c, r, cent) in enumerate(zip(cls, reg, centerness)):
-            cls = cls * cent.expand_as(cls)
-            batch, cls, center_y, center_x = (c >= threshold).nonzero(as_tuple=True)
-            stride = strides[i]
+        pad_value: float = -1,
+    ) -> Tuple[Tensor, Tuple[Tensor, ...]]:
+        r"""Applys postprocessing to create a set of anchorboxes from FCOS predictions."""
 
-            center_y = center
-            x = x_s * stride
+        locations, boxes = [], []
+        # iterate over each FPN level
+        for i, (stride, level_cls, level_reg, level_centerness) in enumerate(zip(strides, cls, reg, centerness)):
+            # scale classifications based on centerness
+            scaled_cls = level_cls * level_centerness.expand_as(level_cls)
 
+            # get indices of positions that exceed threshold
+            positive_locations = (scaled_cls >= threshold).nonzero(as_tuple=False)
+            locations.append(positive_locations)
+            batch, cls, y, x = positive_locations.split(1, dim=-1)
+            level_cls.shape[0]
 
-        ...
+            # use stride to compute base coodinates within the original image
+            # use pred regression to compute l, t, r, b offset
+            base = (positive_locations[..., -2:] * stride).repeat(1, 2)
+            offset = level_reg[batch, cls, y, x]
+
+            # use original score before centerness scaling
+            score = level_cls[batch, cls, y, x]
+
+            # build final bbox of form x1, y1, x2, y2, score, class
+            boxes_for_level = torch.cat([base + offset, score, cls], dim=-1)
+
+            # split boxes by batch and apply padding
+            _, batch_counts = batch.unique(return_counts=True)
+            boxes_for_level = CenterNetMixin.batch_box_target(boxes_for_level.split(batch_counts.tolist()), pad_value)
+            boxes.append(boxes_for_level)
+
+        # combine boxes across all FPN levels
+        # we might have added a lot of unnecessary padding so reduce if possible
+        boxes = torch.cat(boxes, dim=-2)
+        boxes = CenterNetMixin.batch_box_target(CenterNetMixin.unbatch_box_target(boxes, pad_value), pad_value)
+
+        return boxes, locations
