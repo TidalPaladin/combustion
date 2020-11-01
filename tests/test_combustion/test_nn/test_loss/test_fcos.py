@@ -257,4 +257,5 @@ class TestFCOSLoss:
         assert centerness_loss.numel() == 1
 
         loss = cls_loss + reg_loss + centerness_loss
+        assert not loss.isnan().any()
         loss.backward()

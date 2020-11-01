@@ -17,8 +17,16 @@ def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean") 
     check_dimension(inputs, -1, 4, "inputs")
     check_dimension(targets, -1, 4, "targets")
     check_shapes_match(inputs, targets, "inputs", "targets")
-    inputs = inputs.float()
-    targets = targets.float()
+    inputs = inputs.float().clone()
+    targets = targets.float().clone()
+
+    # convert from delta coords to absolute
+    pred_center = (inputs[..., 2:] - inputs[..., :2]).div(2)
+    target_center = (targets[..., 2:] - targets[..., :2]).div(2)
+    inputs[..., 2:].add_(pred_center)
+    inputs[..., :2].neg_().add_(pred_center)
+    targets[..., 2:].add_(target_center)
+    targets[..., :2].neg_().add_(target_center)
 
     # compute euclidean distance between pred and true box centers
     pred_size = inputs[..., 2:] - inputs[..., :2]
