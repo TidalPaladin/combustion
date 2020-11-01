@@ -140,9 +140,16 @@ class FCOSLoss:
                 t = self.create_targets(bbox_i, cls_i, size_targets)
                 targets.append(t)
 
-            cls_targets = torch.stack([tar[0] for tar in targets], dim=0)
-            reg_targets = torch.stack([tar[1] for tar in targets], dim=0)
-            centerness_targets = torch.stack([tar[2] for tar in targets], dim=0)
+            cls_targets, reg_targets, centerness_targets = [], [], []
+            for level in range(len(size_targets)):
+                targets_for_level = [item[level] for item in targets]
+                cls_targets_i = torch.stack([tar[0] for tar in targets_for_level], dim=0)
+                reg_targets_i = torch.stack([tar[1] for tar in targets_for_level], dim=0)
+                centerness_targets_i = torch.stack([tar[2] for tar in targets_for_level], dim=0)
+                cls_targets.append(cls_targets_i)
+                reg_targets.append(reg_targets_i)
+                centerness_targets.append(centerness_targets_i)
+
             return cls_targets, reg_targets, centerness_targets
 
         class_targets, reg_targets, centerness_targets = [], [], []

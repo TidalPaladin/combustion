@@ -170,6 +170,25 @@ class TestFCOSLoss:
         assert centerness.max() <= 1.0
         assert ((centerness >= 0) | (centerness == -1)).all()
 
+    @pytest.mark.parametrize(
+        "stride,center_radius,size_target",
+        [
+            pytest.param(1, None, (10, 10)),
+            pytest.param(1, 1, (15, 15)),
+        ],
+    )
+    def test_create_targets(self, stride, center_radius, size_target):
+        num_classes = 2
+        target_bbox = torch.randint(0, 100, (2, 10, 4))
+        target_cls = torch.randint(0, num_classes, (2, 10, 1))
+
+        strides = [8, 16, 32, 64, 128]
+        base_size = 512
+        sizes = [(base_size // stride,) * 2 for stride in strides]
+
+        criterion = FCOSLoss(strides, num_classes)
+        criterion.create_targets(target_bbox, target_cls, sizes)
+
     def test_compute_loss(self):
         target_bbox = torch.tensor(
             [
