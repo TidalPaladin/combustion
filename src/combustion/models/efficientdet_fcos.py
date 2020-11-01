@@ -171,6 +171,8 @@ class EfficientDetFCOS(EfficientDet2d):
         pad_value: float = -1,
     ) -> Tuple[Tensor, Tuple[Tensor, ...]]:
         r"""Applys postprocessing to create a set of anchorboxes from FCOS predictions."""
+        _ = [x * strides[0] for x in cls[0].shape[-2:]]
+        y_lim, x_lim = _
 
         locations, boxes = [], []
         # iterate over each FPN level
@@ -188,6 +190,11 @@ class EfficientDetFCOS(EfficientDet2d):
             # use pred regression to compute l, t, r, b offset
             base = (positive_locations[..., -2:] * stride).repeat(1, 2)
             offset = level_reg[batch, cls, y, x]
+
+            # compute final regressions and clamp to lie within image_size
+            coords = (base + offset).clamp_min_(0)
+            coords[..., 2].clamp_min_(x_lim)
+            coords[..., 3].clamp_min_(y_lim)
 
             # use original score before centerness scaling
             score = level_cls[batch, cls, y, x]
