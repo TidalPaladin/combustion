@@ -219,6 +219,11 @@ class TestFCOSLoss:
                     [-1, -1, -1, -1],
                     [-1, -1, -1, -1],
                 ],
+                [
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                ],
             ]
         )
 
@@ -226,17 +231,19 @@ class TestFCOSLoss:
             [
                 [0, 1, -1],
                 [0, -1, -1],
+                [-1, -1, -1],
             ]
         ).unsqueeze_(-1)
 
+        batch_size = target_bbox.shape[0]
         num_classes = 2
         strides = [8, 16, 32, 64, 128]
         base_size = 512
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
-        pred_cls = [torch.rand(2, num_classes, *size, requires_grad=True) for size in sizes]
-        pred_reg = [torch.rand(2, 4, *size, requires_grad=True).mul(512).round() for size in sizes]
-        pred_centerness = [torch.rand(2, 1, *size, requires_grad=True) for size in sizes]
+        pred_cls = [torch.rand(batch_size, num_classes, *size, requires_grad=True) for size in sizes]
+        pred_reg = [torch.rand(batch_size, 4, *size, requires_grad=True).mul(512).round() for size in sizes]
+        pred_centerness = [torch.rand(batch_size, 1, *size, requires_grad=True) for size in sizes]
 
         criterion = FCOSLoss(strides, num_classes)
         cls_loss, reg_loss, centerness_loss = criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)

@@ -147,6 +147,13 @@ class FCOSLoss:
         interest_range: Tuple[int, int],
         center_radius: Optional[int] = None,
     ) -> Tensor:
+        # handle case of no boxes
+        if not bbox.numel():
+            cls_target = torch.zeros(num_classes, *size_target, device=cls.device, dtype=torch.float)
+            reg_target = bbox.new_empty(4, *size_target).fill_(-1)
+            centerness_target = cls_target.new_empty(1, *size_target).fill_(-1)
+            return cls_target, reg_target, centerness_target
+
         # get bbox locations within feature map after stride is applied
         bbox_stride = bbox.floor_divide(stride)
 
