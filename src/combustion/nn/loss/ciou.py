@@ -29,8 +29,8 @@ def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean") 
     targets[..., :2].neg_().add_(target_center)
 
     # compute euclidean distance between pred and true box centers
-    pred_size = inputs[..., 2:] - inputs[..., :2]
-    target_size = targets[..., 2:] - targets[..., :2]
+    pred_size = (inputs[..., 2:] - inputs[..., :2]).clamp_min(1)
+    target_size = (targets[..., 2:] - targets[..., :2]).clamp_min(1)
     pred_center = pred_size.div(2).add(inputs[..., :2])
     target_center = target_size.div(2).add(targets[..., :2])
     euclidean_dist_squared = (pred_center - target_center).pow(2).sum(dim=-1)
@@ -53,8 +53,8 @@ def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean") 
     iou = inter / (pred_area + target_area - inter).clamp_min(1e-9)
 
     # compute v, which measure aspect ratio consistency
-    pred_w, pred_h = pred_size[..., 0], pred_size[..., 1]
-    target_w, target_h = target_size[..., 0], target_size[..., 1]
+    pred_w, pred_h = pred_size[..., 0], pred_size[..., 1].clamp_min(1e-4)
+    target_w, target_h = target_size[..., 0], target_size[..., 1].clamp_min(1e-5)
     _ = torch.atan(target_w / target_h) - torch.atan(pred_w / pred_h)
     v = 4 / pi ** 2 * _.pow(2)
 

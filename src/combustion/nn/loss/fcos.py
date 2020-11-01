@@ -131,6 +131,20 @@ class FCOSLoss:
     def create_targets(
         self, bbox: Tensor, cls: Tensor, size_targets: Tuple[Tuple[int, int], ...]
     ) -> Tuple[Tuple[Tensor, Tensor, Tensor], ...]:
+        if bbox.ndim >= 3:
+            batch_size = bbox.shape[0]
+            targets = []
+            for i in range(batch_size):
+                bbox_i = bbox[i]
+                cls_i = cls[i]
+                t = self.create_targets(bbox_i, cls_i, size_targets)
+                targets.append(t)
+
+            cls_targets = torch.stack([tar[0] for tar in targets], dim=0)
+            reg_targets = torch.stack([tar[1] for tar in targets], dim=0)
+            centerness_targets = torch.stack([tar[2] for tar in targets], dim=0)
+            return cls_targets, reg_targets, centerness_targets
+
         class_targets, reg_targets, centerness_targets = [], [], []
         for irange, stride, size_target in zip(self.interest_range, self.strides, size_targets):
             _cls, _reg, _centerness = FCOSLoss.create_target_for_level(
