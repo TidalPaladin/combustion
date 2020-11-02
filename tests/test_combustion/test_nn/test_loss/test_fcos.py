@@ -3,9 +3,13 @@
 
 import pytest
 import torch
+import os
 from torch import Tensor
+from typing import Optional
 
 from combustion.nn import FCOSLoss
+from combustion.vision import visualize_bbox
+from combustion.util import alpha_blend, apply_colormap
 
 
 class TestFCOSLoss:
@@ -13,7 +17,9 @@ class TestFCOSLoss:
         "stride,center_radius,size_target",
         [
             pytest.param(1, None, (10, 10)),
-            pytest.param(2, 1, (10, 10)),
+            pytest.param(2, None, (5, 5)),
+            pytest.param(2, 1, (5, 5)),
+            pytest.param(2, 10, (10, 10)),
             pytest.param(1, 2, (15, 15)),
             pytest.param(1, None, (10, 15)),
         ],
@@ -52,6 +58,7 @@ class TestFCOSLoss:
 
             assert pos_region.all()
             assert res.sum() - pos_region.sum() == 0
+        assert False
 
     @pytest.mark.parametrize(
         "size_target,stride",
@@ -114,6 +121,7 @@ class TestFCOSLoss:
             assert res[3, hs2, ws1] == discretized_box[3], "right target at bottom left corner"
             assert res[3, hs1, ws2] == h2 - h1, "right target at top right corner"
             assert res[3, hs2, ws2] == discretized_box[3], "right target at bottom right corner"
+        assert False
 
     @pytest.mark.parametrize(
         "stride,center_radius,size_target",
@@ -169,6 +177,7 @@ class TestFCOSLoss:
 
         assert centerness.max() <= 1.0
         assert ((centerness >= 0) | (centerness == -1)).all()
+        assert False
 
     @pytest.mark.parametrize(
         "stride,center_radius,size_target",
@@ -278,3 +287,81 @@ class TestFCOSLoss:
         loss = cls_loss + reg_loss + centerness_loss
         assert not loss.isnan().any()
         loss.backward()
+
+    # Set this to a directory to write out some sample images from test cases
+    # DEST: Optional[str] = None
+    DEST: Optional[str] = "/home/tidal"
+
+    def save(self, path, result):
+        import matplotlib.pyplot as plt
+        plt.imsave(path, result.permute(1, 2, 0).cpu().numpy())
+
+    def blend_and_save(self, path, src, dest):
+        src = apply_colormap(src)[..., :3, :, :]
+        src = torch.nn.functional.interpolate(src, dest.shape[-2:])
+        _ = alpha_blend(src, dest)[0].squeeze_(0)
+        self.save(path, _)
+
+    @pytest.mark.parametrize(
+        "center_radius",
+        [
+            pytest.param(None),
+            pytest.param(1),
+            pytest.param(3),
+        ],
+    )
+    def test_save_output(self, center_radius):
+        image_size = 512
+        num_classes = 2
+        target_bbox = torch.tensor([
+            [10, 10, 128, 128],
+            [32, 64, 128, 256],
+            [250, 10, 250+31, 10+19],
+            [256, 256, 400, 512],
+        ])
+        img = torch.zeros(1, image_size, image_size)
+        target_cls = torch.tensor([0, 1, 1, 0]).unsqueeze_(-1)
+
+        strides = [8, 16, 32, 64, 128]
+        sizes = [(image_size // stride,) * 2 for stride in strides]
+
+        criterion = FCOSLoss(strides, num_classes, radius=center_radius)
+        targets = criterion.create_targets(target_bbox, target_cls, sizes)
+        cls_targets = [t[0] for t in targets]
+        reg_targets = [t[1] for t in targets]
+        centerness_targets = [t[2] for t in targets]
+
+        reg_targets = [torch.linalg.norm(x.float().clamp_min(0), dim=-3, keepdim=True) for x in reg_targets]
+        reg_targets = [x.div(x.amax(dim=(-1, -2, -3), keepdim=True).clamp_min_(1)) for x in reg_targets]
+        centerness_targets = [x.clamp_min_(0) for x in centerness_targets]
+
+        img_with_box = visualize_bbox(img, target_bbox, target_cls)[None]
+
+        subpath = os.path.join(self.DEST, "fcos_targets")
+        if not os.path.exists(subpath):
+            os.makedirs(subpath)
+
+        subpath = os.path.join(subpath, f"radius_{center_radius}")
+        if not os.path.exists(subpath):
+            os.makedirs(subpath)
+
+        for level in range(len(strides)):
+            image_path = os.path.join(subpath)
+            c = cls_targets[level][None]
+            r = reg_targets[level][None]
+            cent = centerness_targets[level][None]
+
+            filename = os.path.join(image_path, f"reg_level_{level}.png")
+            self.blend_and_save(filename, r, img_with_box)
+
+            filename = os.path.join(image_path, f"centerness_level_{level}.png")
+            self.blend_and_save(filename, cent, img_with_box)
+
+            for cls_idx in range(c.shape[1]):
+                filename = os.path.join(image_path, f"cls_{cls_idx}_level_{level}.png")
+                self.blend_and_save(filename, c[..., cls_idx, :, :][None], img_with_box)
+
+
+
+
+

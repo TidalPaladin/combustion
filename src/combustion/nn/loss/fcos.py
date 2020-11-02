@@ -12,6 +12,8 @@ from combustion.util import check_dimension, check_dimension_match, check_is_ten
 from .ciou import CompleteIoULoss
 from .focal import FocalLossWithLogits
 
+IGNORE = -1
+INF = 10000000
 
 # FCOS uses each FPN level to predict targets of different sizes
 # This is the size range used in the paper
@@ -23,7 +25,6 @@ DEFAULT_INTEREST_RANGE: Tuple[Tuple[int, int], ...] = (
     (512, 10000000),  # stride=128
 )
 
-IGNORE = -1
 
 
 class FCOSLoss:
@@ -185,28 +186,37 @@ class FCOSLoss:
         # get bbox locations within feature map after stride is applied
         bbox_stride = bbox.floor_divide(stride)
 
+        # get mask of valid locations within each box and apply boxes_of_interest filter
+        inside_box_mask = FCOSLoss.bbox_to_mask(bbox, stride, size_target)
+        mask = FCOSLoss.bbox_to_mask(bbox, stride, size_target, center_radius)
+
         # build regression target
         reg_target = FCOSLoss.create_regression_target(bbox_stride, stride, size_target)
+        reg_target[~inside_box_mask[..., None, :, :].expand_as(reg_target)] = IGNORE
 
         # use the regression targets to determine boxes of interest for this level
         # is of interest if lower_bound <= max(l, r, t, b) <= upper_bound
-        max_size = reg_target.view(reg_target.shape[0], -1).max(dim=-1).values
+        max_size = reg_target.amax(dim=(1, 2, 3))
         lower_bound, upper_bound = interest_range
-        is_box_of_interest = (max_size >= lower_bound).logical_and_(max_size <= upper_bound)
-
-        # get mask of valid locations within each box and apply boxes_of_interest filter
-        mask = FCOSLoss.bbox_to_mask(bbox, stride, size_target, center_radius)
+        print(max_size)
+        print(interest_range)
+        is_box_of_interest = (max_size > lower_bound).logical_and_(max_size <= upper_bound)
         mask[~is_box_of_interest] = False
+        inside_box_mask[~is_box_of_interest] = False
+        reg_target[~is_box_of_interest] = IGNORE
 
         # build classification target
         cls_target = FCOSLoss.create_classification_target(bbox, cls, mask, num_classes, size_target)
 
         # apply mask to regression target and take per pixel maximum for all boxes
-        reg_target[~mask[..., None, :, :].expand_as(reg_target)] = IGNORE
-        reg_target = reg_target.max(dim=0).values
+        reg_target[reg_target == IGNORE] = INF
+        reg_target = reg_target.amin(dim=-4)
+        reg_target[reg_target == INF] = IGNORE
 
+        # build centerness target
         centerness_target = FCOSLoss.compute_centerness_targets(reg_target)
-        centerness_target[~mask.any(dim=-3, keepdim=True)] = IGNORE
+        centerness_target[~inside_box_mask.any(dim=-3, keepdim=True)] = IGNORE
+        reg_target[~mask.any(dim=-3, keepdim=True).expand_as(reg_target)] = IGNORE
 
         return cls_target, reg_target, centerness_target
 
@@ -221,7 +231,7 @@ class FCOSLoss:
         num_boxes = bbox.shape[-2]
         h = torch.arange(size_target[0], dtype=bbox.dtype, device=bbox.device)
         w = torch.arange(size_target[1], dtype=bbox.dtype, device=bbox.device)
-        mask = torch.stack(torch.meshgrid(h, w), 0).unsqueeze_(0).expand(num_boxes, -1, -1, -1)
+        mask = torch.stack(torch.meshgrid(h, w), 0).mul_(stride).unsqueeze_(0).expand(num_boxes, -1, -1, -1)
 
         # get edge coordinates of each box based on whole box or center sampled
         lower_bound = bbox[..., :2]
@@ -230,12 +240,12 @@ class FCOSLoss:
             # update bounds according to radius from center
             center = (bbox[..., :2] + bbox[..., 2:]).floor_divide_(2)
             offset = torch.tensor([stride, stride], device=bbox.device, dtype=center.dtype).mul_(center_radius)
-            lower_bound = center - offset[None]
-            upper_bound = center + offset[None]
+            lower_bound = torch.max(lower_bound, center - offset[None])
+            upper_bound = torch.min(upper_bound, center + offset[None])
 
         # x1y1 to h1w1, add h/w dimensions, convert to strided coords
-        lower_bound = lower_bound[..., (1, 0), None, None].floor_divide_(stride)
-        upper_bound = upper_bound[..., (1, 0), None, None].floor_divide_(stride)
+        lower_bound = lower_bound[..., (1, 0), None, None] - stride / 2
+        upper_bound = upper_bound[..., (1, 0), None, None] - stride / 2
 
         # use edge coordinates to create a binary mask
         mask = (mask > lower_bound).logical_and_(mask < upper_bound).all(dim=-3)
@@ -256,11 +266,10 @@ class FCOSLoss:
         w = torch.arange(size_target[1], dtype=bbox.dtype, device=bbox.device)
         grid = torch.meshgrid(h, w)
         grid = torch.stack([grid[1], grid[0]], dim=0).unsqueeze_(0).repeat(num_boxes, 2, 1, 1)
-        grid.mul_(stride)
 
         # compute distance to box edges relative to each grid location
-        grid[..., :2, :, :].sub_(bbox[..., :2, None, None])
-        grid[..., 2:, :, :].neg_().add_(bbox[..., 2:, None, None])
+        grid[..., :2, :, :].sub_(bbox[..., :2, None, None]).mul_(stride)
+        grid[..., 2:, :, :].neg_().add_(bbox[..., 2:, None, None]).mul_(stride)
         return grid
 
     @staticmethod
