@@ -177,39 +177,47 @@ class EfficientDetFCOS(EfficientDet2d):
         locations, boxes = [], []
         # iterate over each FPN level
         for i, (stride, level_cls, level_reg, level_centerness) in enumerate(zip(strides, cls, reg, centerness)):
+            batch_size = level_cls.shape[0]
+
             # scale classifications based on centerness
             scaled_cls = level_cls * level_centerness.expand_as(level_cls)
 
             # get indices of positions that exceed threshold
             positive_locations = (scaled_cls >= threshold).nonzero(as_tuple=False)
             locations.append(positive_locations)
+
+            if not positive_locations.numel():
+                continue
+
             batch, cls, y, x = positive_locations.split(1, dim=-1)
             level_cls.shape[0]
 
             # use stride to compute base coodinates within the original image
             # use pred regression to compute l, t, r, b offset
-            base = (positive_locations[..., -2:] * stride).repeat(1, 2)
-            offset = level_reg[batch, cls, y, x]
+            base = (positive_locations[..., (-1, -2)] * stride).add_(int(stride / 2)).repeat(1, 2)
+            offset = level_reg[batch, :, y, x].view_as(base)
+            offset[..., :2].neg_()
 
             # compute final regressions and clamp to lie within image_size
             coords = (base + offset).clamp_min_(0)
-            coords[..., 2].clamp_min_(x_lim)
-            coords[..., 3].clamp_min_(y_lim)
+            coords[..., 2].clamp_max_(x_lim)
+            coords[..., 3].clamp_max_(y_lim)
 
             # use original score before centerness scaling
             score = level_cls[batch, cls, y, x]
 
             # build final bbox of form x1, y1, x2, y2, score, class
-            boxes_for_level = torch.cat([base + offset, score, cls], dim=-1)
+            boxes_for_level = torch.cat([coords, score, cls], dim=-1)
 
             # split boxes by batch and apply padding
-            _, batch_counts = batch.unique(return_counts=True)
+            batch_idx, batch_counts = batch.unique(return_counts=True)
+            _ = batch_counts.new_zeros(batch_size)
+            _[batch_idx] = batch_counts
+            batch_counts = _
             boxes_for_level = CenterNetMixin.batch_box_target(boxes_for_level.split(batch_counts.tolist()), pad_value)
             boxes.append(boxes_for_level)
 
         # combine boxes across all FPN levels
         # we might have added a lot of unnecessary padding so reduce if possible
         boxes = torch.cat(boxes, dim=-2)
-        boxes = CenterNetMixin.batch_box_target(CenterNetMixin.unbatch_box_target(boxes, pad_value), pad_value)
-
         return boxes, locations

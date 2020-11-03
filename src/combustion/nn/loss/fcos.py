@@ -183,24 +183,24 @@ class FCOSLoss:
             centerness_target = cls_target.new_empty(1, *size_target).fill_(-1)
             return cls_target, reg_target, centerness_target
 
-        # get bbox locations within feature map after stride is applied
-        bbox_stride = bbox.floor_divide(stride)
-
         # get mask of valid locations within each box and apply boxes_of_interest filter
         inside_box_mask = FCOSLoss.bbox_to_mask(bbox, stride, size_target)
         mask = FCOSLoss.bbox_to_mask(bbox, stride, size_target, center_radius)
 
         # build regression target
-        reg_target = FCOSLoss.create_regression_target(bbox_stride, stride, size_target)
+        reg_target = FCOSLoss.create_regression_target(bbox, stride, size_target)
         reg_target[~inside_box_mask[..., None, :, :].expand_as(reg_target)] = IGNORE
 
         # use the regression targets to determine boxes of interest for this level
         # is of interest if lower_bound <= max(l, r, t, b) <= upper_bound
         max_size = reg_target.amax(dim=(1, 2, 3))
         lower_bound, upper_bound = interest_range
-        print(max_size)
-        print(interest_range)
         is_box_of_interest = (max_size > lower_bound).logical_and_(max_size <= upper_bound)
+        if not is_box_of_interest.any():
+            reg_target.fill_(IGNORE)
+            centerness = torch.empty_like(reg_target[..., 0:1, :, :]).fill_(IGNORE)
+            cls_target = centerness.new_zeros(num_classes, *centerness.shape[-2:])
+
         mask[~is_box_of_interest] = False
         inside_box_mask[~is_box_of_interest] = False
         reg_target[~is_box_of_interest] = IGNORE
@@ -231,24 +231,28 @@ class FCOSLoss:
         num_boxes = bbox.shape[-2]
         h = torch.arange(size_target[0], dtype=bbox.dtype, device=bbox.device)
         w = torch.arange(size_target[1], dtype=bbox.dtype, device=bbox.device)
-        mask = torch.stack(torch.meshgrid(h, w), 0).mul_(stride).unsqueeze_(0).expand(num_boxes, -1, -1, -1)
+        mask = torch.stack(torch.meshgrid(h, w), 0).mul_(stride).add_(int(stride / 2)).unsqueeze_(0).expand(num_boxes, -1, -1, -1)
 
         # get edge coordinates of each box based on whole box or center sampled
         lower_bound = bbox[..., :2]
         upper_bound = bbox[..., 2:]
         if center_radius is not None:
+            assert center_radius >= 1
             # update bounds according to radius from center
             center = (bbox[..., :2] + bbox[..., 2:]).floor_divide_(2)
-            offset = torch.tensor([stride, stride], device=bbox.device, dtype=center.dtype).mul_(center_radius)
+            offset = center.new_tensor([stride, stride]).floor_divide_(2).mul_(center_radius)
             lower_bound = torch.max(lower_bound, center - offset[None])
             upper_bound = torch.min(upper_bound, center + offset[None])
 
         # x1y1 to h1w1, add h/w dimensions, convert to strided coords
-        lower_bound = lower_bound[..., (1, 0), None, None] - stride / 2
-        upper_bound = upper_bound[..., (1, 0), None, None] - stride / 2
+        lower_bound = lower_bound[..., (1, 0), None, None] 
+        upper_bound = upper_bound[..., (1, 0), None, None] 
 
         # use edge coordinates to create a binary mask
-        mask = (mask > lower_bound).logical_and_(mask < upper_bound).all(dim=-3)
+        if center_radius is not None and center_radius == 1:
+            mask = (mask >= lower_bound).logical_and_(mask < upper_bound).all(dim=-3)
+        else:
+            mask = (mask > lower_bound).logical_and_(mask < upper_bound).all(dim=-3)
         return mask
 
     @staticmethod
@@ -266,10 +270,10 @@ class FCOSLoss:
         w = torch.arange(size_target[1], dtype=bbox.dtype, device=bbox.device)
         grid = torch.meshgrid(h, w)
         grid = torch.stack([grid[1], grid[0]], dim=0).unsqueeze_(0).repeat(num_boxes, 2, 1, 1)
+        grid.mul_(stride).add_(int(stride / 2))
 
         # compute distance to box edges relative to each grid location
-        grid[..., :2, :, :].sub_(bbox[..., :2, None, None]).mul_(stride)
-        grid[..., 2:, :, :].neg_().add_(bbox[..., 2:, None, None]).mul_(stride)
+        grid.sub_(bbox[..., None, None]).abs_()
         return grid
 
     @staticmethod

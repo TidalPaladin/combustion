@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import gc
+import os
 
 import pytest
 import torch
 from torch import Tensor
+from typing import Optional
 
 from combustion.models import EfficientDetFCOS
-from combustion.nn import MobileNetBlockConfig
+from combustion.nn import MobileNetBlockConfig, FCOSLoss
 from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
+from combustion.vision import visualize_bbox
 
 
 class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
@@ -103,3 +106,52 @@ class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         pred_centerness = [torch.rand(2, 1, *size, requires_grad=True) for size in sizes]
 
         boxes, locations = model_type.create_boxes(pred_cls, pred_reg, pred_centerness, strides)
+
+
+    # Set this to a directory to write out some sample images from test cases
+    # DEST: Optional[str] = None
+    DEST: Optional[str] = "/home/tidal"
+
+    def save(self, path, result):
+        import matplotlib.pyplot as plt
+        plt.imsave(path, result.permute(1, 2, 0).cpu().numpy())
+
+    def blend_and_save(self, path, src, dest):
+        src = apply_colormap(src)[..., :3, :, :]
+        src = torch.nn.functional.interpolate(src, dest.shape[-2:])
+        _ = alpha_blend(src, dest)[0].squeeze_(0)
+        self.save(path, _)
+
+    def test_save_output(self, model_type):
+        image_size = 512
+        num_classes = 2
+        batch_size = 3
+        center_radius = 2
+        target_bbox = torch.tensor([
+            [10, 10, 128, 128],
+            [32, 64, 128, 256],
+            [256, 256, 400, 512],
+        ]).unsqueeze_(0).repeat(batch_size, 1, 1)
+        img = torch.zeros(4, 1, image_size, image_size)
+        target_cls = torch.tensor([0, 0, 1]).unsqueeze_(-1).repeat(batch_size, 1, 1)
+
+        strides = [8, 16, 32, 64, 128]
+        sizes = [(image_size // stride,) * 2 for stride in strides]
+
+        criterion = FCOSLoss(strides, num_classes, radius=center_radius)
+        cls_targets, reg_targets, centerness_targets = criterion.create_targets(target_bbox, target_cls, sizes)
+
+        final_pred, _ = model_type.create_boxes(cls_targets, reg_targets, centerness_targets, strides, threshold=0.5)
+        final_boxes = final_pred[..., :4]
+        final_scores = final_pred[..., 4:5]
+        final_cls = final_pred[..., 5:]
+
+        img_with_box = visualize_bbox(img, final_boxes, final_scores, final_cls)
+
+        subpath = os.path.join(self.DEST, "fcos_targets")
+        if not os.path.exists(subpath):
+            os.makedirs(subpath)
+
+        for i, item in enumerate(img_with_box):
+            filename = os.path.join(subpath, f"created_targets_{i}.png")
+            self.save(filename, item)
