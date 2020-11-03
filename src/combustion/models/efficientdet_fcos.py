@@ -11,12 +11,13 @@ from torch import Tensor
 
 from combustion.nn import MobileNetBlockConfig
 from combustion.vision.centernet import CenterNetMixin
+from torchvision.ops import batched_nms
 
 from .efficientdet import EfficientDet2d
 
 
 class MultiLevelHead(nn.Module):
-    def __init__(self, in_channels, num_classes, num_repeats: int = 4):
+    def __init__(self, in_channels, num_classes, strides: Tuple[int, ...], num_repeats: int = 4):
         super().__init__()
         cls_head, reg_head = [], []
 
@@ -29,6 +30,7 @@ class MultiLevelHead(nn.Module):
             cls_head.append(cls)
             reg_head.append(reg)
 
+        self.strides = tuple([int(x) for x in strides])
         self.cls_head = nn.Sequential(*cls_head)
         self.reg_head = nn.Sequential(*reg_head)
 
@@ -40,7 +42,7 @@ class MultiLevelHead(nn.Module):
         centerness = [x[..., 0:1, :, :] for x in reg_pred]
 
         # apply ReLU and reweight
-        reg_pred = [F.relu(x[..., 1:, :, :]) * (i - 1 ** 2) for i, x in enumerate(reg_pred)]
+        reg_pred = [F.relu(x[..., 1:, :, :]) * s for s, x in zip(self.strides, reg_pred)]
 
         return cls_pred, reg_pred, centerness
 
@@ -63,6 +65,7 @@ class EfficientDetFCOS(EfficientDet2d):
         self,
         num_classes: int,
         block_configs: List[MobileNetBlockConfig],
+        strides: List[int] = [8, 16, 32, 64, 128],
         fpn_levels: List[int] = [3, 5, 7, 8, 9],
         fpn_filters: int = 64,
         fpn_repeats: int = 3,
@@ -95,7 +98,8 @@ class EfficientDetFCOS(EfficientDet2d):
                 num_repeats = 3
         else:
             num_repeats = head_repeats
-        self.head = MultiLevelHead(fpn_filters, num_classes, num_repeats)
+        self.strides = strides
+        self.head = MultiLevelHead(fpn_filters, num_classes, strides, num_repeats)
 
     def forward(self, inputs: Tensor) -> Tuple[List[Tensor], List[Tensor], List[Tensor]]:
         r"""Runs the entire EfficientDet model, including stem, body, and head.
@@ -139,6 +143,7 @@ class EfficientDetFCOS(EfficientDet2d):
         depth_coeff = alpha ** compound_coeff
         width_coeff = beta ** compound_coeff
 
+        strides = [8, 16, 32, 64, 128]
         fpn_filters = int(64 * 1.35 ** compound_coeff)
         fpn_repeats = 3 + compound_coeff
         fpn_levels = [3, 5, 7, 8, 9]
@@ -151,6 +156,7 @@ class EfficientDetFCOS(EfficientDet2d):
             "width_coeff": width_coeff,
             "depth_coeff": depth_coeff,
             "width_divisor": width_divisor,
+            "strides": strides,
             "fpn_filters": fpn_filters,
             "fpn_repeats": fpn_repeats,
             "fpn_levels": fpn_levels,
@@ -169,6 +175,8 @@ class EfficientDetFCOS(EfficientDet2d):
         strides: Tuple[int, ...],
         threshold: float = 0.05,
         pad_value: float = -1,
+        from_logits: bool = False,
+        nms_threshold: Optional[float] = 0.5
     ) -> Tuple[Tensor, Tuple[Tensor, ...]]:
         r"""Applys postprocessing to create a set of anchorboxes from FCOS predictions."""
         _ = [x * strides[0] for x in cls[0].shape[-2:]]
@@ -178,19 +186,24 @@ class EfficientDetFCOS(EfficientDet2d):
         # iterate over each FPN level
         for i, (stride, level_cls, level_reg, level_centerness) in enumerate(zip(strides, cls, reg, centerness)):
             batch_size = level_cls.shape[0]
+            num_classes = level_cls.shape[1]
+
+            if from_logits:
+                level_cls = torch.sigmoid(level_cls)
+                level_centerness = torch.sigmoid(level_centerness)
 
             # scale classifications based on centerness
-            scaled_cls = level_cls * level_centerness.expand_as(level_cls)
+            scaled_cls = (level_cls * level_centerness.expand_as(level_cls)).sqrt_()
 
             # get indices of positions that exceed threshold
             positive_locations = (scaled_cls >= threshold).nonzero(as_tuple=False)
-            locations.append(positive_locations)
 
             if not positive_locations.numel():
                 continue
 
             batch, cls, y, x = positive_locations.split(1, dim=-1)
-            level_cls.shape[0]
+            scaled_cls = scaled_cls[batch, cls, y, x]
+            raw_score = level_cls[batch, cls, y, x]
 
             # use stride to compute base coodinates within the original image
             # use pred regression to compute l, t, r, b offset
@@ -203,11 +216,20 @@ class EfficientDetFCOS(EfficientDet2d):
             coords[..., 2].clamp_max_(x_lim)
             coords[..., 3].clamp_max_(y_lim)
 
-            # use original score before centerness scaling
-            score = level_cls[batch, cls, y, x]
+            # apply NMS
+            if nms_threshold is not None:
+                idx = (batch * num_classes + cls).view(-1)
+                keep = batched_nms(coords, scaled_cls.view(-1), idx, nms_threshold)
+                positive_locations = positive_locations[keep, :]
+                coords = coords[keep, :]
+                scaled_cls = scaled_cls[keep, :]
+                raw_score = raw_score[keep, :]
+                batch = idx[keep].floor_divide(num_classes)[..., None]
+                cls = idx[keep].floor_divide(num_classes)[..., None]
 
             # build final bbox of form x1, y1, x2, y2, score, class
-            boxes_for_level = torch.cat([coords, score, cls], dim=-1)
+            # NOTE we used scaled score for NMS, but raw score for box value
+            boxes_for_level = torch.cat([coords, raw_score, cls], dim=-1)
 
             # split boxes by batch and apply padding
             batch_idx, batch_counts = batch.unique(return_counts=True)
@@ -216,8 +238,18 @@ class EfficientDetFCOS(EfficientDet2d):
             batch_counts = _
             boxes_for_level = CenterNetMixin.batch_box_target(boxes_for_level.split(batch_counts.tolist()), pad_value)
             boxes.append(boxes_for_level)
+            locations.append(positive_locations)
 
         # combine boxes across all FPN levels
         # we might have added a lot of unnecessary padding so reduce if possible
         boxes = torch.cat(boxes, dim=-2)
         return boxes, locations
+
+    @staticmethod
+    def reduce_heatmap(heatmap: Tuple[Tensor, ...]) -> Tensor:
+        top = heatmap[0]
+        for i in range(len(heatmap)-1):
+            level = heatmap[i+1]
+            top = torch.max(top, F.interpolate(level, top.shape, mode="nearest"))
+        return top
+
