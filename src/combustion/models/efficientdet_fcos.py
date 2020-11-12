@@ -176,34 +176,38 @@ class EfficientDetFCOS(EfficientDet2d):
         threshold: float = 0.05,
         pad_value: float = -1,
         from_logits: bool = False,
-        nms_threshold: Optional[float] = 0.5
+        nms_threshold: Optional[float] = 0.5,
+        use_raw_score: bool = False,
     ) -> Tuple[Tensor, Tuple[Tensor, ...]]:
         r"""Applys postprocessing to create a set of anchorboxes from FCOS predictions."""
         _ = [x * strides[0] for x in cls[0].shape[-2:]]
         y_lim, x_lim = _
 
-        locations, boxes = [], []
+        batch_idx, boxes = [], []
+
+        batch_size = cls[0].shape[0]
+        num_classes = cls[0].shape[1]
+
         # iterate over each FPN level
         for i, (stride, level_cls, level_reg, level_centerness) in enumerate(zip(strides, cls, reg, centerness)):
-            batch_size = level_cls.shape[0]
-            num_classes = level_cls.shape[1]
 
             if from_logits:
                 level_cls = torch.sigmoid(level_cls)
                 level_centerness = torch.sigmoid(level_centerness)
 
             # scale classifications based on centerness
-            scaled_cls = (level_cls * level_centerness.expand_as(level_cls)).sqrt_()
+            scaled_score = (level_cls * level_centerness.expand_as(level_cls)).sqrt_()
 
             # get indices of positions that exceed threshold
-            positive_locations = (scaled_cls >= threshold).nonzero(as_tuple=False)
+            positive_locations = (level_cls >= threshold).nonzero(as_tuple=False)
 
             if not positive_locations.numel():
                 continue
 
+            # extract coordinates of positive predictions and drop scores for negative predictions
             batch, cls, y, x = positive_locations.split(1, dim=-1)
-            scaled_cls = scaled_cls[batch, cls, y, x]
             raw_score = level_cls[batch, cls, y, x]
+            scaled_score = scaled_score[batch, cls, y, x]
 
             # use stride to compute base coodinates within the original image
             # use pred regression to compute l, t, r, b offset
@@ -216,40 +220,48 @@ class EfficientDetFCOS(EfficientDet2d):
             coords[..., 2].clamp_max_(x_lim)
             coords[..., 3].clamp_max_(y_lim)
 
-            # apply NMS
-            if nms_threshold is not None:
-                idx = (batch * num_classes + cls).view(-1)
-                keep = batched_nms(coords, scaled_cls.view(-1), idx, nms_threshold)
-                positive_locations = positive_locations[keep, :]
-                coords = coords[keep, :]
-                scaled_cls = scaled_cls[keep, :]
-                raw_score = raw_score[keep, :]
-                batch = idx[keep].floor_divide(num_classes)[..., None]
-                cls = idx[keep].floor_divide(num_classes)[..., None]
-
-            # build final bbox of form x1, y1, x2, y2, score, class
-            # NOTE we used scaled score for NMS, but raw score for box value
-            boxes_for_level = torch.cat([coords, raw_score, cls], dim=-1)
-
-            # split boxes by batch and apply padding
-            batch_idx, batch_counts = batch.unique(return_counts=True)
-            _ = batch_counts.new_zeros(batch_size)
-            _[batch_idx] = batch_counts
-            batch_counts = _
-            boxes_for_level = CenterNetMixin.batch_box_target(boxes_for_level.split(batch_counts.tolist()), pad_value)
-            boxes.append(boxes_for_level)
-            locations.append(positive_locations)
+            # record the boxes and box -> batch mapping
+            boxes.append(torch.cat([coords, raw_score, scaled_score, cls], dim=-1))
+            batch_idx.append(batch)
 
         # combine boxes across all FPN levels
-        # we might have added a lot of unnecessary padding so reduce if possible
-        boxes = torch.cat(boxes, dim=-2)
-        return boxes, locations
+        if boxes:
+            boxes = torch.cat(boxes, dim=-2)
+            batch_idx = torch.cat(batch_idx, dim=-2)
+        else:
+            boxes = coords.new_empty(batch_size, 0, 6)
+            return boxes, []
+
+        # apply NMS to boxes
+        if nms_threshold is not None:
+            coords = boxes[..., :4]
+            raw_score = boxes[..., -3, None]
+            scaled_score = boxes[..., -2, None]
+            cls = boxes[..., -1, None]
+
+            # torchvision NMS cant do batches of images, but it can separate based on class id
+            # create a new "class id" that distinguishes batch and class
+            idx = (batch_idx * num_classes + cls.view_as(batch_idx)).view(-1).long()
+            keep = batched_nms(coords.float(), scaled_score.view(-1), idx, nms_threshold)
+            boxes = boxes[keep, :]
+            batch_idx = batch_idx[keep, :]
+
+        # create final box using raw or centerness adjusted score as specified
+        if use_raw_score:
+            boxes = boxes[..., (0, 1, 2, 3, 4, 6)]
+        else:
+            boxes = boxes[..., (0, 1, 2, 3, 5, 6)]
+
+        # pack boxes into a padded batch
+        boxes = [boxes[(batch_idx == i).view(-1), :] for i in range(batch_size)]
+        boxes = CenterNetMixin.batch_box_target(boxes, pad_value)
+
+        return boxes, None
 
     @staticmethod
     def reduce_heatmap(heatmap: Tuple[Tensor, ...]) -> Tensor:
         top = heatmap[0]
-        for i in range(len(heatmap)-1):
-            level = heatmap[i+1]
-            top = torch.max(top, F.interpolate(level, top.shape, mode="nearest"))
+        for i in range(len(heatmap) - 1):
+            level = heatmap[i + 1]
+            top = torch.max(top, F.interpolate(level, top.shape[-2:], mode="nearest"))
         return top
-

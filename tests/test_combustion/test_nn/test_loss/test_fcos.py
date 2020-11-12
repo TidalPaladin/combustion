@@ -58,7 +58,6 @@ class TestFCOSLoss:
 
             assert pos_region.all()
             assert res.sum() - pos_region.sum() == 0
-        assert False
 
     @pytest.mark.parametrize(
         "size_target,stride",
@@ -121,7 +120,6 @@ class TestFCOSLoss:
             assert res[3, hs2, ws1] == discretized_box[3], "right target at bottom left corner"
             assert res[3, hs1, ws2] == h2 - h1, "right target at top right corner"
             assert res[3, hs2, ws2] == discretized_box[3], "right target at bottom right corner"
-        assert False
 
     @pytest.mark.parametrize(
         "stride,center_radius,size_target",
@@ -177,7 +175,6 @@ class TestFCOSLoss:
 
         assert centerness.max() <= 1.0
         assert ((centerness >= 0) | (centerness == -1)).all()
-        assert False
 
     @pytest.mark.parametrize(
         "stride,center_radius,size_target",
@@ -294,6 +291,7 @@ class TestFCOSLoss:
 
     def save(self, path, result):
         import matplotlib.pyplot as plt
+
         plt.imsave(path, result.permute(1, 2, 0).cpu().numpy())
 
     def blend_and_save(self, path, src, dest):
@@ -313,12 +311,14 @@ class TestFCOSLoss:
     def test_save_output(self, center_radius):
         image_size = 512
         num_classes = 2
-        target_bbox = torch.tensor([
-            [10, 10, 128, 128],
-            [32, 64, 128, 256],
-            [250, 10, 250+31, 10+19],
-            [256, 256, 400, 512],
-        ])
+        target_bbox = torch.tensor(
+            [
+                [10, 10, 128, 128],
+                [32, 64, 128, 256],
+                [250, 10, 250 + 31, 10 + 19],
+                [256, 256, 400, 512],
+            ]
+        )
         img = torch.zeros(1, image_size, image_size)
         target_cls = torch.tensor([0, 1, 1, 0]).unsqueeze_(-1)
 
@@ -360,8 +360,3 @@ class TestFCOSLoss:
             for cls_idx in range(c.shape[1]):
                 filename = os.path.join(image_path, f"cls_{cls_idx}_level_{level}.png")
                 self.blend_and_save(filename, c[..., cls_idx, :, :][None], img_with_box)
-
-
-
-
-

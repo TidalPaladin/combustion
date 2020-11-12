@@ -11,18 +11,18 @@ class TestCompleteIouLossFunctional:
         inputs = torch.tensor(
             [
                 [1, 1, 10, 10],
-                [2, 2, 4, 4],
-                [2, 1, 4, 3],
-                [1, 1, 3, 3],
+                [1, 1, 1, 1],
+                [1, 1, 1, 1],
+                [1, 1, 1, 1],
             ]
         )
 
         targets = torch.tensor(
             [
                 [1, 1, 10, 10],
-                [0, 0, 4, 4],
-                [0, 0, 4, 4],
-                [0, 0, 4, 4],
+                [3, 3, 1, 1],
+                [3, 2, 1, 2],
+                [2, 2, 2, 2],
             ]
         )
 
@@ -64,22 +64,20 @@ class TestCompleteIouLossFunctional:
         inputs = torch.tensor(
             [
                 [1, 1, 10, 10],
-                [2, 2, 4, 4],
-                [2, 1, 4, 3],
-                [1, 1, 3, 3],
-            ],
-            dtype=torch.float,
+                [1, 1, 1, 1],
+                [1, 1, 1, 1],
+                [1, 1, 1, 1],
+            ]
         )
+
         targets = torch.tensor(
             [
                 [1, 1, 10, 10],
-                [0, 0, 4, 4],
-                [0, 0, 4, 4],
-                [0, 0, 4, 4],
-            ],
-            dtype=torch.float,
+                [3, 3, 1, 1],
+                [3, 2, 1, 2],
+                [2, 2, 2, 2],
+            ]
         )
-
         inputs.requires_grad = True
         loss = complete_iou_loss(inputs, targets)
         loss.sum().backward()

@@ -107,13 +107,13 @@ class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
 
         boxes, locations = model_type.create_boxes(pred_cls, pred_reg, pred_centerness, strides)
 
-
     # Set this to a directory to write out some sample images from test cases
     # DEST: Optional[str] = None
     DEST: Optional[str] = "/home/tidal"
 
     def save(self, path, result):
         import matplotlib.pyplot as plt
+
         plt.imsave(path, result.permute(1, 2, 0).cpu().numpy())
 
     def blend_and_save(self, path, src, dest):
@@ -123,17 +123,25 @@ class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         self.save(path, _)
 
     def test_save_output(self, model_type):
+        torch.random.manual_seed(42)
         image_size = 512
         num_classes = 2
         batch_size = 3
         center_radius = 2
-        target_bbox = torch.tensor([
-            [10, 10, 128, 128],
-            [32, 64, 128, 256],
-            [256, 256, 400, 512],
-        ]).unsqueeze_(0).repeat(batch_size, 1, 1)
+        target_bbox = (
+            torch.tensor(
+                [
+                    [10, 10, 128, 128],
+                    [12, 12, 130, 130],
+                    [32, 64, 128, 256],
+                    [256, 256, 400, 512],
+                ]
+            )
+            .unsqueeze_(0)
+            .repeat(batch_size, 1, 1)
+        )
         img = torch.zeros(4, 1, image_size, image_size)
-        target_cls = torch.tensor([0, 0, 1]).unsqueeze_(-1).repeat(batch_size, 1, 1)
+        target_cls = torch.tensor([0, 0, 1, 1]).unsqueeze_(-1).repeat(batch_size, 1, 1)
 
         strides = [8, 16, 32, 64, 128]
         sizes = [(image_size // stride,) * 2 for stride in strides]
@@ -155,3 +163,83 @@ class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         for i, item in enumerate(img_with_box):
             filename = os.path.join(subpath, f"created_targets_{i}.png")
             self.save(filename, item)
+
+    def test_nms(self, model_type):
+        torch.random.manual_seed(42)
+        image_size = 512
+        num_classes = 1
+        batch_size = 2
+        center_radius = 2
+        strides = [8, 16, 32, 64, 128]
+        sizes = [(image_size // stride,) * 2 for stride in strides]
+
+        img = torch.zeros(batch_size, 1, image_size, image_size)
+        pred_cls = [torch.rand(batch_size, num_classes, *size).sub_(0.45).clamp_min_(0) for size in sizes]
+        pred_cls[0].clamp_min(0.111)
+        pred_reg = [torch.rand(batch_size, 4, *size).mul_(image_size / 4).round_().clamp_min_(24) for size in sizes]
+        pred_centerness = [torch.rand(batch_size, 1, *size) for size in sizes]
+
+        final_pred, _ = model_type.create_boxes(
+            pred_cls, pred_reg, pred_centerness, strides, threshold=0.5, nms_threshold=None
+        )
+        final_boxes = final_pred[..., :4]
+        final_scores = final_pred[..., 4:5]
+        final_cls = final_pred[..., 5:]
+
+        img_with_box = visualize_bbox(img, final_boxes, final_scores, final_cls)
+
+        subpath = os.path.join(self.DEST, "fcos_targets")
+        if not os.path.exists(subpath):
+            os.makedirs(subpath)
+
+        for i, item in enumerate(img_with_box):
+            filename = os.path.join(subpath, f"created_targets_no_nms_{i}.png")
+            self.save(filename, item)
+
+        final_pred, _ = model_type.create_boxes(
+            pred_cls, pred_reg, pred_centerness, strides, threshold=0.5, nms_threshold=0.01
+        )
+        final_boxes = final_pred[..., :4]
+        final_scores = final_pred[..., 4:5]
+        final_cls = final_pred[..., 5:]
+
+        img_with_box = visualize_bbox(img, final_boxes, final_cls, final_scores)
+
+        subpath = os.path.join(self.DEST, "fcos_targets")
+        if not os.path.exists(subpath):
+            os.makedirs(subpath)
+
+        for i, item in enumerate(img_with_box):
+            filename = os.path.join(subpath, f"created_targets_nms_{i}.png")
+            self.save(filename, item)
+
+    def test_batched_nms(self, model_type):
+        torch.random.manual_seed(42)
+        image_size = 512
+        num_classes = 1
+        batch_size = 2
+        center_radius = 2
+        strides = [8, 16, 32, 64, 128]
+        sizes = [(image_size // stride,) * 2 for stride in strides]
+
+        img = torch.zeros(batch_size, 1, image_size, image_size)
+        pred_cls = [torch.rand(batch_size, num_classes, *size).sub_(0.45).clamp_min_(0) for size in sizes]
+        pred_reg = [torch.rand(batch_size, 4, *size).mul_(image_size / 4).round_().clamp_min_(24) for size in sizes]
+        pred_centerness = [torch.rand(batch_size, 1, *size) for size in sizes]
+
+        batched, _ = model_type.create_boxes(
+            pred_cls, pred_reg, pred_centerness, strides, threshold=0.5, nms_threshold=0.3
+        )
+
+        pred_cls = [x[0:1] for x in pred_cls]
+        pred_reg = [x[0:1] for x in pred_reg]
+        pred_centerness = [x[0:1] for x in pred_centerness]
+        unbatched, _ = model_type.create_boxes(
+            pred_cls, pred_reg, pred_centerness, strides, threshold=0.5, nms_threshold=0.3
+        )
+
+        unbatched.squeeze_(0)
+        batched = batched[0]
+        batched = batched[(batched != -1).all(dim=-1)]
+        assert batched.shape == unbatched.shape
+        assert torch.allclose(batched, unbatched)
