@@ -145,14 +145,14 @@ class _EfficientNet(nn.Module):
         self.__depth_coeff = float(depth_coeff)
 
         output_filters = []
-        for config in self.block_configs:
+        for config in self.__block_configs:
             # update config according to scale coefficients
             config.input_filters = self.round_filters(config.input_filters, width_coeff, width_divisor, min_width)
             config.output_filters = self.round_filters(config.output_filters, width_coeff, width_divisor, min_width)
             config.num_repeats = self.round_repeats(depth_coeff, config.num_repeats)
             output_filters.append(config.output_filters)
 
-        self.__input_filters = self.block_configs[0].input_filters
+        self.__input_filters = self.__block_configs[0].input_filters
         self.__output_filters = tuple(output_filters)
 
         # Conv stem (default stem used if none given)
@@ -160,7 +160,7 @@ class _EfficientNet(nn.Module):
             self.stem = stem
         else:
             in_channels = 3
-            first_block = next(iter(self.block_configs))
+            first_block = next(iter(self.__block_configs))
             output_filters = first_block.input_filters
             bn_momentum = first_block.bn_momentum
             bn_epsilon = first_block.bn_epsilon
@@ -172,7 +172,7 @@ class _EfficientNet(nn.Module):
 
         # MobileNetV3 convolution blocks
         blocks = []
-        for config in self.block_configs:
+        for config in self.__block_configs:
             conv_block = self.__class__._get_blocks(config)
             blocks.append(conv_block)
         self.blocks = nn.ModuleList(blocks)
@@ -180,6 +180,7 @@ class _EfficientNet(nn.Module):
         # Head
         self.head = head
 
+    @torch.jit.unused
     @property
     def input_filters(self) -> int:
         r"""Number of input filters for the first level of backbone. When using a custom stem, use this
@@ -187,6 +188,7 @@ class _EfficientNet(nn.Module):
         """
         return self.__input_filters
 
+    @torch.jit.unused
     @property
     def output_filters(self) -> Tuple[int, ...]:
         r"""Number of filters in each level of the BiFPN. When using a custom head, use this
@@ -194,6 +196,7 @@ class _EfficientNet(nn.Module):
         """
         return self.__output_filters
 
+    @torch.jit.unused
     @property
     def block_configs(self) -> Tuple[MobileNetBlockConfig, ...]:
         r"""Number of filters in each level of the BiFPN. When using a custom head, use this
@@ -201,11 +204,13 @@ class _EfficientNet(nn.Module):
         """
         return self.__block_configs
 
+    @torch.jit.unused
     @property
     def width_coeff(self) -> float:
         r"""Width coefficient for scaling"""
         return self.__width_coeff
 
+    @torch.jit.unused
     @property
     def depth_coeff(self) -> float:
         r"""Depth coefficient for scaling"""

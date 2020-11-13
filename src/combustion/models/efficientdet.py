@@ -3,6 +3,7 @@
 
 from typing import List, Optional
 
+import torch
 import torch.nn as nn
 from torch import Tensor
 
@@ -84,6 +85,7 @@ class _EfficientDet(_EfficientNet):
             bifpn_layers.append(bifpn)
         self.bifpn_layers = nn.ModuleList(bifpn_layers)
 
+    @torch.jit.unused
     @property
     def fpn_filters(self) -> int:
         r"""Number of filters in each level of the BiFPN. When using a custom head, use this
