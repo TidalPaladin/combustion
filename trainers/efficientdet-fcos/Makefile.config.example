@@ -1,0 +1,9 @@
+# docker image name
+DOCKER_IMG := combustion
+
+# python project name, should match src/PROJECT
+PROJECT := project
+
+DATA_PATH := $(shell pwd)/data
+OUTPUT_PATH := $(shell pwd)/outputs
+CONF_PATH := $(shell pwd)/conf

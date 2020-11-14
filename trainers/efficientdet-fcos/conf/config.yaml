@@ -1,0 +1,8 @@
+defaults:
+  - dataset: macro
+  - model: macro_model
+  - optimizer: adam
+  - trainer: local
+  - schedule: one_cycle
+  - sweeper:
+  - hydra: custom

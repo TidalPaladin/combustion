@@ -1,0 +1,44 @@
+# @package _group_
+batch_size: 4
+
+train:
+  num_workers: 12
+  pin_memory: true
+  drop_last: true
+  shuffle: true
+  #collate_fn: 
+  #  _target_: medcog_classifier.preprocessing.Collate
+
+  _target_: torchvision.datasets.CocoDetection
+  params:
+    root: /app/data/macro/macro_train/torch
+    transforms:
+      _target_: efficientdet_fcos.preprocessing.TrainingTransform
+      params:
+        downsample: ${model.params.downsample}
+        return_heatmap: True
+        
+        resize:
+          _target_: albumentations.augmentations.transforms.RandomResizedCrop
+          params:
+            height: 512
+            width: 512
+    
+
+            #random_crop:
+            #  _target_: albumentations.augmentations.transforms.RandomResizedCrop
+            #  params:
+            #    height: 512
+            #    width: 512
+            #    scale: [0.25, 1.0]
+            #    ratio: [0.4, 0.6]
+
+        flip: 
+          _target_: albumentations.augmentations.transforms.HorizontalFlip
+
+        random_brightness:
+          _target_: albumentations.augmentations.transforms.RandomBrightnessContrast
+          params:
+            p: 0.8
+            brightness_limit: 0.1
+            contrast_limit: 0.3
