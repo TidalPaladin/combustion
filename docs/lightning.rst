@@ -24,3 +24,8 @@ Callbacks
 
 .. autoclass:: combustion.lightning.callbacks.CountMACs
     :members:
+
+Metrics
+----------------------------------
+.. autoclass:: combustion.lightning.metrics.AUROC
+    :members:
