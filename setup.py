@@ -57,7 +57,7 @@ extras["quality"] = [
 ]
 
 extras["macs"] = ["thop"]
-extras["hdf5"] = ["h5py"]
+extras["hdf5"] = ["h5py<3.0"]
 extras["vision"] = ["kornia<=0.3.1", "opencv-python", "torchvision", "Pillow-SIMD"]
 extras["points"] = ["torch-scatter<2.0.5"]
 
