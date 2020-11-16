@@ -13,7 +13,7 @@ Utilities to facilitate operation with
     :backlinks: top
 
 
-.. autoclass:: combustion.lightning.HydraModule
+.. autoclass:: combustion.lightning.HydraMixin
     :members:
 
 Callbacks
@@ -30,4 +30,8 @@ Metrics
 .. autoclass:: combustion.lightning.metrics.AUROC
     :members:
 .. autoclass:: combustion.lightning.metrics.Fbeta
+    :members:
+.. autoclass:: combustion.lightning.metrics.BoxAUROC
+    :members:
+.. autoclass:: combustion.lightning.metrics.BoxAveragePrecision
     :members:

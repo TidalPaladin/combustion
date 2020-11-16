@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .auroc import AUROC
+from .auroc import AUROC, BoxAUROC
+from .average_precision import BoxAveragePrecision
 from .fbeta import Fbeta
 
 
-__all__ = ["AUROC", "Fbeta"]
+__all__ = ["AUROC", "BoxAveragePrecision", "BoxAUROC", "Fbeta"]

@@ -14,7 +14,7 @@ class Fbeta(Metric):
     Computes the Fbeta metric. This is equivalent to Pytorch Lightning's
     Fbeta metric, but includes the option to compute a weighted average
 
-    ..note:
+    .. note::
         This implementation will be removed once Pytorch Lightning's Fbeta
         metric supports weighted averaging
 
