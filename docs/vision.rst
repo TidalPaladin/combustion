@@ -41,6 +41,16 @@ Ops
 .. autofunction:: combustion.vision.nms
 .. autofunction:: combustion.vision.visualize_bbox
 
+.. autofunction:: combustion.vision.append_bbox_label
+.. autofunction:: combustion.vision.batch_box_target
+.. autofunction:: combustion.vision.combine_bbox_scores_class
+.. autofunction:: combustion.vision.combine_box_target
+.. autofunction:: combustion.vision.filter_bbox_classes
+.. autofunction:: combustion.vision.flatten_box_target
+.. autofunction:: combustion.vision.split_bbox_scores_class
+.. autofunction:: combustion.vision.split_box_target
+.. autofunction:: combustion.vision.unbatch_box_target
+
 .. autoclass:: combustion.vision.AnchorsToPoints
     :members: 
 

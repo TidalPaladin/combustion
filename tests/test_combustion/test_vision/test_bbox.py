@@ -7,7 +7,18 @@ from typing import Optional
 import pytest
 import torch
 
-from combustion.vision import visualize_bbox
+from combustion.vision import (
+    append_bbox_label,
+    batch_box_target,
+    combine_bbox_scores_class,
+    combine_box_target,
+    filter_bbox_classes,
+    flatten_box_target,
+    split_bbox_scores_class,
+    split_box_target,
+    unbatch_box_target,
+    visualize_bbox,
+)
 
 
 @pytest.fixture(
@@ -190,3 +201,192 @@ class TestVisualizeBbox:
         if self.DEST is not None and img.ndim == 3:
             dest = os.path.join(self.DEST, "test_visualize_bbox.png")
             self.save(dest, result)
+
+
+class TestBboxHelpers:
+    @pytest.mark.parametrize("split_label", [False, True, [1, 1]])
+    def test_split_box_target_result(self, split_label):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4))
+        label_target = torch.randint(0, 10, (3, 4, 2))
+        target = torch.cat([bbox_target, label_target], dim=-1)
+
+        result = split_box_target(target, split_label=split_label)
+        bbox = result[0]
+        label = result[1:]
+        assert torch.allclose(bbox, bbox_target)
+
+        if not split_label:
+            assert torch.allclose(torch.cat(label, dim=-1), label_target)
+        else:
+            for i, sub_label in enumerate(label):
+                assert torch.allclose(sub_label, label_target[..., i : i + 1])
+
+    def test_split_box_target_returns_views(self):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4))
+        label_target = torch.randint(0, 10, (3, 4, 2))
+        target = torch.cat([bbox_target, label_target], dim=-1)
+
+        bbox, label = split_box_target(target)
+
+        target.mul_(10)
+        assert torch.allclose(bbox, target[..., :4])
+        assert torch.allclose(label, target[..., 4:])
+
+    @pytest.mark.parametrize("extra_labels", [False, True])
+    def test_combine_box_target(self, extra_labels):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4))
+        label_target = torch.randint(0, 10, (3, 4, 2))
+        if extra_labels:
+            extra_labels = (torch.randint(0, 10, (3, 4, 2)),)
+        else:
+            extra_labels = ()
+
+        true_target = torch.cat([bbox_target, label_target, *extra_labels], dim=-1)
+
+        target = combine_box_target(bbox_target, label_target, *extra_labels)
+
+        assert torch.allclose(target, true_target)
+
+    @pytest.mark.parametrize("pad_value", [-1, -2])
+    def test_batch_box_target(self, pad_value):
+        torch.random.manual_seed(42)
+        target1 = torch.randint(0, 10, (3, 6))
+        target2 = torch.randint(0, 10, (2, 6))
+
+        batch = batch_box_target([target1, target2], pad_value=pad_value)
+
+        assert batch.shape[0] == 2
+        assert torch.allclose(batch[0], target1)
+        assert torch.allclose(batch[1, :2, :], target2)
+        assert (batch[1, 2, :] == pad_value).all()
+
+    def test_batch_box_target_batched_inputs(self):
+        torch.random.manual_seed(42)
+        target1 = torch.randint(0, 10, (3, 3, 6))
+        target2 = torch.randint(0, 10, (2, 2, 6))
+
+        batch = batch_box_target([target1, target2])
+        assert batch.shape[-1] == 6
+        assert batch.shape[-2] == 3
+        assert batch.shape[0] == 5  # 3 + 2
+        assert (batch[-1, -1, :] == -1).all()
+
+    @pytest.mark.parametrize("pad_value", [-1, -2])
+    def test_unbatch_box_target(self, pad_value):
+        torch.random.manual_seed(42)
+        target = torch.randint(0, 10, (2, 3, 6))
+        target[0, 2, :].fill_(pad_value)
+
+        split_batch = unbatch_box_target(target, pad_value=pad_value)
+
+        assert torch.allclose(target[0, :2, ...], split_batch[0])
+        assert torch.allclose(target[1], split_batch[1])
+
+    @pytest.mark.parametrize("pad_value", [-1, -2])
+    def test_flatten_box_target(self, pad_value):
+        torch.random.manual_seed(42)
+        target = torch.randint(0, 10, (2, 3, 6))
+        target[0, 2, :].fill_(pad_value)
+
+        flat_batch = flatten_box_target(target, pad_value=pad_value)
+
+        assert flat_batch.ndim == 2
+        assert flat_batch.shape[0] == 2 + 3
+
+        expected = torch.cat([target[0, :2, ...], target[1, ...]], dim=0)
+        assert torch.allclose(flat_batch, expected)
+
+    @pytest.mark.parametrize("label_size", [1, 2])
+    def test_append_bbox_label(self, label_size):
+        torch.random.manual_seed(42)
+        old_label = torch.randint(0, 10, (2, 4, 6))
+        new_label = torch.randint(0, 10, (2, 4, label_size))
+
+        final_label = append_bbox_label(old_label, new_label)
+        assert torch.allclose(final_label, torch.cat([old_label, new_label], dim=-1))
+
+    @pytest.mark.parametrize("split_scores", [False, True, [1, 1]])
+    def test_split_bbox_scores_class_result(self, split_scores):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4)).float()
+        scores_target = torch.rand(3, 4, 2)
+        cls_target = torch.randint(0, 10, (3, 4, 1)).float()
+        target = torch.cat([bbox_target, scores_target, cls_target], dim=-1)
+
+        result = split_bbox_scores_class(target, split_scores=split_scores)
+        bbox = result[0]
+        scores = result[1:-1]
+        cls = result[-1]
+
+        assert torch.allclose(bbox, bbox_target)
+        assert torch.allclose(cls, cls_target)
+
+        if not split_scores:
+            assert torch.allclose(torch.cat(scores, dim=-1), scores_target)
+        else:
+            for i, sub_scores in enumerate(scores):
+                assert torch.allclose(sub_scores, scores_target[..., i : i + 1])
+
+    def test_split_bbox_scores_class_returns_views(self):
+        torch.random.manual_seed(42)
+        bbox_target = torch.randint(0, 10, (3, 4, 4)).float()
+        scores_target = torch.rand(3, 4, 2)
+        torch.randint(0, 10, (3, 4, 1)).float()
+        target = torch.cat([bbox_target, scores_target], dim=-1)
+
+        result = split_bbox_scores_class(target)
+        bbox = result[0]
+        scores = result[1]
+        cls = result[-1]
+
+        target.mul_(10)
+        assert torch.allclose(bbox, target[..., :4])
+        assert torch.allclose(scores, target[..., 4:-1])
+        assert torch.allclose(cls, target[..., -1:])
+
+    @pytest.mark.parametrize("extra_scores", [False, True])
+    def test_combine_bbox_scores_cls(self, extra_scores):
+        torch.random.manual_seed(42)
+        bbox = torch.randint(0, 10, (3, 4, 4)).float()
+        scores = torch.rand(3, 4, 2)
+        cls = torch.randint(0, 10, (3, 4, 1))
+        if extra_scores:
+            extra_scores = (torch.rand(3, 4, 2).float(),)
+        else:
+            extra_scores = ()
+
+        true_target = torch.cat([bbox, scores, *extra_scores, cls], dim=-1)
+
+        target = combine_bbox_scores_class(bbox, cls, scores, *extra_scores)
+
+        assert torch.allclose(target, true_target)
+
+    @pytest.mark.parametrize("return_inverse", [False, True])
+    @pytest.mark.parametrize("pad_value", [-1, -2])
+    @pytest.mark.parametrize("keep_classes", [[0], [0, 1], [0, 2]])
+    def test_filter_bbox_classes(self, return_inverse, pad_value, keep_classes):
+        torch.random.manual_seed(42)
+
+        possible_classes = set([0, 1, 2])
+        if return_inverse:
+            set(keep_classes)
+        else:
+            possible_classes - set(keep_classes)
+
+        classes1 = torch.tensor([0, 1, 2, 1, 0, 0, -1, -1, -1]).unsqueeze_(-1)
+        classes2 = torch.tensor([1, 0, 0, 1, 0, -1, -1, -1, -1]).unsqueeze_(-1)
+
+        target = torch.stack([classes1, classes2], dim=0)
+        bbox = torch.randint(0, 10, (2, target.shape[-2], 4))
+        target = torch.cat([bbox, target], dim=-1).float()
+
+        result = filter_bbox_classes(target, keep_classes=keep_classes, return_inverse=return_inverse)
+
+        for cls in possible_classes:
+            if return_inverse and cls in keep_classes:
+                assert not (result[..., -1] == cls).any()
+            if not return_inverse and cls not in keep_classes:
+                assert not (result[..., -1] == cls).any()

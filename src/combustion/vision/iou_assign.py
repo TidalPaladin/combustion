@@ -230,7 +230,7 @@ class CategoricalLabelIoU(ConfusionMatrixIoU):
             as true positives
 
     Returns:
-        Tuple of ``(predicted_score, is_correct, true_binary_label)``
+        Tuple of ``(predicted_score, binary_target, box_type)``
 
     Shape
         * ``pred_boxes`` - :math:`(N_p, 4)`
@@ -265,4 +265,5 @@ class CategoricalLabelIoU(ConfusionMatrixIoU):
         target[num_pred_boxes:] = true_classes[fn].view(-1)
         target[:num_pred_boxes][~tp] = pred_classes[~tp].view(-1)
         is_correct[:num_pred_boxes][tp] = True
+        is_correct[num_pred_boxes:] = True
         return pred, is_correct, target
