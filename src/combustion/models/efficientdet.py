@@ -81,6 +81,12 @@ class _EfficientDet(_EfficientNet):
 
         self.match = MatchShapes()
 
+        # defaults for batch norm params
+        _ = {"bn_momentum": 0.01, "bn_epsilon": 1e-3}
+        _.update(fpn_kwargs)
+        fpn_kwargs = _
+
+        # build bifpn
         bifpn_layers = []
         for i in range(fpn_repeats):
             bifpn = self.BiFPN(output_filters, levels=len(fpn_levels), **fpn_kwargs)

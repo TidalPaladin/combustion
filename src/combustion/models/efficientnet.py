@@ -52,6 +52,8 @@ class _EfficientNet(nn.Module):
             squeeze_excite_ratio=4,
             global_se=True,
             drop_connect_rate=0.2,
+            bn_momentum=0.01,
+            bn_epsilon=1e-3,
         ),
         MobileNetBlockConfig(
             kernel_size=3,
@@ -64,6 +66,8 @@ class _EfficientNet(nn.Module):
             squeeze_excite_ratio=4,
             global_se=True,
             drop_connect_rate=0.2,
+            bn_momentum=0.01,
+            bn_epsilon=1e-3,
         ),
         MobileNetBlockConfig(
             kernel_size=5,
@@ -76,6 +80,8 @@ class _EfficientNet(nn.Module):
             squeeze_excite_ratio=4,
             global_se=True,
             drop_connect_rate=0.2,
+            bn_momentum=0.01,
+            bn_epsilon=1e-3,
         ),
         MobileNetBlockConfig(
             kernel_size=3,
@@ -88,6 +94,8 @@ class _EfficientNet(nn.Module):
             squeeze_excite_ratio=4,
             global_se=True,
             drop_connect_rate=0.2,
+            bn_momentum=0.01,
+            bn_epsilon=1e-3,
         ),
         MobileNetBlockConfig(
             kernel_size=5,
@@ -100,6 +108,8 @@ class _EfficientNet(nn.Module):
             squeeze_excite_ratio=4,
             global_se=True,
             drop_connect_rate=0.2,
+            bn_momentum=0.01,
+            bn_epsilon=1e-3,
         ),
         MobileNetBlockConfig(
             kernel_size=5,
@@ -112,6 +122,8 @@ class _EfficientNet(nn.Module):
             squeeze_excite_ratio=4,
             global_se=True,
             drop_connect_rate=0.2,
+            bn_momentum=0.01,
+            bn_epsilon=1e-3,
         ),
         MobileNetBlockConfig(
             kernel_size=3,
@@ -124,6 +136,8 @@ class _EfficientNet(nn.Module):
             squeeze_excite_ratio=4,
             global_se=True,
             drop_connect_rate=0.2,
+            bn_momentum=0.01,
+            bn_epsilon=1e-3,
         ),
     ]
 
