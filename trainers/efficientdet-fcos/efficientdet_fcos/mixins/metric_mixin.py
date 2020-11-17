@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from torch import Tensor
+from typing import List, Optional, Tuple, Union
+
 import torch
+from torch import Tensor
 
 from combustion.vision.centernet import CenterNetMixin
-from typing import Dict, Tuple, List, Union, Optional
-
-from pytorch_lightning.metrics.functional.classification import auroc as compute_auroc
-from pytorch_lightning.metrics.functional.classification import average_precision as compute_ap
 
 
 class MetricMixin:

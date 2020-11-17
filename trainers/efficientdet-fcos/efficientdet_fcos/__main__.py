@@ -5,15 +5,8 @@ import logging
 import os
 
 import hydra
-import pytorch_lightning as pl
-import torch
 
 import combustion
-import medcog_preprocessing
-try:
-    import medcog_classifier
-except ModuleNotFoundError:
-    import pdb; pdb.set_trace()
 
 
 config_path = "../conf"

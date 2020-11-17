@@ -29,7 +29,7 @@ quality:
 	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
 run: docker
-	$(MAKE) launch
+	venv/bin/python -m efficientdet_fcos
 
 prep:
 	mkdir -p ./outputs ./data ./conf
@@ -42,12 +42,9 @@ style:
 
 venv: $(VENV)/bin/activate
 
-$(VENV)/bin/activate: requirements.txt setup.py medcog_preprocessing/combustion
+$(VENV)/bin/activate: requirements.txt ../../src/combustion
 	test -d $(VENV) || python3 -m venv $(VENV)
 	$(PYTHON) -m pip install -U pip
-	$(PYTHON) -m pip install -e ./medcog_preprocessing/combustion[dev]
-	$(PYTHON) -m pip install --pre -U git+https://github.com/facebookresearch/hydra.git
+	$(PYTHON) -m pip install -e ../..[dev]
 	$(PYTHON) -m pip install -r requirements.txt
-	$(PYTHON) -m pip install -e medcog_preprocessing/
-	$(PYTHON) -m pip install -e .
 	touch $(VENV)/bin/activate

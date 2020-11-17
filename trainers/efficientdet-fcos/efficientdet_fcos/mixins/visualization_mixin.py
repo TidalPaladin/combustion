@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from typing import Dict, Iterable, Optional, Tuple, Union
+
+import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from typing import Optional, Dict, Iterable, Union, Tuple
-import pytorch_lightning as pl
+from torch.utils.tensorboard import SummaryWriter
+
 from combustion.util import alpha_blend, apply_colormap, check_is_tensor, check_ndim_match
 from combustion.vision import to_8bit, visualize_bbox
-from torch.utils.tensorboard import SummaryWriter
+
 
 class VisualizationMixin:
 
@@ -32,14 +35,14 @@ class VisualizationMixin:
         if hasattr(self, "global_rank"):
             return self.__batch_counter * (self.global_rank + 1)
         else:
-            return self.__batch_counter 
+            return self.__batch_counter
 
     @property
     def global_example_count(self):
         if hasattr(self, "global_rank"):
             return self.__example_counter * (self.global_rank + 1)
         else:
-            return self.__example_counter 
+            return self.__example_counter
 
     @property
     def image_log_limit(self):
@@ -117,9 +120,9 @@ class VisualizationMixin:
         check_ndim_match(image, heatmap, "image", "heatmap")
 
         # TODO enable these once methods are under test in combustion
-        #if image.ndim > 3:
+        # if image.ndim > 3:
         #    check_shape(image, (None, 1, None, None), "image")
-        #else:
+        # else:
         #    check_shape(image, (1, None, None), "image")
 
         # expand grayscale image channel to 3 grayscale channels
@@ -140,8 +143,8 @@ class VisualizationMixin:
         # image and heatmap must both be on CPU
         heatmap = heatmap.clone()
         image = image.clone()
-        #heatmap = heatmap.cpu()
-        #image = image.cpu()
+        # heatmap = heatmap.cpu()
+        # image = image.cpu()
 
         # apply_colormap and alpha_blend expect a batch dim
         if heatmap.ndim == 3:
@@ -152,7 +155,7 @@ class VisualizationMixin:
         # loop over each class in the heatmap
         result = []
         for class_idx in range(heatmap.shape[-3]):
-            heatmap_channel = heatmap[..., class_idx:class_idx+1, :, :]
+            heatmap_channel = heatmap[..., class_idx : class_idx + 1, :, :]
 
             # apply colormap to heatmap channel
             heatmap_channel = apply_colormap(heatmap_channel)[:, :3, :, :]
@@ -172,13 +175,13 @@ class VisualizationMixin:
 
     @staticmethod
     def overlay_boxes(
-        image: Tensor, 
-        bbox: Tensor, 
-        classes: Tensor, 
+        image: Tensor,
+        bbox: Tensor,
+        classes: Tensor,
         scores: Optional[Tensor] = None,
-        class_names: Optional[dict] = None, 
-        pad_value: float = -1, 
-        **kwargs
+        class_names: Optional[dict] = None,
+        pad_value: float = -1,
+        **kwargs,
     ) -> Tensor:
         r"""
 
@@ -197,13 +200,13 @@ class VisualizationMixin:
 
         # TODO enable these once methods are under test in combustion
         # validate input shapes
-        #if image.ndim == 4: 
+        # if image.ndim == 4:
         #    check_shape(image, (None, 1, None, None), "image")
         #    check_shape(bbox, (None, None, 4), "image")
         #    check_shape(classes, (None, None, 1), "classes")
         #    if scores is not None:
         #        check_shape(scores, (None, None, 1), "scores")
-        #else:
+        # else:
         #    check_shape(image, (1, None, None), "image")
         #    check_shape(bbox, (None, 4), "image")
         #    check_shape(classes, (None, 1), "classes")
@@ -262,15 +265,8 @@ class VisualizationMixin:
             if classes_i.is_floating_point():
                 classes_i = classes_i.round().long()
 
-
             result_i = visualize_bbox(
-                image_i,
-                bbox_i,
-                classes_i,
-                scores_i,
-                class_names=class_names,
-                thickness=1,
-                **kwargs
+                image_i, bbox_i, classes_i, scores_i, class_names=class_names, thickness=1, **kwargs
             )
             result.append(result_i)
 
@@ -282,14 +278,15 @@ class VisualizationMixin:
 
     def log_heatmap(
         self,
-        logger: SummaryWriter, 
-        prefix: str, 
-        image: Tensor, 
-        heatmap: Tensor, 
-        step: int = 0, 
+        logger: SummaryWriter,
+        prefix: str,
+        image: Tensor,
+        heatmap: Tensor,
+        step: int = 0,
         class_dict: Optional[Dict[int, str]] = None,
         split_batches: Optional[bool] = None,
-        **kwargs
+        reduce_classes: bool = True,
+        **kwargs,
     ) -> None:
         r"""Logs a heatmap to a TensorBoard experiment
 
@@ -304,7 +301,7 @@ class VisualizationMixin:
                 Background image for the heatmap overlay
 
             heatmap (:class:`torch.Tensor`):
-                Heatmap to log. If ``heatmap`` has a different size than ``image`` it will be 
+                Heatmap to log. If ``heatmap`` has a different size than ``image`` it will be
                 adjusted to match.
 
             step (int):
@@ -329,6 +326,9 @@ class VisualizationMixin:
         check_is_tensor(image, "image")
         check_is_tensor(heatmap, "heatmap")
 
+        if reduce_classes:
+            heatmap = heatmap.max(dim=-3, keepdim=True).values
+
         # get images to display
         # shape = (C, *, 3, H, W)
         out_image = VisualizationMixin.overlay_heatmap(image, heatmap, **kwargs)
@@ -338,10 +338,18 @@ class VisualizationMixin:
 
         for i, class_result in enumerate(out_image):
             cls_name = i if class_dict is None else class_dict[i]
-            tag = f"{prefix}{cls_name}" 
+            tag = f"{prefix}{cls_name}" if not reduce_classes else f"{prefix}"
             self.add_images(logger, tag, class_result, step, split_batches=split_batches)
 
-    def add_images(self, logger: SummaryWriter, tag: str, x: Tensor, step: int = 0, split_batches: Optional[bool] = None, add_postfix: bool = True):
+    def add_images(
+        self,
+        logger: SummaryWriter,
+        tag: str,
+        x: Tensor,
+        step: int = 0,
+        split_batches: Optional[bool] = None,
+        add_postfix: bool = True,
+    ):
         split_batches = self.split_batches if split_batches is None else split_batches
 
         if x.ndim == 4:
@@ -363,15 +371,14 @@ class VisualizationMixin:
                 tag = f"{layer_name}.{param_name}"
                 self.logger.experiment.add_histogram(tag, param, global_step=self.trainer.global_step)
 
-
     @staticmethod
     def log_metrics(
-        logger: SummaryWriter, 
-        prefix: str, 
-        global_metrics: dict, 
-        local_metrics: Optional[dict] = None, 
+        logger: SummaryWriter,
+        prefix: str,
+        global_metrics: dict,
+        local_metrics: Optional[dict] = None,
         class_names: Optional[dict] = None,
-        step: int = 0
+        step: int = 0,
     ) -> Dict[str, Tensor]:
         # iterate over classes, logging per-class metrics
         result = {}
@@ -386,26 +393,23 @@ class VisualizationMixin:
             if "type_pairs" in global_cls.keys():
                 logger.add_pr_curve(
                     f"{super_tag}/global/type_pr",
-                    global_cls["type_pairs"][..., 1], 
+                    global_cls["type_pairs"][..., 1],
                     global_cls["type_pairs"][..., 0],
-                    step
+                    step,
                 )
             if "malig_pairs" in global_cls.keys():
                 logger.add_pr_curve(
                     f"{super_tag}/global/malig_pr",
-                    global_cls["malig_pairs"][..., 1], 
+                    global_cls["malig_pairs"][..., 1],
                     global_cls["malig_pairs"][..., 0],
-                    step
-            )
+                    step,
+                )
 
             # log local pr curves
             # TODO malig pairs
             if local_cls is not None and "type_pairs" in local_cls.keys():
                 logger.add_pr_curve(
-                    f"{super_tag}/local/type_pr",
-                    local_cls["type_pairs"][..., 1], 
-                    local_cls["type_pairs"][..., 0],
-                    step
+                    f"{super_tag}/local/type_pr", local_cls["type_pairs"][..., 1], local_cls["type_pairs"][..., 0], step
                 )
 
             # we dont log the rest here, just make a dict for EvalResult

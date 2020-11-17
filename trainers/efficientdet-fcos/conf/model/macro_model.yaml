@@ -2,30 +2,12 @@
 _target_: efficientdet_fcos.model.EfficientDetFCOS
 num_classes: 1
 params:
-  compound_coeff: 2
-  in_channels: 1
-  threshold: 0.2
+  compound_coeff: 0
+  num_classes: 91
+  threshold: 0.05
 
-  # you should probably have downsample ~= 2 ** (tail_strided_conv + 1)
-  downsample: 8
-  tail_strided_convs: 2
-  strides: [8, 16, 32, 64]
+  strides: [8, 16, 32]
   sizes: 
-    - [-1, 128]
-    - [128, 256]
-    - [256, 512]
-    - [512, 10000000]
-      #- [1024, 10000000]
-
-
-    
-      #criterion:
-      #  _target_: combustion.nn.FCOSLoss
-      #  params:
-      #    gamma: 2.0
-      #    strides: [8, 16, 32, 64, 128]
-      #    num_classes: 1
-      #    #reduction: mean
-      #    #neg_weight: 4
-      #    #smooth: false
-      #    #pos_weight: 0.8
+    - [-1, 64]
+    - [64, 128]
+    - [128, 10000000]

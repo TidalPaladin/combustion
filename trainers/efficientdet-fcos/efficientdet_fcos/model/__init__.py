@@ -1,5 +1,4 @@
-from .efficient_center_det import EfficientCenterDet
-from .mammogram_loss import MammogramLoss
+from .fcos import EfficientDetFCOS
 
 
-__all__ = ["EfficientCenterDet", "MammogramLoss"]
+__all__ = ["EfficientDetFCOS"]

@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from combustion.nn import MobileNetBlockConfig
-from combustion.vision.centernet import CenterNetMixin
+from combustion.vision import batch_box_target
 from torchvision.ops import batched_nms
 
 from .efficientdet import EfficientDet2d
@@ -254,7 +254,7 @@ class EfficientDetFCOS(EfficientDet2d):
 
         # pack boxes into a padded batch
         boxes = [boxes[(batch_idx == i).view(-1), :] for i in range(batch_size)]
-        boxes = CenterNetMixin.batch_box_target(boxes, pad_value)
+        boxes = batch_box_target(boxes, pad_value)
 
         return boxes, None
 
