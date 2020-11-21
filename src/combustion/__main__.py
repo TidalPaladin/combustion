@@ -102,13 +102,6 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
     Returns:
         The learning rate if one was found, otherwise ``None``.
     """
-    # store original precision, set trainer to 32 bit mode for stability
-    if "precision" in cfg.trainer["params"].keys():
-        precision = cfg.trainer["params"]["precision"]
-        cfg.trainer["params"]["precision"] = 32
-    else:
-        precision = 32
-
     lr = None
     try:
         model.prepare_data()
@@ -140,8 +133,6 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
         log.info("Learning rate auto-find failed, using learning rate specified in config")
         _exceptions.append(err)
     finally:
-        if "precision" in cfg.trainer["params"].keys():
-            cfg.trainer["params"]["precision"] = precision
         cfg.trainer["params"]["auto_lr_find"] = False
 
     return lr
