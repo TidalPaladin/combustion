@@ -191,10 +191,8 @@ class SerializeMixin:
     def load(
         path: str,
         fmt: Optional[str] = None,
-        transform: Optional[Callable[[Tensor], Any]] = None,
-        target_transform: Optional[Callable[[Tensor], Any]] = None,
         **kwargs,
-    ) -> HDF5Dataset:
+    ) -> Union[TorchDataset, HDF5Dataset]:
         r"""
         Loads the contents of a dataset previously saved with `save()`, returning a :class:`HDF5Dataset`.
 
@@ -219,10 +217,6 @@ class SerializeMixin:
                 and Torch files are matched by the ``.pth`` extension.
                 If a mix of ``hdf5`` and ``pth`` files are present in ``path``, ``fmt`` can be used
                 to ensure only the desired file types are loaded.
-            transform (callable, optional): A tranform to be applied to the data tensor
-                See `HDF5Dataset` for more details
-            target_transform (callable, optional): A tranform to be applied to the label tensor
-                See `HDF5Dataset` for more details
             **kwargs:  Forwarded to the constructors for :class:`HDF5Dataset` or :class:`TorchDataset`,
                 depending on what dataset is constructed.
         """
@@ -230,15 +224,15 @@ class SerializeMixin:
 
         # respect user choice of fmt
         if fmt == "hdf5":
-            return HDF5Dataset(path, transform, target_transform, **kwargs)
+            return HDF5Dataset(path, **kwargs)
         elif fmt == "torch":
-            return TorchDataset(path, transform, target_transform, **kwargs)
+            return TorchDataset(path, **kwargs)
 
         # try hdf5 first if present, then try torch
         elif ".h5" in str(path) or "hdf5" in str(path):
-            return HDF5Dataset(path, transform, target_transform, **kwargs)
+            return HDF5Dataset(path, **kwargs)
         elif list(glob.glob(pth_pattern)):
-            return TorchDataset(path, transform, target_transform, **kwargs)
+            return TorchDataset(path, **kwargs)
 
         else:
             raise FileNotFoundError(f"Could not find a target to load in path {path}")
@@ -400,6 +394,7 @@ class TorchDataset(TransformableDataset, SerializeMixin):
     def __init__(
         self,
         path: str,
+        length_override: Optional[int] = None,
         transform: Optional[Callable[[Tensor], Any]] = None,
         target_transform: Optional[Callable[[Tensor], Any]] = None,
         transforms: Optional[Callable[[Any], Any]] = None,
@@ -410,6 +405,13 @@ class TorchDataset(TransformableDataset, SerializeMixin):
         self.pattern = pattern
         pattern = os.path.join(path, pattern)
         self.files = sorted(list(glob.glob(pattern)))
+        if length_override is not None:
+            length_override = int(length_override)
+            if length_override <= 0:
+                raise ValueError(f"Expected length_override > 0, found {length_override}")
+            self.length_override = length_override
+        else:
+            self.length_override = None
 
     def __repr__(self):
         rep = f"TorchDataset({self.path}"
@@ -420,12 +422,19 @@ class TorchDataset(TransformableDataset, SerializeMixin):
         return rep
 
     def __getitem__(self, pos: int) -> Union[Tensor, Tuple[Tensor, ...]]:
+        if pos < 0 or pos > len(self):
+            raise IndexError(f"{pos}")
+        if self.length_override is not None:
+            pos = pos % len(self.files)
         target = self.files[pos]
         example = torch.load(target, map_location="cpu")
         return self.apply_transforms(list(example))
 
     def __len__(self):
-        return len(self.files)
+        if self.length_override is not None:
+            return self.length_override
+        else:
+            return len(self.files)
 
 
 def _write_shard(path, source, shard_size, shard_index=None, verbose=True, bar=_DefaultBar):

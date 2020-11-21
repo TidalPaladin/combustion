@@ -275,6 +275,15 @@ class TestTorchSerialize(TestSerialize):
                 for t1, t2 in zip(e1, e2):
                     assert torch.allclose(t1, t2)
 
+    @pytest.mark.parametrize("length", [1000, 2000])
+    def test_length_override(self, torch, tmp_path, dataset, input_file, data, length):
+        path = tmp_path
+        new_dataset = dataset.__class__.load(path, length_override=length)
+        assert len(new_dataset) == length
+        new_dataset[0]
+        new_dataset[length - 1]
+
+    # skip these inherited tests
     def test_preserves_attributes(self):
         pass
 
