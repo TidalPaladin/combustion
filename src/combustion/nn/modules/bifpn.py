@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
+from torch.utils.checkpoint import checkpoint as checkpoint_fn
 
 from combustion.util import double, single, triple
 
@@ -118,6 +119,7 @@ class _BiFPN(nn.Module):
         bn_epsilon: float = 4e-5,
         activation: nn.Module = HardSwish(),
         upsample_mode: str = "nearest",
+        checkpoint: bool = False,
     ):
         super().__init__()
         if float(epsilon) <= 0.0:
@@ -133,6 +135,7 @@ class _BiFPN(nn.Module):
         kernel_size = self.Tuple(kernel_size)
         stride = self.Tuple(stride)
         padding = tuple([(kernel - 1) // 2 for kernel in kernel_size])
+        self.checkpoint = bool(checkpoint)
 
         def conv(num_channels):
             return nn.Sequential(
@@ -150,6 +153,25 @@ class _BiFPN(nn.Module):
 
     def forward(self, inputs: List[Tensor]) -> List[Tensor]:
         """"""
+        if self.checkpoint and self.training and all([x.requires_grad for x in inputs]):
+            return self._extract_features_checkpointed(inputs)
+        else:
+            return self._extract_features(inputs)
+
+    @torch.jit.unused
+    def _extract_features_checkpointed(self, inputs: List[Tensor]) -> List[Tensor]:
+        outputs: List[Tensor] = []
+
+        for i, layer in enumerate(self.bifpn):
+            current_level = inputs[i]
+            previous_level = inputs[i - 1] if i > 0 else None
+            next_level = inputs[i + 1] if i < len(inputs) - 1 else None
+            output = checkpoint_fn(layer, current_level, previous_level, next_level)
+            outputs.append(output)
+
+        return outputs
+
+    def _extract_features(self, inputs: List[Tensor]) -> List[Tensor]:
         outputs: List[Tensor] = []
 
         for i, layer in enumerate(self.bifpn):
@@ -223,6 +245,10 @@ class BiFPN2d(_BiFPN, metaclass=_BiFPNMeta):
 
         upsample_mode (str):
             Upsampling mode to use. See :class:`torch.nn.Upsample`
+
+        checkpoint (bool):
+            Whether or not to use gradient checkpointing. Checkpointing saves memory at the cost of
+            added compute. See :func:`torch.utils.checkpoint.checkpoint` for more details.
 
     Shape:
         - Inputs: List of Tensors of shape :math:`(N, *C, *H, *W)` where :math:`*C, *H, *W` indicates
