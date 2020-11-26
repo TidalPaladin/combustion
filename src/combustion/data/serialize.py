@@ -7,6 +7,7 @@ import itertools
 import os
 import warnings
 from typing import Any, Callable, Iterable, Optional, Tuple, Union
+from pathlib import Path
 
 import torch
 from progress.bar import Bar, ChargingBar
@@ -127,8 +128,8 @@ def save_torch(
         verbose (bool, optional): If False, do not print progress updates during saving.
         bar (:class:`progress.bar.Bar`, optional): Progress bar class
     """
-    if not os.path.exists(path):
-        os.mkdir(path)
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
 
     if verbose:
         if hasattr(dataset, "__len__"):
@@ -139,7 +140,8 @@ def save_torch(
         bar = None
 
     for i, example in enumerate(dataset):
-        target = os.path.join(path, f"{prefix}{i}.pth")
+        target = Path(path, f"{prefix}{i}.pth")
+        target.parent.mkdir(parents=True, exist_ok=True)
         torch.save(example, target)
         if bar is not None:
             bar.next()
