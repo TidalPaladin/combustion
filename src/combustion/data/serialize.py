@@ -6,6 +6,7 @@ import glob
 import itertools
 import os
 import warnings
+from pathlib import Path
 from typing import Any, Callable, Iterable, Optional, Tuple, Union
 
 import torch
@@ -112,7 +113,11 @@ def save_hdf5(
 
 
 def save_torch(
-    dataset: Dataset, path: str, prefix: str = "example_", verbose: bool = True, bar: Bar = _DefaultBar
+    dataset: Dataset,
+    path: str,
+    prefix: Union[str, Callable[[int, Any], str]] = "example_",
+    verbose: bool = True,
+    bar: Bar = _DefaultBar,
 ) -> None:
     r"""Saves the contents of the dataset to multiple files using :func:`torch.save`.
 
@@ -121,14 +126,33 @@ def save_torch(
 
     Args:
         dataset (Dataset): The dataset to save.
+
         path (str): The filepath to save to. Ex ``foo/bar``.
-        prefix (str, optional): A prefix to append to each ``.pth`` file. Output files will be of
-            the form ``{path}/{prefix}{index}.pth``
+
+        prefix (str or callable):
+            Either a string prefix to append to each ``.pth`` file, or a callable
+            that returns a such a string prefix given the example index and example tensors as input.
+            Example indices are automatically appended to the target filepath when a string prefix is given,
+            but not when a callable prefix is given.
+            Output files will be of the form ``{path}/{prefix}{index}.pth``, or
+            ``{path}/{prefix}.pth`` when a callable prefix is provided.
+
         verbose (bool, optional): If False, do not print progress updates during saving.
+
         bar (:class:`progress.bar.Bar`, optional): Progress bar class
+
+    .. Example:
+        >>> str_prefix = "example_"
+        >>> save_torch(ds, path="root", prefix=str_prefix)
+        >>> # creates files root/example_{index}.pth
+        >>>
+        >>> callable_prefix = lambda pos, example: f"class_{example[1].item()}/example_{pos}"
+        >>> save_torch(ds, path="root", prefix=callable_prefix)
+        >>> # creates files root/class_{label_id}/example_{index}.pth
+
     """
-    if not os.path.exists(path):
-        os.mkdir(path)
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
 
     if verbose:
         if hasattr(dataset, "__len__"):
@@ -139,7 +163,15 @@ def save_torch(
         bar = None
 
     for i, example in enumerate(dataset):
-        target = os.path.join(path, f"{prefix}{i}.pth")
+        if isinstance(prefix, str):
+            target = Path(path, f"{prefix}{i}.pth")
+        else:
+            example_prefix = prefix(i, example)
+            if not isinstance(example_prefix, str):
+                raise ValueError(f"Callable `prefix` must return a str, got {type(example_prefix)}")
+            target = Path(path, f"{example_prefix}.pth")
+
+        target.parent.mkdir(parents=True, exist_ok=True)
         torch.save(example, target)
         if bar is not None:
             bar.next()
