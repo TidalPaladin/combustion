@@ -34,7 +34,7 @@ class TestSerialize:
 
     @pytest.fixture
     def data(self, torch):
-        return [(torch.rand(1, 10, 10), torch.rand(1, 5)) for x in range(10)]
+        return [(torch.rand(1, 10, 10), torch.randint(1, (1,))) for x in range(10)]
 
     @pytest.fixture(params=["map", "iterable"])
     def dataset(self, request, torch, data):
@@ -83,7 +83,7 @@ class TestSerialize:
         assert isinstance(new_dataset, HDF5Dataset)
         for e1, e2 in zip(data, new_dataset):
             for t1, t2 in zip(e1, e2):
-                assert torch.allclose(t1, t2)
+                assert torch.allclose(t1.float(), t2.float())
 
     def test_preserves_attributes(self, h5py, tmp_path, dataset, save_path):
         shard = 0
@@ -231,9 +231,27 @@ class TestTorchSerialize(TestSerialize):
         os.makedirs(path)
         return path
 
-    def test_save(self, h5py, tmp_path, dataset, save_path):
-        dataset.save(save_path, fmt=self.fmt)
-        target = os.path.join(save_path, "example_0.pth")
+    @pytest.mark.parametrize(
+        "prefix",
+        [
+            "example_",
+            os.path.join("subdir", "example_"),
+            pytest.param(
+                lambda pos, example: os.path.join("subdir", f"example_{pos}.pth"), id="subdir/example_{pos}.pth"
+            ),
+            pytest.param(
+                lambda pos, example: os.path.join(f"class_{example[1].item()}", f"example_{pos}.pth"),
+                id="class_{label}/example_{pos}.pth",
+            ),
+        ],
+    )
+    def test_save(self, h5py, tmp_path, dataset, save_path, prefix):
+        dataset.save(save_path, fmt=self.fmt, prefix=prefix)
+        first_example = next(iter(dataset))
+        if isinstance(prefix, str):
+            target = os.path.join(save_path, f"{prefix}0.pth")
+        else:
+            target = os.path.join(save_path, f"{prefix(0, first_example)}.pth")
         check_file_exists(target)
 
     def test_create_directory_on_save(self, h5py, tmp_path, dataset, save_path):
