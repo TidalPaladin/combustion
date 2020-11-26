@@ -44,6 +44,9 @@ class TrainingTransform:
         assert not bbox.numel() or bbox.shape[-1] == 4
         assert not types.numel() or types.shape[-1] == 1
 
+        # ensure nonzero box size
+        bbox[..., 2:].clamp_min_(1e-3)
+
         # convert targets to numpy
         bbox, types = [x.numpy() for x in (bbox, types)]
 
