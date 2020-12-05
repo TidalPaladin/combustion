@@ -1,10 +1,10 @@
 .PHONY: docs docker docker-dev clean clean-venv pre-commit quality run style test venv 
 
-PY_VER=py37
+PY_VER=py38
 QUALITY_DIRS=src tests setup.py
 CLEAN_DIRS=src tests
 VENV=$(shell pwd)/venv
-PYTHON=$(VENV)/bin/python3
+PYTHON=$(VENV)/bin/python
 
 SPHINXBUILD=$(VENV)/bin/sphinx-build
 #SPHINXOPTS=-W
@@ -128,7 +128,7 @@ upload-test: package
 venv: $(VENV)/bin/activate
 
 $(VENV)/bin/activate: setup.py 
-	test -d $(VENV) || virtualenv $(VENV)
+	test -d $(VENV) || python3.8 -m venv $(VENV)
 	$(PYTHON) -m pip install -U pip && \
 		$(PYTHON) -m pip install -e .[dev] && \
 		touch $(VENV)/bin/activate

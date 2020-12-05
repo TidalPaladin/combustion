@@ -3,7 +3,7 @@
 
 import math
 from copy import deepcopy
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -150,10 +150,8 @@ class _EfficientNet(nn.Module):
         min_width: Optional[int] = None,
         stem: Optional[nn.Module] = None,
         head: Optional[nn.Module] = None,
-        checkpoint: bool = False,
     ):
         super().__init__()
-        self._checkpoint = checkpoint
         self.__block_configs = tuple(deepcopy(block_configs))
         self.__width_coeff = float(width_coeff)
         self.__depth_coeff = float(depth_coeff)
@@ -244,28 +242,6 @@ class _EfficientNet(nn.Module):
                 be returned. If ``return_all=True``, return features extracted from every
                 block group in the model.
         """
-        if not self.training or not self._checkpoint:
-            return self._extract_features_no_checkpoint(inputs, return_all)
-        else:
-            return self._extract_features_checkpointed(inputs, return_all)
-
-    def _extract_features_no_checkpoint(self, inputs: Tensor, return_all: bool) -> List[Tensor]:
-        outputs: List[Tensor] = []
-        x = self.stem(inputs)
-        prev_x = x
-
-        for block in self.blocks:
-            x = block(prev_x)
-
-            if return_all or prev_x.shape[-1] > x.shape[-1]:
-                outputs.append(x)
-
-            prev_x = x
-
-        return outputs
-
-    @torch.jit.unused
-    def _extract_features_checkpointed(self, inputs: Tensor, return_all: bool) -> List[Tensor]:
         outputs: List[Tensor] = []
         x = self.stem(inputs)
         prev_x = x
@@ -329,7 +305,7 @@ class _EfficientNet(nn.Module):
         return int(math.ceil(depth_coeff * num_repeats))
 
     @classmethod
-    def from_predefined(cls, compound_coeff: int, **kwargs) -> "_EfficientNet":
+    def from_predefined(cls, compound_coeff: int, block_overrides: Dict[str, Any] = {}, **kwargs) -> "_EfficientNet":
         r"""Creates an EfficientNet model using one of the parameterizations defined in the
         `EfficientNet paper`_.
 
@@ -337,6 +313,9 @@ class _EfficientNet(nn.Module):
             compound_coeff (int):
                 Compound scaling parameter :math:`\phi`. For example, to construct EfficientNet-B0, set
                 ``compound_coeff=0``.
+
+            block_overrides (dict):
+                Overrides to be applied to each :class:`combustion.nn.MobileNetBlockConfig`.
 
             **kwargs:
                 Additional parameters/overrides for model constructor.
@@ -352,8 +331,14 @@ class _EfficientNet(nn.Module):
         depth_coeff = alpha ** compound_coeff
         width_coeff = beta ** compound_coeff
 
+        # apply config overrides at each block
+        block_configs = deepcopy(cls.DEFAULT_BLOCKS)
+        for k, v in block_overrides.items():
+            for config in block_configs:
+                setattr(config, str(k), v)
+
         final_kwargs = {
-            "block_configs": cls.DEFAULT_BLOCKS,
+            "block_configs": block_configs,
             "width_coeff": width_coeff,
             "depth_coeff": depth_coeff,
             "width_divisor": width_divisor,
@@ -455,11 +440,6 @@ class EfficientNet2d(_EfficientNet, metaclass=_EfficientNetMeta):
         head (:class:`torch.nn.Module`):
             An optional head to use for the model. By default, no head will be used
             and ``forward`` will return a list of tensors containing extracted features.
-
-        checkpoint (bool):
-            If true, use checkpointing on each block in the backbone.
-            Checkpointing saves memory at the cost of added compute.
-            See :func:`torch.utils.checkpoint.checkpoint` for more details.
 
     Shapes
         * Input: :math:`(N, C, H, W)`

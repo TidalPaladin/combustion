@@ -79,8 +79,30 @@ class BiFPNBaseTest:
         layer = model
         output = layer(inputs)
 
+        for x in output:
+            assert x.requires_grad
+
         scalar = sum([x.sum() for x in output])
         scalar.backward()
+
+    @pytest.mark.parametrize("training", [True, False])
+    @pytest.mark.parametrize("requires_grad", [True, False])
+    def test_checkpoint(self, model_class, levels, num_channels, data, training, requires_grad):
+        model = model_class(num_channels, levels, checkpoint=True)
+        for x in data:
+            x.requires_grad = requires_grad
+        model.train() if training else model.eval()
+
+        output = model(data)
+        for x in output:
+            assert not requires_grad or x.requires_grad
+            if training and requires_grad:
+                assert "CheckpointFunctionBackward" in x.grad_fn.__class__.__name__
+            else:
+                assert "CheckpointFunctionBackward" not in x.grad_fn.__class__.__name__
+
+        del model
+        gc.collect()
 
 
 class TestBiFPN2d(BiFPNBaseTest):

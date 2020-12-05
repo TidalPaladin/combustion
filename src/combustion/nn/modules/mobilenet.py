@@ -4,8 +4,10 @@
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
+import torch
 import torch.nn as nn
 from torch import Tensor
+from torch.utils.checkpoint import checkpoint as checkpoint_fn
 
 from combustion.util import double, single, triple
 
@@ -55,6 +57,7 @@ class _MobileNetConvBlockNd(nn.Module):
         padding_mode: str = "constant",
         global_se: bool = True,
         se_pool_type: Union[str, type] = "avg",
+        checkpoint: bool = False,
     ):
         super().__init__()
         kernel_size = self.Tuple(kernel_size)
@@ -74,6 +77,7 @@ class _MobileNetConvBlockNd(nn.Module):
         self._use_skipconn = bool(use_skipconn)
         self._global_se = bool(global_se)
         self._se_pool_type = se_pool_type
+        self._checkpoint = bool(checkpoint)
 
         # Expansion phase (Inverted Bottleneck)
         in_filter, out_filter = self._input_filters, int(self._input_filters * self._expand_ratio)
@@ -132,6 +136,16 @@ class _MobileNetConvBlockNd(nn.Module):
         )
 
     def forward(self, inputs: Tensor) -> Tensor:
+        if self._checkpoint and self.training and inputs.requires_grad:
+            return self._extract_features_checkpointed(inputs)
+        else:
+            return self._extract_features(inputs)
+
+    @torch.jit.unused
+    def _extract_features_checkpointed(self, inputs: Tensor) -> Tensor:
+        return checkpoint_fn(self._extract_features, inputs)
+
+    def _extract_features(self, inputs: Tensor) -> Tensor:
         # Expansion and Depthwise Convolution
         x = inputs
         if self.expand is not None:
@@ -270,6 +284,10 @@ class MobileNetConvBlock2d(_MobileNetConvBlockNd, metaclass=_MobileNetMeta):
             Type of pooling to use for squeeze/excitation. This only has an effect when ``global_se`` is
             ``True``. See :class:`combustion.nn.SqueezeExcite2d`.
 
+        checkpoint (bool):
+            Whether or not to use gradient checkpointing across this block.
+            See :func:`torch.utils.checkpoint.checkpoint`.
+
     .. _Searching for MobileNetV3:
         https://arxiv.org/abs/1905.02244
     """
@@ -342,6 +360,13 @@ class MobileNetBlockConfig:
         se_pool_type (str or type):
             Type of pooling to use for squeeze/excitation. This only has an effect when ``global_se`` is
             ``True``. See :class:`combustion.nn.SqueezeExcite2d`.
+
+        checkpoint (bool):
+            Whether or not to use gradient checkpointing across this block.
+            See :func:`torch.utils.checkpoint.checkpoint`.
+
+        num_repeats (int):
+            If given, return a sequence of ``num_repeats`` identical blocks.
     """
     input_filters: int
     output_filters: int
@@ -359,6 +384,7 @@ class MobileNetBlockConfig:
     se_pool_type: Union[str, type] = "avg"
 
     num_repeats: int = 1
+    checkpoint: bool = False
 
     def get_1d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock1d, nn.Sequential]:
         return MobileNetConvBlock1d.from_config(self)

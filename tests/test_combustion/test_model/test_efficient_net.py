@@ -19,20 +19,18 @@ class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     def data(self):
         raise NotImplementedError()
 
-    @pytest.fixture(params=[True, False])
-    def model(self, model_type, request):
-        checkpoint = request.param
+    @pytest.fixture
+    def model(self, model_type):
         block1 = MobileNetBlockConfig(4, 8, 3, num_repeats=2, stride=2)
         block2 = MobileNetBlockConfig(8, 16, 3, num_repeats=1, stride=2)
         blocks = [block1, block2]
-        return model_type(blocks, 1.0, 1.0, checkpoint=checkpoint)
+        return model_type(blocks, 1.0, 1.0)
 
-    @pytest.mark.parametrize("checkpoint", [True, False])
-    def test_construct(self, model_type, checkpoint):
+    def test_construct(self, model_type):
         block1 = MobileNetBlockConfig(4, 8, 3, num_repeats=2)
         block2 = MobileNetBlockConfig(8, 16, 3, num_repeats=1)
         blocks = [block1, block2]
-        m = model_type(blocks, 1.0, 1.0, checkpoint=checkpoint)
+        m = model_type(blocks, 1.0, 1.0)
         del m
 
     def test_forward(self, model, data):

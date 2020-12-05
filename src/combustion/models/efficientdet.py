@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import List, Optional
+from copy import deepcopy
+from typing import Any, Dict, List, Optional
 
 import torch
 import torch.nn as nn
@@ -158,7 +159,7 @@ class _EfficientDet(_EfficientNet):
         return output
 
     @classmethod
-    def from_predefined(cls, compound_coeff: int, **kwargs) -> "_EfficientDet":
+    def from_predefined(cls, compound_coeff: int, block_overrides: Dict[str, Any] = {}, **kwargs) -> "_EfficientDet":
         r"""Creates an EfficientDet model using one of the parameterizations defined in the
         `EfficientDet paper`_.
 
@@ -166,6 +167,9 @@ class _EfficientDet(_EfficientNet):
             compound_coeff (int):
                 Compound scaling parameter :math:`\phi`. For example, to construct EfficientDet-D0, set
                 ``compound_coeff=0``.
+
+            block_overrides (dict):
+                Overrides to be applied to each :class:`combustion.nn.MobileNetBlockConfig`.
 
             **kwargs:
                 Additional parameters/overrides for model constructor.
@@ -185,8 +189,14 @@ class _EfficientDet(_EfficientNet):
         fpn_repeats = 3 + compound_coeff
         fpn_levels = [3, 5, 7, 8, 9]
 
+        # apply config overrides at each block
+        block_configs = deepcopy(cls.DEFAULT_BLOCKS)
+        for k, v in block_overrides.items():
+            for config in block_configs:
+                setattr(config, str(k), v)
+
         final_kwargs = {
-            "block_configs": cls.DEFAULT_BLOCKS,
+            "block_configs": block_configs,
             "width_coeff": width_coeff,
             "depth_coeff": depth_coeff,
             "width_divisor": width_divisor,

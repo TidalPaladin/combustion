@@ -3,7 +3,6 @@
 
 from .auroc import AUROC, BoxAUROC
 from .average_precision import BoxAveragePrecision
-from .fbeta import Fbeta
 
 
-__all__ = ["AUROC", "BoxAveragePrecision", "BoxAUROC", "Fbeta"]
+__all__ = ["AUROC", "BoxAveragePrecision", "BoxAUROC"]

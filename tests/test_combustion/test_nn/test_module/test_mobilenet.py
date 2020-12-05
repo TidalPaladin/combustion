@@ -99,6 +99,19 @@ class TestMobileNetConvBlock1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         model = model_type.from_config(config)
         assert isinstance(model, model_type)
 
+    @pytest.mark.parametrize("requires_grad", [True, False])
+    @pytest.mark.parametrize("training", [True, False])
+    def test_checkpoint(self, model_type, data, requires_grad, training):
+        model = model_type(4, 4, 3, drop_connect_rate=0.1, squeeze_excite_ratio=2, expand_ratio=2, checkpoint=True)
+        data.requires_grad = requires_grad
+        model.train() if training else model.eval()
+        output = model(data)
+
+        if requires_grad and training:
+            assert "CheckpointFunctionBackward" in output.grad_fn.__class__.__name__
+        else:
+            assert "CheckpointFunctionBackward" not in output.grad_fn.__class__.__name__
+
 
 class TestMobileNetConvBlock2d(TestMobileNetConvBlock1d):
     @pytest.fixture

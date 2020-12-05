@@ -6,6 +6,7 @@ import glob
 import itertools
 import os
 import warnings
+from pathlib import Path
 from typing import Any, Callable, Iterable, Optional, Tuple, Union
 
 import torch
@@ -112,7 +113,11 @@ def save_hdf5(
 
 
 def save_torch(
-    dataset: Dataset, path: str, prefix: str = "example_", verbose: bool = True, bar: Bar = _DefaultBar
+    dataset: Dataset,
+    path: str,
+    prefix: Union[str, Callable[[int, Any], str]] = "example_",
+    verbose: bool = True,
+    bar: Bar = _DefaultBar,
 ) -> None:
     r"""Saves the contents of the dataset to multiple files using :func:`torch.save`.
 
@@ -121,14 +126,33 @@ def save_torch(
 
     Args:
         dataset (Dataset): The dataset to save.
+
         path (str): The filepath to save to. Ex ``foo/bar``.
-        prefix (str, optional): A prefix to append to each ``.pth`` file. Output files will be of
-            the form ``{path}/{prefix}{index}.pth``
+
+        prefix (str or callable):
+            Either a string prefix to append to each ``.pth`` file, or a callable
+            that returns a such a string prefix given the example index and example tensors as input.
+            Example indices are automatically appended to the target filepath when a string prefix is given,
+            but not when a callable prefix is given.
+            Output files will be of the form ``{path}/{prefix}{index}.pth``, or
+            ``{path}/{prefix}.pth`` when a callable prefix is provided.
+
         verbose (bool, optional): If False, do not print progress updates during saving.
+
         bar (:class:`progress.bar.Bar`, optional): Progress bar class
+
+    .. Example:
+        >>> str_prefix = "example_"
+        >>> save_torch(ds, path="root", prefix=str_prefix)
+        >>> # creates files root/example_{index}.pth
+        >>>
+        >>> callable_prefix = lambda pos, example: f"class_{example[1].item()}/example_{pos}"
+        >>> save_torch(ds, path="root", prefix=callable_prefix)
+        >>> # creates files root/class_{label_id}/example_{index}.pth
+
     """
-    if not os.path.exists(path):
-        os.mkdir(path)
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
 
     if verbose:
         if hasattr(dataset, "__len__"):
@@ -139,7 +163,15 @@ def save_torch(
         bar = None
 
     for i, example in enumerate(dataset):
-        target = os.path.join(path, f"{prefix}{i}.pth")
+        if isinstance(prefix, str):
+            target = Path(path, f"{prefix}{i}.pth")
+        else:
+            example_prefix = prefix(i, example)
+            if not isinstance(example_prefix, str):
+                raise ValueError(f"Callable `prefix` must return a str, got {type(example_prefix)}")
+            target = Path(path, f"{example_prefix}.pth")
+
+        target.parent.mkdir(parents=True, exist_ok=True)
         torch.save(example, target)
         if bar is not None:
             bar.next()
@@ -191,10 +223,8 @@ class SerializeMixin:
     def load(
         path: str,
         fmt: Optional[str] = None,
-        transform: Optional[Callable[[Tensor], Any]] = None,
-        target_transform: Optional[Callable[[Tensor], Any]] = None,
         **kwargs,
-    ) -> HDF5Dataset:
+    ) -> Union[TorchDataset, HDF5Dataset]:
         r"""
         Loads the contents of a dataset previously saved with `save()`, returning a :class:`HDF5Dataset`.
 
@@ -219,10 +249,6 @@ class SerializeMixin:
                 and Torch files are matched by the ``.pth`` extension.
                 If a mix of ``hdf5`` and ``pth`` files are present in ``path``, ``fmt`` can be used
                 to ensure only the desired file types are loaded.
-            transform (callable, optional): A tranform to be applied to the data tensor
-                See `HDF5Dataset` for more details
-            target_transform (callable, optional): A tranform to be applied to the label tensor
-                See `HDF5Dataset` for more details
             **kwargs:  Forwarded to the constructors for :class:`HDF5Dataset` or :class:`TorchDataset`,
                 depending on what dataset is constructed.
         """
@@ -230,15 +256,15 @@ class SerializeMixin:
 
         # respect user choice of fmt
         if fmt == "hdf5":
-            return HDF5Dataset(path, transform, target_transform, **kwargs)
+            return HDF5Dataset(path, **kwargs)
         elif fmt == "torch":
-            return TorchDataset(path, transform, target_transform, **kwargs)
+            return TorchDataset(path, **kwargs)
 
         # try hdf5 first if present, then try torch
         elif ".h5" in str(path) or "hdf5" in str(path):
-            return HDF5Dataset(path, transform, target_transform, **kwargs)
+            return HDF5Dataset(path, **kwargs)
         elif list(glob.glob(pth_pattern)):
-            return TorchDataset(path, transform, target_transform, **kwargs)
+            return TorchDataset(path, **kwargs)
 
         else:
             raise FileNotFoundError(f"Could not find a target to load in path {path}")
@@ -400,6 +426,7 @@ class TorchDataset(TransformableDataset, SerializeMixin):
     def __init__(
         self,
         path: str,
+        length_override: Optional[int] = None,
         transform: Optional[Callable[[Tensor], Any]] = None,
         target_transform: Optional[Callable[[Tensor], Any]] = None,
         transforms: Optional[Callable[[Any], Any]] = None,
@@ -410,6 +437,13 @@ class TorchDataset(TransformableDataset, SerializeMixin):
         self.pattern = pattern
         pattern = os.path.join(path, pattern)
         self.files = sorted(list(glob.glob(pattern)))
+        if length_override is not None:
+            length_override = int(length_override)
+            if length_override <= 0:
+                raise ValueError(f"Expected length_override > 0, found {length_override}")
+            self.length_override = length_override
+        else:
+            self.length_override = None
 
     def __repr__(self):
         rep = f"TorchDataset({self.path}"
@@ -420,12 +454,19 @@ class TorchDataset(TransformableDataset, SerializeMixin):
         return rep
 
     def __getitem__(self, pos: int) -> Union[Tensor, Tuple[Tensor, ...]]:
+        if pos < 0 or pos > len(self):
+            raise IndexError(f"{pos}")
+        if self.length_override is not None:
+            pos = pos % len(self.files)
         target = self.files[pos]
         example = torch.load(target, map_location="cpu")
         return self.apply_transforms(list(example))
 
     def __len__(self):
-        return len(self.files)
+        if self.length_override is not None:
+            return self.length_override
+        else:
+            return len(self.files)
 
 
 def _write_shard(path, source, shard_size, shard_index=None, verbose=True, bar=_DefaultBar):
