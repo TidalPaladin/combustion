@@ -5,6 +5,7 @@ from .activations import HardSigmoid, HardSwish, Swish
 from .loss import (
     CategoricalFocalLoss,
     CenterNetLoss,
+    CompleteIoULoss,
     FCOSLoss,
     FocalLoss,
     FocalLossWithLogits,
@@ -74,6 +75,7 @@ __all__ = [
     "Conv1d",
     "ConvTranspose1d",
     "ClampAndNormalize",
+    "CompleteIoULoss",
     "DownSample3d",
     "DropConnect",
     "DynamicSamePad",

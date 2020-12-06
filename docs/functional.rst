@@ -23,6 +23,14 @@ Convolution
 ----------------------------------
 .. autofunction:: combustion.nn.functional.fourier_conv2d
 
+Loss Functions
+----------------------------------
+
+.. class:: combustion.nn.functional.complete_iou_loss
+
+  Functional form of :class:`combustion.nn.CompleteIoULoss`
+
+
 Utilities
 ----------------------------------
 .. autofunction:: combustion.nn.functional.patch_dynamic_same_pad

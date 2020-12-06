@@ -134,6 +134,10 @@ Loss Functions
 .. autoclass:: combustion.nn.CenterNetLoss
     :members:
 
+.. autoclass:: combustion.nn.CompleteIoULoss
+    :members:
+
+
 Focal Loss 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 .. autofunction:: combustion.nn.focal_loss_with_logits

@@ -1,13 +1,27 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import pytest
 import torch
 
+from combustion.nn import CompleteIoULoss
 from combustion.nn.functional import complete_iou_loss
 
 
-class TestCompleteIouLossFunctional:
-    def test_basic_example(self):
+class TestCompleteIouLoss:
+    @pytest.fixture(
+        params=[
+            pytest.param(True, id="functional"),
+            pytest.param(False, id="class"),
+        ]
+    )
+    def criterion(self, request):
+        if request.param:
+            return lambda x, y: complete_iou_loss(x, y, reduction="none")
+        else:
+            return CompleteIoULoss(reduction="none")
+
+    def test_basic_example(self, criterion):
         inputs = torch.tensor(
             [
                 [1, 1, 10, 10],
@@ -26,17 +40,17 @@ class TestCompleteIouLossFunctional:
             ]
         )
 
-        loss = complete_iou_loss(inputs, targets, reduction="none")
+        loss = criterion(inputs, targets)
         expected = torch.tensor([0.00, 0.8125, 0.7812, 0.7500])
         assert torch.allclose(loss, expected, atol=0.001)
 
-    def test_random_example(self):
+    def test_random_example(self, criterion):
         inputs = torch.rand(32, 4)
         targets = torch.rand(32, 4)
-        loss = complete_iou_loss(inputs, targets, reduction="none")
+        loss = criterion(inputs, targets)
         assert not loss.isnan().any()
 
-    def test_bad_example(self):
+    def test_bad_example(self, criterion):
         inputs = torch.tensor(
             [
                 [1, 1, 1, 1],
@@ -57,10 +71,10 @@ class TestCompleteIouLossFunctional:
             ]
         )
 
-        loss = complete_iou_loss(inputs, targets, reduction="none")
+        loss = criterion(inputs, targets)
         assert not loss.isnan().any()
 
-    def test_differentiable(self):
+    def test_differentiable(self, criterion):
         inputs = torch.tensor(
             [
                 [1, 1, 10, 10],
@@ -68,7 +82,7 @@ class TestCompleteIouLossFunctional:
                 [1, 1, 1, 1],
                 [1, 1, 1, 1],
             ]
-        )
+        ).float()
 
         targets = torch.tensor(
             [
@@ -79,5 +93,5 @@ class TestCompleteIouLossFunctional:
             ]
         )
         inputs.requires_grad = True
-        loss = complete_iou_loss(inputs, targets)
+        loss = criterion(inputs, targets)
         loss.sum().backward()
