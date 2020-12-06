@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import pytest
-import torch
 import os
-from torch import Tensor
 from typing import Optional
 
+import pytest
+import torch
+from torch import Tensor
+
 from combustion.nn import FCOSLoss
-from combustion.vision import visualize_bbox
 from combustion.util import alpha_blend, apply_colormap
+from combustion.vision import visualize_bbox
 
 
 class TestFCOSLoss:

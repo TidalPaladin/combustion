@@ -8,6 +8,7 @@ from .conv import DownSample3d, UpSample2d, UpSample3d
 from .dropconnect import DropConnect
 from .dynamic_pad import DynamicSamePad
 from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
+from .fpn_shared_head import SharedDecoder1d, SharedDecoder2d, SharedDecoder3d
 from .global_attention_upsample import AttentionUpsample1d, AttentionUpsample2d, AttentionUpsample3d
 from .match_shapes import MatchShapes
 from .mobilenet import MobileNetBlockConfig, MobileNetConvBlock1d, MobileNetConvBlock2d, MobileNetConvBlock3d
@@ -55,4 +56,7 @@ __all__ = [
     "RASPPLite1d",
     "RASPPLite2d",
     "RASPPLite3d",
+    "SharedDecoder1d",
+    "SharedDecoder2d",
+    "SharedDecoder3d",
 ]

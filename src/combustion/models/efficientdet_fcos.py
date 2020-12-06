@@ -8,10 +8,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
+from torchvision.ops import batched_nms
 
 from combustion.nn import MobileNetBlockConfig
 from combustion.vision import batch_box_target
-from torchvision.ops import batched_nms
 
 from .efficientdet import EfficientDet2d
 

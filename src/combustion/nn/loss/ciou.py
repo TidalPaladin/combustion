@@ -21,12 +21,12 @@ def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean") 
     targets = targets.float().clone()
 
     # convert from delta coords to absolute
-    #pred_center = (inputs[..., 2:] - inputs[..., :2]).div(2)
-    #target_center = (targets[..., 2:] - targets[..., :2]).div(2)
-    #inputs[..., 2:].add_(pred_center)
-    #inputs[..., :2].neg_().add_(pred_center)
-    #targets[..., 2:].add_(target_center)
-    #targets[..., :2].neg_().add_(target_center)
+    # pred_center = (inputs[..., 2:] - inputs[..., :2]).div(2)
+    # target_center = (targets[..., 2:] - targets[..., :2]).div(2)
+    # inputs[..., 2:].add_(pred_center)
+    # inputs[..., :2].neg_().add_(pred_center)
+    # targets[..., 2:].add_(target_center)
+    # targets[..., :2].neg_().add_(target_center)
     inputs[..., :2] = inputs[..., :2].neg()
     targets[..., :2] = targets[..., :2].neg()
 

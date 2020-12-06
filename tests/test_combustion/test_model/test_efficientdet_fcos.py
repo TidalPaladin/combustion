@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 import gc
 import os
+from typing import Optional
 
 import pytest
 import torch
 from torch import Tensor
-from typing import Optional
 
 from combustion.models import EfficientDetFCOS
-from combustion.nn import MobileNetBlockConfig, FCOSLoss
+from combustion.nn import FCOSLoss, MobileNetBlockConfig
 from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
 from combustion.vision import visualize_bbox
 
@@ -169,7 +169,6 @@ class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         image_size = 512
         num_classes = 1
         batch_size = 2
-        center_radius = 2
         strides = [8, 16, 32, 64, 128]
         sizes = [(image_size // stride,) * 2 for stride in strides]
 
@@ -218,11 +217,10 @@ class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         image_size = 512
         num_classes = 1
         batch_size = 2
-        center_radius = 2
         strides = [8, 16, 32, 64, 128]
         sizes = [(image_size // stride,) * 2 for stride in strides]
 
-        img = torch.zeros(batch_size, 1, image_size, image_size)
+        torch.zeros(batch_size, 1, image_size, image_size)
         pred_cls = [torch.rand(batch_size, num_classes, *size).sub_(0.45).clamp_min_(0) for size in sizes]
         pred_reg = [torch.rand(batch_size, 4, *size).mul_(image_size / 4).round_().clamp_min_(24) for size in sizes]
         pred_centerness = [torch.rand(batch_size, 1, *size) for size in sizes]

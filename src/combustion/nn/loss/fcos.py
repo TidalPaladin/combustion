@@ -12,6 +12,7 @@ from combustion.util import check_dimension, check_dimension_match, check_is_ten
 from .ciou import CompleteIoULoss
 from .focal import FocalLossWithLogits
 
+
 IGNORE = -1
 INF = 10000000
 
@@ -24,7 +25,6 @@ DEFAULT_INTEREST_RANGE: Tuple[Tuple[int, int], ...] = (
     (256, 512),  # stride=64
     (512, 10000000),  # stride=128
 )
-
 
 
 class FCOSLoss:
@@ -231,7 +231,13 @@ class FCOSLoss:
         num_boxes = bbox.shape[-2]
         h = torch.arange(size_target[0], dtype=bbox.dtype, device=bbox.device)
         w = torch.arange(size_target[1], dtype=bbox.dtype, device=bbox.device)
-        mask = torch.stack(torch.meshgrid(h, w), 0).mul_(stride).add_(int(stride / 2)).unsqueeze_(0).expand(num_boxes, -1, -1, -1)
+        mask = (
+            torch.stack(torch.meshgrid(h, w), 0)
+            .mul_(stride)
+            .add_(int(stride / 2))
+            .unsqueeze_(0)
+            .expand(num_boxes, -1, -1, -1)
+        )
 
         # get edge coordinates of each box based on whole box or center sampled
         lower_bound = bbox[..., :2]
@@ -245,8 +251,8 @@ class FCOSLoss:
             upper_bound = torch.min(upper_bound, center + offset[None])
 
         # x1y1 to h1w1, add h/w dimensions, convert to strided coords
-        lower_bound = lower_bound[..., (1, 0), None, None] 
-        upper_bound = upper_bound[..., (1, 0), None, None] 
+        lower_bound = lower_bound[..., (1, 0), None, None]
+        upper_bound = upper_bound[..., (1, 0), None, None]
 
         # use edge coordinates to create a binary mask
         if center_radius is not None and center_radius == 1:
