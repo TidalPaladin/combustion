@@ -126,7 +126,7 @@ class SharedDecoder2d(_SharedDecoder, metaclass=_SharedMeta):
         the shared head.
 
     Shape:
-        * ``fpn`` - :math:`(N, C_i, H_i, W_i)` where :math:`i` is the :math:`i`'th FPN level
+        * ``fpn`` - :math:`(N, C, H_i, W_i)` where :math:`i` is the :math:`i`'th FPN level
         * Output - Same as input
     """
 

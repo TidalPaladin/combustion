@@ -23,6 +23,7 @@ class TestFCOSLoss:
             pytest.param(2, 10, (10, 10)),
             pytest.param(1, 2, (15, 15)),
             pytest.param(1, None, (10, 15)),
+            pytest.param(1, None, (10, 15)),
         ],
     )
     def test_bbox_to_mask(self, stride, center_radius, size_target):
@@ -30,6 +31,7 @@ class TestFCOSLoss:
             [
                 [0, 0, 9, 9],
                 [2, 2, 5, 5],
+                [1, 1, 2, 2],
             ]
         )
         result = FCOSLoss.bbox_to_mask(bbox, stride, size_target, center_radius)
@@ -39,24 +41,38 @@ class TestFCOSLoss:
 
         for box, res in zip(bbox, result):
             h1, w1, h2, w2 = box[1], box[0], box[3], box[2]
-            hs1 = h1.floor_divide(stride)
-            ws1 = w1.floor_divide(stride)
-            hs2 = h2.floor_divide(stride)
-            ws2 = w2.floor_divide(stride)
 
-            if center_radius is None:
-                pos_region = res[hs1 + 1 : hs2, ws1 + 1 : ws2]
+            center_x = (box[0] + box[2]).true_divide(2)
+            center_y = (box[1] + box[3]).true_divide(2)
+            radius_x = (box[2] - box[0]).true_divide(2)
+            radius_y = (box[3] - box[1]).true_divide(2)
+
+            if center_radius is not None:
+                x1 = center_x - center_radius * stride
+                x2 = center_x + center_radius * stride
+                y1 = center_y - center_radius * stride
+                y2 = center_y + center_radius * stride
             else:
-                x1 = (box[0] + box[2]).floor_divide_(2) - center_radius * stride
-                x2 = (box[0] + box[2]).floor_divide_(2) + center_radius * stride
-                y1 = (box[1] + box[3]).floor_divide_(2) - center_radius * stride
-                y2 = (box[1] + box[3]).floor_divide_(2) + center_radius * stride
-                x1.floor_divide_(stride)
-                y1.floor_divide_(stride)
-                x2.floor_divide_(stride)
-                y2.floor_divide_(stride)
-                pos_region = res[y1 + 1 : y2, x1 + 1 : x2]
+                x1 = center_x - radius_x
+                x2 = center_x + radius_x
+                y1 = center_y - radius_y
+                y2 = center_y + radius_y
 
+            x1.clamp_min_(center_x - radius_x)
+            x2.clamp_max_(center_x + radius_x)
+            y1.clamp_min_(center_y - radius_y)
+            y2.clamp_max_(center_y + radius_y)
+
+            h = torch.arange(res.shape[-2], dtype=torch.float, device=box.device)
+            w = torch.arange(res.shape[-1], dtype=torch.float, device=box.device)
+
+            mesh = torch.stack(torch.meshgrid(h, w), 0).mul_(stride).add_(stride / 2)
+            lower_bound = torch.stack([x1, y1]).view(2, 1, 1)
+            upper_bound = torch.stack([x2, y2]).view(2, 1, 1)
+            mask = (mesh >= lower_bound).logical_and_(mesh <= upper_bound).all(dim=-3)
+            pos_region = res[mask]
+
+            assert res.any()
             assert pos_region.all()
             assert res.sum() - pos_region.sum() == 0
 
@@ -87,40 +103,37 @@ class TestFCOSLoss:
             hs2 = h2.floor_divide(stride)
             ws2 = w2.floor_divide(stride)
 
-            pos_region = res[..., hs1 + 1 : hs2, ws1 + 1 : ws2]
+            pos_region = res[..., hs1:hs2, ws1:ws2]
             if pos_region.numel():
                 assert (pos_region >= 0).all()
                 assert pos_region.max() <= box.max()
 
             def discretize(x):
-                return x.floor_divide(stride).mul_(stride)
-
-            discretized_box = box - discretize(box)
-            discretized_box[:2].neg_()
+                return x.floor_divide(stride).mul_(stride).add_(stride // 2)
 
             # left
-            assert res[0, hs1, ws1] == discretized_box[0], "left target at top left corner"
-            assert res[0, hs2, ws1] == discretized_box[0], "left target at bottom left corner"
+            assert res[0, hs1, ws1] == stride // 2, "left target at top left corner"
+            assert res[0, hs2, ws1] == stride // 2, "left target at bottom left corner"
             assert res[0, hs1, ws2] == discretize(w2 - w1), "left target at top right corner"
             assert res[0, hs2, ws2] == discretize(w2 - w1), "left target at bottom right corner"
 
             # top
-            assert res[1, hs1, ws1] == discretized_box[1], "top target at top left corner"
+            assert res[1, hs1, ws1] == stride // 2, "top target at top left corner"
             assert res[1, hs2, ws1] == discretize(h2 - h1), "top target at bottom left corner"
-            assert res[1, hs1, ws2] == discretized_box[1], "top target at top right corner"
+            assert res[1, hs1, ws2] == stride // 2, "top target at top right corner"
             assert res[1, hs2, ws2] == discretize(h2 - h1), "top target at bottom right corner"
 
             # right
-            assert res[2, hs1, ws1] == w2 - w1, "right target at top left corner"
-            assert res[2, hs2, ws1] == w2 - w1, "right target at bottom left corner"
-            assert res[2, hs1, ws2] == discretized_box[2], "right target at top right corner"
-            assert res[2, hs2, ws2] == discretized_box[2], "right target at bottom right corner"
+            assert res[2, hs1, ws1] == w2 - w1 - stride // 2, "right target at top left corner"
+            assert res[2, hs2, ws1] == w2 - w1 - stride // 2, "right target at bottom left corner"
+            assert res[2, hs1, ws2] == stride // 2, "right target at top right corner"
+            assert res[2, hs2, ws2] == stride // 2, "right target at bottom right corner"
 
             # bottom
-            assert res[3, hs1, ws1] == h2 - h1, "right target at top left corner"
-            assert res[3, hs2, ws1] == discretized_box[3], "right target at bottom left corner"
-            assert res[3, hs1, ws2] == h2 - h1, "right target at top right corner"
-            assert res[3, hs2, ws2] == discretized_box[3], "right target at bottom right corner"
+            assert res[3, hs1, ws1] == h2 - h1 - stride // 2, "right target at top left corner"
+            assert res[3, hs2, ws1] == stride // 2, "right target at bottom left corner"
+            assert res[3, hs1, ws2] == h2 - h1 - stride // 2, "right target at top right corner"
+            assert res[3, hs2, ws2] == stride // 2, "right target at bottom right corner"
 
     @pytest.mark.parametrize(
         "stride,center_radius,size_target",
@@ -307,6 +320,7 @@ class TestFCOSLoss:
             pytest.param(None),
             pytest.param(1),
             pytest.param(3),
+            pytest.param(20),
         ],
     )
     def test_save_output(self, center_radius):
@@ -314,6 +328,7 @@ class TestFCOSLoss:
         num_classes = 2
         target_bbox = torch.tensor(
             [
+                [140, 140, 144, 144],
                 [10, 10, 128, 128],
                 [32, 64, 128, 256],
                 [250, 10, 250 + 31, 10 + 19],
@@ -321,7 +336,7 @@ class TestFCOSLoss:
             ]
         )
         img = torch.zeros(1, image_size, image_size)
-        target_cls = torch.tensor([0, 1, 1, 0]).unsqueeze_(-1)
+        target_cls = torch.tensor([1, 0, 1, 1, 0]).unsqueeze_(-1)
 
         strides = [8, 16, 32, 64, 128]
         sizes = [(image_size // stride,) * 2 for stride in strides]

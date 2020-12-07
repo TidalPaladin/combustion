@@ -28,7 +28,42 @@ DEFAULT_INTEREST_RANGE: Tuple[Tuple[int, int], ...] = (
 
 
 class FCOSLoss:
-    r"""Implements the loss function and target creation as described in PLACEHOLDER."""
+    r"""Implements the loss function and target creation as described in PLACEHOLDER.
+
+    Args:
+        strides (tuple of ints):
+            Stride at each FCOS FPN level.
+
+        num_classes (int):
+            Number of classes being detected
+
+        interest_range (tuple of (int, int)):
+            Lower and upper bound on target object sizes for each FPN level
+
+        gamma (float):
+            Gamma term for focal loss. See :class:`combustion.nn.FocalLossWithLogits`
+
+        alpha (float):
+            Alpha (positive example weight) term for focal loss.
+            See :class:`combustion.nn.FocalLossWithLogits`
+
+        radius (int):
+            Radius (in stride units) about box centers for which heatmap locations
+            should be considered positive examples.
+
+        pad_value (float):
+            Padding value when batching / unbatching anchor boxes
+
+    Returns:
+        Tuple of (``cls_loss``, ``reg_loss``, ``centerness_loss``)
+
+    Shapes:
+        * ``cls_pred`` - :math:`(N, C, H_i, W_i)` where :math:`i` is the :math:`i`'th FPN level
+        * ``reg_pred`` - :math:`(N, 4, H_i, W_i)`
+        * ``centerness_pred`` - :math:`(N, 1, H_i, W_i)`
+        * ``target_bbox`` - :math:`(N, B, 4)`
+        * ``target_cls`` - :math:`(N, B, 1)`
+    """
 
     def __init__(
         self,
@@ -224,17 +259,51 @@ class FCOSLoss:
     def bbox_to_mask(
         bbox: Tensor, stride: int, size_target: Tuple[int, int], center_radius: Optional[float] = None
     ) -> Tensor:
+        r"""Creates a mask for each input anchor box indicating which heatmap locations for that
+        box should be positive examples. Under FCOS, a target maps are created for each FPN level.
+        Any map location that lies within ``center_radius * stride`` units from the center of the
+        ground truth bounding box is considered a positive example for regression and classification.
+
+        This method creates a mask for FPN level with stride ``stride``. The mask will have shape
+        :math:`(N, H, W)` where :math:`(H, W)` are given in ``size_target``. Mask locations that
+        lie within ``center_radius * stride`` units of the box center will be ``True``. If
+        ``center_radius=None``, all locations within a box will be considered positive.
+
+        Args:
+            bbox (:class:`torch.Tensor`):
+                Ground truth anchor boxes in form :math:`x_1, y_1, x_2, y_2`.
+
+            stride (int):
+                Stride at the FPN level for which the target is being created
+
+            size_target (tuple of int, int):
+                Height and width of the mask. Should match the height and width of the FPN
+                level for which a target is being created.
+
+            center_radius (float, optional):
+                Radius (in units of ``stride``) about the center of each box for which examples
+                should be considered positive. If ``center_radius=None``, all locations within
+                a box will be considered positive.
+
+        Shapes:
+            * ``reg_targets`` - :math:`(..., 4, H, W)`
+            * Output - :math:`(..., 1, H, W)`
+        """
         check_is_tensor(bbox, "bbox")
         check_dimension(bbox, -1, 4, "bbox")
 
-        # create empty masks
+        # create mesh grid of size `size_target`
+        # locations in grid give h/w at center of that location
+        #
+        # we will compare bbox coords against this grid to find locations that lie within
+        # the center_radius of bbox
         num_boxes = bbox.shape[-2]
-        h = torch.arange(size_target[0], dtype=bbox.dtype, device=bbox.device)
-        w = torch.arange(size_target[1], dtype=bbox.dtype, device=bbox.device)
+        h = torch.arange(size_target[0], dtype=torch.float, device=bbox.device)
+        w = torch.arange(size_target[1], dtype=torch.float, device=bbox.device)
         mask = (
             torch.stack(torch.meshgrid(h, w), 0)
             .mul_(stride)
-            .add_(int(stride / 2))
+            .add_(stride / 2)
             .unsqueeze_(0)
             .expand(num_boxes, -1, -1, -1)
         )
@@ -245,8 +314,8 @@ class FCOSLoss:
         if center_radius is not None:
             assert center_radius >= 1
             # update bounds according to radius from center
-            center = (bbox[..., :2] + bbox[..., 2:]).floor_divide_(2)
-            offset = center.new_tensor([stride, stride]).floor_divide_(2).mul_(center_radius)
+            center = (bbox[..., :2] + bbox[..., 2:]).true_divide(2)
+            offset = center.new_tensor([stride, stride]).mul_(center_radius)
             lower_bound = torch.max(lower_bound, center - offset[None])
             upper_bound = torch.min(upper_bound, center + offset[None])
 
@@ -255,10 +324,7 @@ class FCOSLoss:
         upper_bound = upper_bound[..., (1, 0), None, None]
 
         # use edge coordinates to create a binary mask
-        if center_radius is not None and center_radius == 1:
-            mask = (mask >= lower_bound).logical_and_(mask < upper_bound).all(dim=-3)
-        else:
-            mask = (mask > lower_bound).logical_and_(mask < upper_bound).all(dim=-3)
+        mask = (mask >= lower_bound).logical_and_(mask <= upper_bound).all(dim=-3)
         return mask
 
     @staticmethod
@@ -267,6 +333,25 @@ class FCOSLoss:
         stride: int,
         size_target: Tuple[int, int],
     ) -> Tensor:
+        r"""Given a set of anchor boxes, creates regression targets each anchor box.
+        Each location in the resultant target gives the distance from that location to the
+        left, top, right, and bottom of the ground truth anchor box (in that order).
+
+        Args:
+            bbox (:class:`torch.Tensor`):
+                Ground truth anchor boxes in form :math:`x_1, y_1, x_2, y_2`.
+
+            stride (int):
+                Stride at the FPN level for which the target is being created
+
+            size_target (tuple of int, int):
+                Height and width of the mask. Should match the height and width of the FPN
+                level for which a target is being created.
+
+        Shapes:
+            * ``bbox`` - :math:`(N, 4)`
+            * Output - :math:`(N, 4, H, W)` where :math:`(H, W)` come from ``size_target``
+        """
         check_is_tensor(bbox, "bbox")
         check_dimension(bbox, -1, 4, "bbox")
 
