@@ -3,14 +3,14 @@
 _target_: pytorch_lightning.Trainer
 params:
   max_epochs: 100
-  gpus: [0,]
-  #amp_level: O1
+  gpus: [1,]
+  amp_level: O1
   #amp_backend: apex
-  #precision: 16
+  precision: 16
   accumulate_grad_batches: 1
-  limit_train_batches: 10
-  check_val_every_n_epoch: 10
-  gradient_clip_val: 1.0
+  #limit_train_batches: 10
+  #check_val_every_n_epoch: 5
+  #gradient_clip_val: 1.0
   #auto_lr_find: True
   #track_grad_norm: 2
   # gradient_clip_val: 1.0
@@ -18,16 +18,16 @@ params:
   #num_sanity_val_steps: -1
   #accelerator: ddp
   #sync_batchnorm: true
-  limit_val_batches: 8
+  #limit_val_batches: 8
   #default_save_path: /path/to/outputs
   #resume_from_checkpoint: /app/outputs/checkpoints/fcos_d0.ckpt
 
-  weights_summary: full
+  #weights_summary: full
   
   logger:
     _target_: pytorch_lightning.loggers.TensorBoardLogger
     params:
-      save_dir: /home/tidal/outputs
+      save_dir: /mnt/active_0/chase/outputs/fcos
       name: ${now:%Y-%m-%d}
       version: ${now:%H-%M-%S}
               

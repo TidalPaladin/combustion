@@ -36,12 +36,12 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
         self.strides = [int(x) for x in strides]
         self.sizes = [(int(x), int(y)) for x, y in sizes]
         self._model = EffDetFCOS.from_predefined(
-            compound_coeff, self.num_classes, fpn_levels=[3, 5, 7], strides=self.strides
+            compound_coeff, self.num_classes, fpn_levels=[3, 5, 7, 8, 9], strides=self.strides
         )
 
         self._model.input_filters
 
-        self.threshold = threshold
+        self.threshold = float(threshold)if threshold is not None else 0.05
         self.nms_threshold = float(nms_threshold) if nms_threshold is not None else 0.1
         self._criterion = FCOSLoss(self.strides, self.num_classes, radius=1, interest_range=self.sizes)
 
@@ -72,11 +72,15 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
         reg_scaling: float = 1.0,
         centerness_scaling: float = 1.0,
     ) -> Dict[str, Tensor]:
-        # match segmentation size with target
-
         # get losses
         target_bbox, target_cls = split_box_target(target)
         cls_loss, reg_loss, centerness_loss = self._criterion(cls, reg, centerness, target_bbox, target_cls)
+
+        # get number of boxes for normalization
+        num_boxes = (target_cls != -1).sum().clamp_min(1)
+        cls_loss = cls_loss / num_boxes
+        reg_loss = reg_loss / num_boxes
+        centerness_loss = centerness_loss / num_boxes
 
         # compute a total loss
         total_loss = cls_loss + reg_loss * reg_scaling + centerness_loss * centerness_scaling
@@ -167,6 +171,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
             from_logits=True,
             threshold=self.threshold,
             nms_threshold=self.nms_threshold,
+            max_boxes=140
         )
         pred_boxes[..., :4].mul_(scale)
 
@@ -270,6 +275,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
             from_logits=True,
             threshold=self.threshold,
             nms_threshold=self.nms_threshold,
+            max_boxes=140
         )
 
         # compute metrics

@@ -230,7 +230,7 @@ class FCOSLoss:
         # is of interest if lower_bound <= max(l, r, t, b) <= upper_bound
         max_size = reg_target.amax(dim=(1, 2, 3))
         lower_bound, upper_bound = interest_range
-        is_box_of_interest = (max_size > lower_bound).logical_and_(max_size <= upper_bound)
+        is_box_of_interest = (max_size >= lower_bound).logical_and_(max_size < upper_bound)
         if not is_box_of_interest.any():
             reg_target.fill_(IGNORE)
             centerness = torch.empty_like(reg_target[..., 0:1, :, :]).fill_(IGNORE)

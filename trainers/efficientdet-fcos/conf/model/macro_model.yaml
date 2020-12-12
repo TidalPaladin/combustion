@@ -1,13 +1,12 @@
 # @package _group_
 _target_: efficientdet_fcos.model.EfficientDetFCOS
-num_classes: 1
 params:
   compound_coeff: 0
   num_classes: 91
   threshold: 0.05
 
-  strides: [8, 16, 32]
-  sizes: 
-    - [-1, 64]
-    - [64, 128]
-    - [128, 10000000]
+  #strides: [8, 16, 32]
+  #sizes: 
+  #  - [-1, 64]
+  #  - [64, 128]
+  #  - [128, 10000000]

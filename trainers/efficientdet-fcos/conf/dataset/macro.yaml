@@ -1,8 +1,8 @@
 # @package _group_
-batch_size: 1
+batch_size: 16
 
 train:
-  num_workers: 4
+  num_workers: 8
   pin_memory: true
   drop_last: true
   shuffle: true
@@ -11,8 +11,8 @@ train:
 
   _target_: torchvision.datasets.CocoDetection
   params:
-    root: /mnt/iscsi/coco/val2017
-    annFile: /mnt/iscsi/coco/annotations_trainval2017/annotations/instances_val2017.json
+    root: /mnt/active_0/original/coco/train2017
+    annFile: /mnt/active_0/original/coco/annotations_trainval2017/annotations/instances_train2017.json
     transforms:
       _target_: efficientdet_fcos.preprocessing.TrainingTransform
       params:
@@ -20,8 +20,8 @@ train:
         resize:
           _target_: albumentations.augmentations.transforms.Resize
           params:
-            height: 256
-            width: 256
+            height: 512
+            width: 512
 
         flip: 
           _target_: albumentations.augmentations.transforms.HorizontalFlip
@@ -34,17 +34,14 @@ train:
             contrast_limit: 0.3
 
 validate:
-  num_workers: 4
-  pin_memory: true
-  drop_last: true
-  shuffle: true
+  num_workers: 8
   #collate_fn: 
   #  _target_: medcog_classifier.preprocessing.Collate
 
   _target_: torchvision.datasets.CocoDetection
   params:
-    root: /mnt/iscsi/coco/val2017
-    annFile: /mnt/iscsi/coco/annotations_trainval2017/annotations/instances_val2017.json
+    root: /mnt/active_0/original/coco/val2017
+    annFile: /mnt/active_0/original/coco/annotations_trainval2017/annotations/instances_val2017.json
     transforms:
       _target_: efficientdet_fcos.preprocessing.TrainingTransform
       params:
@@ -52,6 +49,6 @@ validate:
         resize:
           _target_: albumentations.augmentations.transforms.Resize
           params:
-            height: 256
-            width: 256
+            height: 512
+            width: 512
 
