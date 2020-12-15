@@ -149,6 +149,7 @@ class FCOSDecoder(BaseFCOSDecoder):
         from_logits: bool = False,
         nms_threshold: Optional[float] = 0.5,
         use_raw_score: bool = False,
+        max_boxes: Optional[int] = None,
     ) -> Tensor:
         r"""Postprocesses detection, regression, and centerness predictions into a set
         of anchor boxes.
@@ -179,6 +180,9 @@ class FCOSDecoder(BaseFCOSDecoder):
             use_raw_score (bool):
                 If ``True``, assign scores to boxes based on their predicted classification score.
                 Otherwise, scores are assigned based on classification and centerness scores.
+
+            max_boxes (int, optional):
+                An optional limit on the maximum number of boxes per image
 
         Returns:
             Predicted boxes in the form :math:`(x_1, y_1, x_2, y_x, score, class)`.
@@ -260,6 +264,15 @@ class FCOSDecoder(BaseFCOSDecoder):
             keep = batched_nms(coords.float(), scaled_score.view(-1), idx, nms_threshold)
             boxes = boxes[keep, :]
             batch_idx = batch_idx[keep, :]
+
+        # enforce max box limit if one is given
+        # TODO should this be done before or after NMS?
+        # Doing it before makes NMS faster, but may drop more boxes than desired
+        scaled_score = boxes[..., -2]
+        if max_boxes is not None:
+            keep = scaled_score.argsort(descending=True)[:max_boxes]
+            boxes = boxes[keep]
+            batch_idx = batch_idx[keep]
 
         # create final box using raw or centerness adjusted score as specified
         if use_raw_score:

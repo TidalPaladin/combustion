@@ -178,7 +178,7 @@ class EfficientDetFCOS(EfficientDet2d):
         from_logits: bool = False,
         nms_threshold: Optional[float] = 0.5,
         use_raw_score: bool = False,
-        max_boxes: Optional[int] = None
+        max_boxes: Optional[int] = None,
     ) -> Tuple[Tensor, Tuple[Tensor, ...]]:
         r"""Applys postprocessing to create a set of anchorboxes from FCOS predictions."""
         _ = [x * strides[0] for x in cls[0].shape[-2:]]
@@ -258,7 +258,6 @@ class EfficientDetFCOS(EfficientDet2d):
             boxes = boxes[..., (0, 1, 2, 3, 4, 6)]
         else:
             boxes = boxes[..., (0, 1, 2, 3, 5, 6)]
-
 
         # pack boxes into a padded batch
         boxes = [boxes[(batch_idx == i).view(-1), :] for i in range(batch_size)]
