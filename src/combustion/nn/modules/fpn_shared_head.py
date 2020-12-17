@@ -4,6 +4,7 @@
 from copy import deepcopy
 from typing import List, Optional, Tuple
 
+import torch
 import torch.nn as nn
 from torch import Tensor
 
@@ -53,15 +54,24 @@ class _SharedDecoder(nn.Sequential):
             out = out_channels if is_last_repeat else in_channels
 
             # dw separable conv
-            self.add_module(
-                f"conv_{i}_dw", self.Conv(in_channels, in_channels, 3, padding=1, groups=in_channels, bias=False)
-            )
-            self.add_module(f"conv_{i}_pw", self.Conv(in_channels, out, 1, bias=is_last_repeat))
+            prefix = "final_conv_" if is_last_repeat else f"conv_{i}_"
+            dw = self.Conv(in_channels, in_channels, 3, padding=1, groups=in_channels, bias=False)
+            pw = self.Conv(in_channels, out, 1, bias=is_last_repeat)
+            torch.nn.init.normal_(dw.weight, std=0.01)
+            torch.nn.init.normal_(pw.weight, std=0.01)
+
+            self.add_module(f"{prefix}dw", dw)
+            self.add_module(f"{prefix}pw", pw)
 
             # bn + act
             if not is_last_repeat:
-                self.add_module(f"bn_{i}", self.BatchNorm(out, bn_momentum, bn_epsilon))
-            self.add_module(f"act_{i}", deepcopy(activation if is_last_repeat else final_activation))
+                bn = self.BatchNorm(out, bn_momentum, bn_epsilon)
+                torch.nn.init.constant_(bn.bias, 0)
+                self.add_module(f"bn_{i}", bn)
+            else:
+                torch.nn.init.constant_(pw.bias, 0)
+
+            self.add_module(f"act_{i}", deepcopy(final_activation if is_last_repeat else activation))
 
     def forward(self, fpn: Tuple[Tensor]) -> List[Tensor]:
         result: List[Tensor] = []
@@ -78,6 +88,7 @@ class _SharedDecoder(nn.Sequential):
                 level = level * scale
             result.append(level)
         return result
+
 
 
 class SharedDecoder2d(_SharedDecoder, metaclass=_SharedMeta):

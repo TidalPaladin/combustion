@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torchvision.ops import batched_nms
+import math
 
 from combustion.vision import batch_box_target
 
@@ -23,16 +24,17 @@ class BaseFCOSDecoder(nn.Module, ABC):
         num_regressions: int,
         num_convs: int,
         strides: Optional[Tuple[int]] = None,
-        activation: nn.Module = nn.ReLU(inplace=True),
-        reg_activation: nn.Module = nn.ReLU(inplace=True),
-        bn_momentum: float = 0.1,
-        bn_epsilon: float = 1e-5,
+        activation: nn.Module = nn.ReLU(),
+        reg_activation: nn.Module = nn.ReLU(),
+        bn_momentum: float = 0.01,
+        bn_epsilon: float = 1e-3,
     ):
         super().__init__()
         self.cls_head = SharedDecoder2d(
             in_channels,
             num_classes,
             num_convs,
+            scaled=False,
             strides=strides,
             activation=activation,
             final_activation=nn.Identity(),
@@ -44,6 +46,7 @@ class BaseFCOSDecoder(nn.Module, ABC):
             in_channels,
             num_regressions + 1,
             num_convs,
+            scaled=False,
             strides=strides,
             activation=activation,
             final_activation=nn.Identity(),
@@ -51,12 +54,18 @@ class BaseFCOSDecoder(nn.Module, ABC):
             bn_epsilon=bn_epsilon,
         )
         self.reg_activation = reg_activation
+        self.strides = strides
+
+        prior_prob = 0.01
+        bias_value = -math.log((1 - prior_prob) / prior_prob)
+        torch.nn.init.constant_(self.cls_head.final_conv_pw.bias, bias_value)
+
 
     def forward(self, fpn: Tuple[Tensor]) -> Tuple[List[Tensor], List[Tensor], List[Tensor]]:
         cls = self.cls_head(fpn)
         _ = self.reg_head(fpn)
         centerness = [layer[..., 0:1, :, :] for layer in _]
-        reg = [self.reg_activation(layer[..., 1:, :, :]) for layer in _]
+        reg = [self.reg_activation(layer[..., 1:, :, :] * s) for s, layer in zip(self.strides, _)]
         return cls, reg, centerness
 
     @abstractclassmethod
@@ -137,6 +146,7 @@ class FCOSDecoder(BaseFCOSDecoder):
             bn_epsilon,
         )
 
+
     @classmethod
     def postprocess(
         clazz,
@@ -201,6 +211,8 @@ class FCOSDecoder(BaseFCOSDecoder):
 
         _ = [x * strides[0] for x in cls[0].shape[-2:]]
         y_lim, x_lim = _
+        assert x_lim > 0
+        assert y_lim > 0
 
         batch_idx, boxes = [], []
 
@@ -230,7 +242,7 @@ class FCOSDecoder(BaseFCOSDecoder):
 
             # use stride to compute base coodinates within the original image
             # use pred regression to compute l, t, r, b offset
-            base = (positive_locations[..., (-1, -2)] * stride).add_(int(stride / 2)).repeat(1, 2)
+            base = positive_locations[..., (-1, -2)].float().mul_(stride).add_(stride / 2.0).repeat(1, 2)
             offset = level_reg[batch, :, y, x].view_as(base)
             offset[..., :2].neg_()
 
@@ -248,8 +260,7 @@ class FCOSDecoder(BaseFCOSDecoder):
             boxes = torch.cat(boxes, dim=-2)
             batch_idx = torch.cat(batch_idx, dim=-2)
         else:
-            boxes = coords.new_empty(batch_size, 0, 6)
-            return boxes, []
+            return level_reg.new_empty(batch_size, 0, 6)
 
         # apply NMS to boxes
         if nms_threshold is not None:
@@ -265,20 +276,20 @@ class FCOSDecoder(BaseFCOSDecoder):
             boxes = boxes[keep, :]
             batch_idx = batch_idx[keep, :]
 
-        # enforce max box limit if one is given
-        # TODO should this be done before or after NMS?
-        # Doing it before makes NMS faster, but may drop more boxes than desired
-        scaled_score = boxes[..., -2]
-        if max_boxes is not None:
-            keep = scaled_score.argsort(descending=True)[:max_boxes]
-            boxes = boxes[keep]
-            batch_idx = batch_idx[keep]
-
         # create final box using raw or centerness adjusted score as specified
         if use_raw_score:
             boxes = boxes[..., (0, 1, 2, 3, 4, 6)]
         else:
             boxes = boxes[..., (0, 1, 2, 3, 5, 6)]
+
+        # enforce max box limit if one is given
+        # TODO should this be done before or after NMS?
+        # Doing it before makes NMS faster, but may drop more boxes than desired
+        score = boxes[..., -2]
+        if max_boxes is not None:
+            keep = score.argsort(descending=True)[:max_boxes]
+            boxes = boxes[keep]
+            batch_idx = batch_idx[keep]
 
         # pack boxes into a padded batch
         boxes = [boxes[(batch_idx == i).view(-1), :] for i in range(batch_size)]

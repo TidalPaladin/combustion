@@ -4,7 +4,9 @@
 from typing import Optional, Tuple
 
 import torch
+import os
 import torch.nn as nn
+import torch.distributed as dist
 from torch import Tensor
 
 from combustion.util import check_dimension, check_dimension_match, check_is_tensor
@@ -98,12 +100,15 @@ class FCOSLoss:
         batch_size = target_bbox.shape[0]
         cls_loss, reg_loss, centerness_loss = [], [], []
 
+
         for i in range(batch_size):
             cls = [t[i] for t in cls_pred]
             reg = [t[i] for t in reg_pred]
             centerness = [t[i] for t in centerness_pred]
-            _target_bbox = self._drop_padding(target_bbox[i])
-            _target_cls = self._drop_padding(target_cls[i])
+            padding = (target_bbox[i] == self.pad_value).all(dim=-1)
+            _target_bbox = target_bbox[i][~padding]
+            _target_cls = target_cls[i][~padding]
+            assert _target_bbox.shape[:-1] == _target_cls.shape[:-1]
             _cls_loss, _reg_loss, _centerness_loss = self.compute_from_box_target(
                 cls, reg, centerness, _target_bbox, _target_cls
             )
@@ -111,10 +116,39 @@ class FCOSLoss:
             reg_loss.append(_reg_loss)
             centerness_loss.append(_centerness_loss)
 
-        cls_loss = sum(cls_loss)
-        reg_loss = sum(reg_loss)
-        centerness_loss = sum(centerness_loss)
+        cls_loss = sum(cls_loss) / batch_size
+        reg_loss = sum(reg_loss) / batch_size
+        centerness_loss = sum(centerness_loss) / batch_size
         return cls_loss, reg_loss, centerness_loss
+
+    def _reduce(self, cls_loss, reg_loss, centerness_loss, fcos_target):
+        num_gpus = self.get_num_gpus()
+        cls_target, reg_target, centerness_target = list(zip(*fcos_target))
+        pos_inds = sum([x.sum() for x in cls_target])
+        centerness_inds = sum([(x != IGNORE).sum() for x in centerness_target])
+
+        total_num_pos = self.reduce_sum(pos_inds).item()
+        num_pos_avg_per_gpu = max(total_num_pos / float(num_gpus), 1.0)
+        sum_centerness_targets_avg_per_gpu = self.reduce_sum(centerness_inds).item() / float(num_gpus)
+
+        cls_loss = sum([x.sum() for x in cls_loss])
+        reg_loss = sum([x.sum() for x in reg_loss])
+        centerness_loss = sum([x.sum() for x in centerness_loss])
+
+        cls_loss = cls_loss / max(num_pos_avg_per_gpu, 1.0)
+        reg_loss = reg_loss / max(sum_centerness_targets_avg_per_gpu, 1.0)
+        centerness_loss = centerness_loss / max(num_pos_avg_per_gpu, 1.0)
+        return cls_loss, reg_loss, centerness_loss
+
+    def get_num_gpus(self) -> int:
+        return int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
+
+    def reduce_sum(self, tensor: Tensor) -> Tensor:
+        if self.get_num_gpus() <= 1:
+            return tensor
+        tensor = tensor.clone()
+        dist.all_reduce(tensor, op=dist.reduce_op.SUM)
+        return tensor
 
     def _drop_padding(self, x: Tensor) -> Tensor:
         padding = (x == self.pad_value).all(dim=-1)
@@ -158,10 +192,7 @@ class FCOSLoss:
             reg_loss.append(_reg_loss)
             centerness_loss.append(_centerness_loss)
 
-        cls_loss = sum([x.sum() for x in cls_loss])
-        reg_loss = sum([x.sum() for x in reg_loss])
-        centerness_loss = sum([x.sum() for x in centerness_loss])
-
+        cls_loss, reg_loss, centerness_loss = self._reduce(cls_loss, reg_loss, centerness_loss, fcos_target)
         return cls_loss, reg_loss, centerness_loss
 
     def create_targets(
