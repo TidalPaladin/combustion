@@ -82,6 +82,27 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         assert isinstance(boxes, Tensor)
         assert boxes.shape[-1] == 6
 
+    def test_postprocess2(self, model_type):
+        num_classes = 2
+        strides = [8, 16, 32, 64, 128]
+        base_size = 512
+        sizes = [(base_size // stride,) * 2 for stride in strides]
+
+
+        pred_cls = [torch.zeros(2, num_classes, *size, requires_grad=True) for size in sizes]
+        pred_reg = [torch.ones(2, 4, *size, requires_grad=True).mul(10).round() for size in sizes]
+        pred_centerness = [torch.ones(2, 1, *size, requires_grad=True).mul(0.5) for size in sizes]
+
+        pred_cls[-1][0, 0, 1, 1] = 0.91
+        pred_cls[-3][0, 1, 5, 5] = 0.92
+        pred_cls[-2][1, 1, 3, 3] = 0.93
+        pred_cls[0][1, 1, 2, 2] = 0.94
+        pred_cls[2][0, 1, 10, 10] = 0.95
+
+        boxes = model_type.postprocess(pred_cls, pred_reg, pred_centerness, strides, use_raw_score=True)
+        assert isinstance(boxes, Tensor)
+        assert False
+
     # Set this to a directory to write out some sample images from test cases
     # DEST: Optional[str] = None
     DEST: Optional[str] = "/home/tidal"
