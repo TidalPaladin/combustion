@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 import os
@@ -99,7 +99,6 @@ class FCOSLoss:
     ) -> Tuple[Tensor, Tensor, Tensor]:
         batch_size = target_bbox.shape[0]
         cls_loss, reg_loss, centerness_loss = [], [], []
-
 
         for i in range(batch_size):
             cls = [t[i] for t in cls_pred]
@@ -362,8 +361,7 @@ class FCOSLoss:
     def create_regression_target(
         bbox: Tensor,
         stride: int,
-        size_target: Tuple[int, int],
-    ) -> Tensor:
+    ) -> Tuple[Tensor, Tensor]:
         r"""Given a set of anchor boxes, creates regression targets each anchor box.
         Each location in the resultant target gives the distance from that location to the
         left, top, right, and bottom of the ground truth anchor box (in that order).
@@ -375,13 +373,9 @@ class FCOSLoss:
             stride (int):
                 Stride at the FPN level for which the target is being created
 
-            size_target (tuple of int, int):
-                Height and width of the mask. Should match the height and width of the FPN
-                level for which a target is being created.
-
         Shapes:
-            * ``bbox`` - :math:`(N, 4)`
-            * Output - :math:`(N, 4, H, W)` where :math:`(H, W)` come from ``size_target``
+            * ``bbox`` - :math:`(*, N, 4)`
+            * Output - :math:`(*, N, 2)`, :math:`(*, N, 4)`
         """
         check_is_tensor(bbox, "bbox")
         check_dimension(bbox, -1, 4, "bbox")
@@ -423,7 +417,7 @@ class FCOSLoss:
 
     @staticmethod
     def compute_centerness_targets(reg_targets: Tensor) -> Tensor:
-        r"""Computes centerness targets given a 2D map of regression targets.
+        r"""Computes centerness targets given regression targets.
 
         Under FCOS, a target regression map is created for each FPN level. Any map location
         that lies within a ground truth bounding box is assigned a regression target based on
@@ -447,25 +441,90 @@ class FCOSLoss:
                 Ground truth regression featuremap in form :math:`x_1, y_1, x_2, y_2`.
 
         Shapes:
-            * ``reg_targets`` - :math:`(..., 4, H, W)`
-            * Output - :math:`(..., 1, H, W)`
+            * ``reg_targets`` - :math:`(..., 4)`
+            * Output - :math:`(..., 1)`
         """
         check_is_tensor(reg_targets, "reg_targets")
-        check_dimension(reg_targets, -3, 4, "reg_targets")
+        check_dimension(reg_targets, -1, 4, "reg_targets")
 
-        left_right = reg_targets[(0, 2), ...].float()
-        top_bottom = reg_targets[(1, 3), ...].float()
+        left_right = reg_targets[..., (0, 2)].float()
+        top_bottom = reg_targets[..., (1, 3)].float()
 
-        lr_min = left_right.min(dim=-3).values.clamp_min_(0)
-        lr_max = left_right.max(dim=-3).values.clamp_min_(1)
-        tb_min = top_bottom.min(dim=-3).values.clamp_min_(0)
-        tb_max = top_bottom.max(dim=-3).values.clamp_min_(1)
+        lr_min = left_right.min(dim=-1).values.clamp_min_(0)
+        lr_max = left_right.max(dim=-1).values.clamp_min_(1)
+        tb_min = top_bottom.min(dim=-1).values.clamp_min_(0)
+        tb_max = top_bottom.max(dim=-1).values.clamp_min_(1)
 
         centerness_lr = lr_min.true_divide_(lr_max)
         centerness_tb = tb_min.true_divide_(tb_max)
         centerness = centerness_lr.mul_(centerness_tb).sqrt_().unsqueeze_(-3)
 
-        assert centerness.shape[-2:] == reg_targets.shape[-2:]
-        assert centerness.shape[-3] == 1
+        assert centerness.shape[:-1] == reg_targets.shape[:-1]
+        assert centerness.shape[-1] == 1
         assert centerness.ndim == reg_targets.ndim
         return centerness
+
+    @staticmethod
+    def get_box_center(bbox: Tensor) -> Tensor:
+        return bbox.view(-1, 2, 2).sum(dim=-2).float().div_(2)
+
+    @staticmethod
+    @torch.jit.script
+    def coordinate_grid(height: int, width: int, stride: int = 1, indexing: str = "hw") -> Tensor:
+        r"""Creates a coordinate grid of a given height and width where each location
+        This is used to map locations in a FCOS predication at a given stride.
+
+        Args:
+            height (int):
+                Height of the resultant grid
+
+            width (int):
+                Width of the resultant grid
+
+            stride (int):
+                Step size between adjacent locations in the grid
+
+            indexing (str):
+                One of ``"hw"`` or ``"xy"``. If ``xy``, each coordinate pair in the grid
+                describes a coordinate by x and y. Otherwise, each coordinate
+                pair describes a coordinate by height and width.
+
+        Shape:
+            * Output - :math:`(2, H, W)`
+
+        Example:
+            >>> # Assume we have a FCOS prediction at stride 16.
+            >>> # We can map a positive location to a position in the
+            >>> # original image as follows...
+            >>>
+            >>> # positive prediction at location 0, 0
+            >>> cls_pred = torch.zeros(1, 1, 32, 32)
+            >>> cls_pred[..., 4, 4] = 1.0
+            >>>
+            >>> # positive prediction at location 0, 0
+            >>> grid = FCOSLoss.coordinate_grid(32, 32, stride=16)
+            >>> box_center_hw = grid[..., 4, 4] # center at 4 * 16 + 16 / 2
+        """
+        h = torch.arange(height, dtype=torch.float)
+        w = torch.arange(width, dtype=torch.float)
+        grid_h, grid_w = torch.meshgrid(h, w)
+
+        if indexing == "hw":
+            grid = torch.stack((grid_h, grid_w), 0)
+        elif indexing == "xy":
+            grid = torch.stack((grid_w, grid_h), 0)
+        else:
+            raise ValueError(f"Invalid indexing: {indexing}")
+
+        return grid.mul_(stride).add_(stride / 2)
+
+    @staticmethod
+    def assign_boxes_to_levels(bbox: Tensor, upper_bounds: Union[Tensor, Tuple[int, ...]]) -> Tensor:
+        r"""Given a set of bounding boxes and a maximum size threshold for each FPN level,
+        assign each box to a single FPN level.
+        """
+        upper_bounds = bbox.new_tensor(upper_bounds).abs_().unique().unsqueeze_(0)
+        bbox = bbox.view(-1, 2, 2)
+        longest_edge = (bbox[..., 1, :] - bbox[..., 0, :]).max(dim=-1).values.unsqueeze_(0)
+
+        assert False

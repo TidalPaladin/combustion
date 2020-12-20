@@ -15,6 +15,34 @@ from combustion.vision import visualize_bbox
 
 class TestFCOSLoss:
     @pytest.mark.parametrize(
+        "height,width,stride,indexing",
+        [
+            pytest.param(8, 8, 1, "hw"),
+            pytest.param(8, 8, 2, "hw"),
+            pytest.param(10, 8, 2, "hw"),
+            pytest.param(10, 8, 2, "xy"),
+        ],
+    )
+    def test_create_coordinate_grid(self, height, width, stride, indexing):
+        grid = FCOSLoss.coordinate_grid(height, width, stride, indexing)
+        assert tuple(grid.shape[-2:]) == (height, width)
+        assert grid.shape[0] == 2
+        assert torch.allclose(grid[:, 0, 0], torch.tensor([stride / 2, stride / 2]))
+
+        expected = torch.tensor([width, height]).float().mul_(stride).sub_(stride / 2)
+        if indexing == "hw":
+            expected = expected.roll(1)
+        assert torch.allclose(grid[:, -1, -1], expected)
+
+    def test_assign_boxes_to_level(self):
+        upper_bounds = torch.tensor([64, 128, 256, 512])
+
+        bbox = torch.tensor([0, 0, 1, 1]).unsqueeze_(0).repeat(len(upper_bounds), 1).mul_(upper_bounds.unsqueeze(-1))
+        bbox = torch.cat([torch.tensor([0, 0, 10, 10]).unsqueeze_(0), bbox], dim=0)
+        assignments = FCOSLoss.assign_boxes_to_levels(bbox, upper_bounds)
+        assert False
+
+    @pytest.mark.parametrize(
         "stride,center_radius,size_target",
         [
             pytest.param(1, None, (10, 10)),
