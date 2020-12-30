@@ -3,18 +3,19 @@
 
 import torch.nn as nn
 from torch import Tensor
+
 from ..functional.clamp_normalize import clamp_normalize
 
 
 class ClampAndNormalize(nn.Module):
     r"""Clamps an input tensor and normalizes the clamped result to a fixed range.
-    When called with default arguments, this operation is equivalent to min-max 
+    When called with default arguments, this operation is equivalent to min-max
     normalization to the range :math:`[0, 1]`.
 
     Args:
 
         minimum (float):
-            The lower bound for clamping. 
+            The lower bound for clamping.
 
         maximum (float):
             The upper bound for clamping
@@ -28,13 +29,14 @@ class ClampAndNormalize(nn.Module):
         inplace (bool):
             Whether or not to perform the operation in-place
     """
+
     def __init__(
-        self, 
-        minimum: float = float("-inf"), 
-        maximum: float = float("inf"), 
-        norm_min: float = 0.0, 
+        self,
+        minimum: float = float("-inf"),
+        maximum: float = float("inf"),
+        norm_min: float = 0.0,
         norm_max: float = 1.0,
-        inplace: bool = False
+        inplace: bool = False,
     ):
         super().__init__()
         minimum = float(minimum)
@@ -66,4 +68,4 @@ class ClampAndNormalize(nn.Module):
         return s
 
     def forward(self, inputs: Tensor) -> Tensor:
-        return clamp_normalize(inputs, self._minimum, self._maximum, self._norm_min, self._norm_max)
+        return clamp_normalize(inputs, self.minimum, self.maximum, self.norm_min, self.norm_max)

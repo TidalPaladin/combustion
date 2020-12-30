@@ -3,17 +3,17 @@
 
 
 import torch
-import torch.nn as nn
 from torch import Tensor
+
 
 @torch.jit.script
 def clamp_normalize(
     inputs: Tensor,
-    minimum: float = float("-inf"), 
-    maximum: float = float("inf"), 
-    norm_min: float = 0.0, 
+    minimum: float = float("-inf"),
+    maximum: float = float("inf"),
+    norm_min: float = 0.0,
     norm_max: float = 1.0,
-    inplace: bool = True
+    inplace: bool = True,
 ):
     if maximum <= minimum:
         raise ValueError(f"Expected maximum > minimum: got {maximum} vs {minimum}")
@@ -21,8 +21,8 @@ def clamp_normalize(
         raise ValueError(f"Expected norm_max > norm_min: got {norm_max} vs {norm_min}")
 
     inputs = inputs.float()
-    minimum = float(minimum) if minimum != float("-inf") else inputs.amin()
-    maximum = float(maximum) if maximum != float("inf") else inputs.amax()
+    minimum = float(minimum) if minimum != float("-inf") else inputs.amin().item()
+    maximum = float(maximum) if maximum != float("inf") else inputs.amax().item()
 
     delta = maximum - minimum
     output_delta = norm_max - norm_min
