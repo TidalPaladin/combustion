@@ -128,7 +128,7 @@ upload-test: package
 venv: $(VENV)/bin/activate
 
 $(VENV)/bin/activate: setup.py 
-	test -d $(VENV) || python3.8 -m venv $(VENV)
+	test -d $(VENV) || python -m venv $(VENV)
 	$(PYTHON) -m pip install -U pip && \
 		$(PYTHON) -m pip install -e .[dev] && \
 		touch $(VENV)/bin/activate
