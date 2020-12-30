@@ -153,8 +153,8 @@ Focal Loss
 Utilities
 ----------------------------------
 
-.. autoclass:: combustion.nn.Standardize
-    :members: 
+.. autoclass:: combustion.nn.ClampAndNormalize
+    :exclude-members: extra_repr
 
 .. autoclass:: combustion.nn.DynamicSamePad
     :exclude-members: forward, extra_repr
@@ -162,3 +162,6 @@ Utilities
 .. autoclass:: combustion.nn.MatchShapes
     :members: forward
     :exclude-members: extra_repr
+
+.. autoclass:: combustion.nn.Standardize
+    :members: 
