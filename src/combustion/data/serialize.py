@@ -36,6 +36,9 @@ def save_hdf5(
 ) -> None:
     r"""Saves the contents of the dataset to one or more HDF5 files.
 
+    .. warning::
+        HDF5 support in Combustion is deprecated
+
     Serialization is performed as follows:
         1.  Dataset partitions are determined if required by ``num_shards`` or ``shard_size``. By default,
             only a single file containing the entire dataset will be produced.
@@ -354,6 +357,9 @@ class TransformableDataset(Dataset):
 class HDF5Dataset(TransformableDataset, SerializeMixin):
     r"""Dataset used to read from HDF5 files. See :class:`SerializeMixin` for more details
 
+    .. warning::
+        HDF5 support in Combustion is deprecated
+
     .. note::
         Requires the h5py library. See http://docs.h5py.org/en/stable/index.html
         for more details.
@@ -533,8 +539,9 @@ def _check_h5py():
         raise ImportError(
             "HDF5 operations require h5py. "
             "Please install combustion with 'hdf5' extras using "
-            "pip install combustion [hdf5]"
+            "pip install combustion[hdf5]"
         )
+    warnings.warn("hdf5 support is deprecated", DeprecationWarning)
 
 
 __all__ = ["save_hdf5", "save_torch", "SerializeMixin", "HDF5Dataset", "TorchDataset", "TransformableDataset"]

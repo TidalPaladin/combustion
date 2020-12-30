@@ -1,15 +1,10 @@
 # vim: set filetype=dockerfile :
 
 # Base image with Apex
-FROM pytorch/pytorch:1.5-cuda10.1-cudnn7-devel as base
+FROM pytorch/pytorch:1.7.0-cuda11.0-cudnn8-runtime as base
 MAINTAINER tidalpaladin
 
 RUN apt-get update && apt-get install -y git
-
-# install nvidia apex
-ADD ./docker/common/install_apex.sh install_apex.sh
-RUN bash ./install_apex.sh
-RUN rm install_apex.sh
 
 VOLUME ["/app/data", "/app/outputs", "/app/conf"]
 
@@ -18,9 +13,7 @@ COPY src/combustion /app/src/combustion
 COPY setup.py /app
 WORKDIR /app
 RUN pip install -e .
-RUN pip install -U git+https://github.com/facebookresearch/hydra.git
 COPY ./examples/basic /app/examples/basic
-
 
 # Release version
 FROM base as release
