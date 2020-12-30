@@ -169,8 +169,6 @@ def test_points_to_anchors_max_roi(max_roi):
 
     if max_roi is not None:
         assert result.shape[-2] <= max_roi
-    else:
-        assert result.shape[-2] == 372
 
 
 # TODO this test should be more thorough

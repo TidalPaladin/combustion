@@ -245,7 +245,7 @@ class TestTorchSerialize(TestSerialize):
             ),
         ],
     )
-    def test_save(self, h5py, tmp_path, dataset, save_path, prefix):
+    def test_save(self, tmp_path, dataset, save_path, prefix):
         dataset.save(save_path, fmt=self.fmt, prefix=prefix)
         first_example = next(iter(dataset))
         if isinstance(prefix, str):
@@ -254,7 +254,7 @@ class TestTorchSerialize(TestSerialize):
             target = os.path.join(save_path, f"{prefix(0, first_example)}.pth")
         check_file_exists(target)
 
-    def test_create_directory_on_save(self, h5py, tmp_path, dataset, save_path):
+    def test_create_directory_on_save(self, tmp_path, dataset, save_path):
         os.rmdir(save_path)
         dataset.save(save_path, fmt=self.fmt)
         target = os.path.join(save_path, "example_0.pth")
@@ -283,7 +283,7 @@ class TestTorchSerialize(TestSerialize):
             assert os.path.join(tmp_path, f) in new_dataset.files
 
     @pytest.mark.parametrize("num_workers", [1, 4])
-    def test_dataloader(self, h5py, torch, tmp_path, dataset, input_file, data, num_workers):
+    def test_dataloader(self, torch, tmp_path, dataset, input_file, data, num_workers):
         path = tmp_path
         new_dataset = dataset.__class__.load(path)
         dataloader = DataLoader(new_dataset, num_workers=num_workers, batch_size=1)

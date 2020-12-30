@@ -39,32 +39,12 @@ TORCH = "torch>=1.6.0,<=2.0.0"
 extras = {}
 
 extras["testing"] = ["pytest", "pytest-mock", "pytest-cov", "pytest-xdist"]
-extras["docs"] = [
-    "recommonmark",
-    "sphinx",
-    "sphinx-markdown-tables",
-    "sphinxcontrib.katex",
-    "pytorch_sphinx_theme @ git+https://github.com/pytorch/pytorch_sphinx_theme.git",
-]
-
-extras["quality"] = [
-    "autoflake",
-    "autopep8",
-    "black",
-    "isort",
-    "flake8",
-    "pre-commit",
-]
-
 extras["macs"] = ["thop"]
 extras["hdf5"] = ["h5py<3.0"]
-extras["vision"] = ["kornia<=0.3.1", "opencv-python", "torchvision", "Pillow-SIMD"]
+extras["vision"] = ["kornia", "opencv-python", "torchvision", "Pillow"]
 extras["points"] = ["torch-scatter<2.0.5"]
 
-
-extras["dev"] = (
-    extras["docs"] + extras["testing"] + extras["quality"] + extras["macs"] + extras["hdf5"] + extras["vision"]
-)
+extras["dev"] = extras["testing"] + extras["macs"] + extras["vision"]
 
 
 def write_version_info():
@@ -108,7 +88,7 @@ def install(version):
             "matplotlib",
             "numpy",
             "progress",
-            "pytorch-lightning>=0.7.5",
+            "pytorch-lightning>=1.0.0",
             "hydra-core>=1.0.0",
             TORCH,
             "packaging",
