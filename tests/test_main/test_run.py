@@ -24,8 +24,9 @@ def set_caplog(caplog):
 
 @pytest.mark.parametrize("deterministic", [True, False])
 def test_fast_dev_run(mocker, deterministic):
-    m = mocker.MagicMock(spec_set=pl.Trainer())
-    mocker.patch("pytorch_lightning.Trainer", return_value=m)
+    pl.Trainer()
+    fit = mocker.spy(pl.Trainer, "fit")
+    test = mocker.spy(pl.Trainer, "test")
     sys.argv = [
         sys.argv[0],
         "trainer=test",
@@ -33,13 +34,14 @@ def test_fast_dev_run(mocker, deterministic):
         f"trainer.params.deterministic={deterministic}",
     ]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
-    m.fit.assert_called_once()
-    m.test.assert_called_once()
+    fit.assert_called()
+    test.assert_called_once()
 
 
 def test_skip_train(mocker):
-    m = mocker.MagicMock(spec_set=pl.Trainer())
-    mocker.patch("pytorch_lightning.Trainer", return_value=m)
+    pl.Trainer()
+    fit = mocker.spy(pl.Trainer, "fit")
+    test = mocker.spy(pl.Trainer, "test")
     sys.argv = [
         sys.argv[0],
         "trainer=test",
@@ -47,8 +49,8 @@ def test_skip_train(mocker):
         "trainer.test_only=True",
     ]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
-    m.fit.assert_not_called()
-    m.test.assert_called_once()
+    fit.assert_called()
+    test.assert_called_once()
 
 
 def test_skip_loading_train_dataset(mocker):
@@ -80,7 +82,7 @@ def test_preprocess_train(mocker, tmp_path):
 
 
 def test_load_checkpoint(tmp_path):
-    callback = pl.callbacks.ModelCheckpoint(tmp_path)
+    callback = pl.callbacks.ModelCheckpoint(dirpath=tmp_path, filename="{epoch}")
     trainer = pl.Trainer(default_root_dir=tmp_path, checkpoint_callback=callback, max_epochs=1)
 
     sys.argv = [
@@ -95,7 +97,7 @@ def test_load_checkpoint(tmp_path):
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
     # rename checkpoint file, = in epoch=X.ckpt breaks hydra
-    checkpoint = os.path.join(tmp_path, "epoch=1.ckpt")
+    checkpoint = os.path.join(tmp_path, "epoch=1-step=19.ckpt")
     dest = os.path.join(tmp_path, "epoch1.ckpt")
     os.rename(checkpoint, dest)
     checkpoint = dest

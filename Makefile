@@ -1,6 +1,7 @@
-.PHONY: docs docker docker-dev clean clean-venv pre-commit quality run style test venv 
+.PHONY: docs docker docker-dev clean clean-venv check ci-test pre-commit quality run style tag-version test venv upload upload-test
 
-PY_VER=py38
+PY_VER=python3.8
+PY_VER_SHORT=py$(shell echo $(PY_VER) | sed 's/[^0-9]*//g')
 QUALITY_DIRS=src tests setup.py
 CLEAN_DIRS=src tests
 VENV=$(shell pwd)/venv
@@ -17,11 +18,12 @@ DOC_LEN=120
 
 VERSION := $(shell cat version.txt)
 
-ci-quality: 
-	black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
-	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
+check: 
+	$(MAKE) style
+	$(MAKE) docs
+	$(MAKE) test
 
-ci-test: venv
+ci-test: $(VENV)/bin/activate-test
 	$(PYTHON) -m pytest \
 		-rs \
 		--cov=./src \
@@ -30,13 +32,7 @@ ci-test: venv
 		-m "not ci_skip" \
 		./tests/
 
-ci-venv: setup.py
-	test -d $(VENV) || virtualenv $(VENV)
-	$(PYTHON) -m pip install -U pip && \
-		$(PYTHON) -m pip install -e .[dev] && \
-		touch $(VENV)/bin/activate
-
-docs:
+docs: $(VENV)/bin/activate-docs
 	#$(VENV)/bin/sphinx-apidoc -d 1 -E --implicit-namespaces -o docs src/combustion
 	cd docs && make html 
 
@@ -67,16 +63,16 @@ clean:
 clean-venv:
 	rm -rf $(VENV)
 
-package: 
+package: venv
 	rm -rf dist
 	$(PYTHON) -m pip install --upgrade setuptools wheel
 	export COMBUSTION_BUILD_VERSION=$(VERSION) && $(PYTHON) setup.py sdist bdist_wheel
 
-pre-commit: venv
+pre-commit: 
 	pre-commit install
 
-quality: 
-	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
+quality: $(VENV)/bin/activate-quality
+	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
 	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
 DATA_PATH=$(shell pwd)/examples/basic/data
@@ -94,16 +90,16 @@ run: docker
 		combustion:latest \
 		-c "python examples/basic"
 
-style: 
+style: $(VENV)/bin/activate-quality
 	$(PYTHON) -m autoflake -r -i --remove-all-unused-imports --remove-unused-variables $(QUALITY_DIRS)
 	$(PYTHON) -m isort $(QUALITY_DIRS)
 	$(PYTHON) -m autopep8 -a -r -i --max-line-length=$(LINE_LEN) $(QUALITY_DIRS)
-	$(PYTHON) -m black --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
+	$(PYTHON) -m black --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
 
 tag-version: 
 	git tag -a "$(VERSION)"
 
-test: venv
+test: $(VENV)/bin/activate-test
 	$(PYTHON) -m pytest \
 		-rs \
 		--cov=./src \
@@ -111,10 +107,10 @@ test: venv
 		-s -v \
 		./tests/
 
-test-%: venv
+test-%: $(VENV)/bin/activate-test
 	$(PYTHON) -m pytest -rs -k $* -s -v ./tests/ 
 
-test-pdb-%: venv
+test-pdb-%: $(VENV)/bin/activate-test
 	$(PYTHON) -m pytest -rs --pdb -k $* -s -v ./tests/ 
 
 upload: package
@@ -127,9 +123,14 @@ upload-test: package
 
 venv: $(VENV)/bin/activate
 
-$(VENV)/bin/activate: setup.py 
-	test -d $(VENV) || python -m venv $(VENV)
-	$(PYTHON) -m pip install -U pip && \
-		$(PYTHON) -m pip install -e .[dev] && \
-		touch $(VENV)/bin/activate
-	#$(PYTHON) -m pip install -e .[points]
+$(VENV)/bin/activate: setup.py requirements.txt
+	test -d $(VENV) || $(PY_VER) -m venv $(VENV)
+	$(PYTHON) -m pip install -U pip 
+	$(PYTHON) -m pip install -e .
+	touch $(VENV)/bin/activate
+
+$(VENV)/bin/activate-%: requirements.%.txt
+	test -d $(VENV) || $(PY_VER) -m venv $(VENV)
+	$(PYTHON) -m pip install -U pip 
+	$(PYTHON) -m pip install -r $<
+	touch $(VENV)/bin/activate-$*
