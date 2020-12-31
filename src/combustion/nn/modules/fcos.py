@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 
+import math
 from abc import ABC, abstractclassmethod
 from typing import Callable, List, Optional, Tuple
 
@@ -9,7 +10,6 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torchvision.ops import batched_nms
-import math
 
 from combustion.vision import batch_box_target
 
@@ -59,7 +59,6 @@ class BaseFCOSDecoder(nn.Module, ABC):
         prior_prob = 0.01
         bias_value = -math.log((1 - prior_prob) / prior_prob)
         torch.nn.init.constant_(self.cls_head.final_conv_pw.bias, bias_value)
-
 
     def forward(self, fpn: Tuple[Tensor]) -> Tuple[List[Tensor], List[Tensor], List[Tensor]]:
         cls = self.cls_head(fpn)
@@ -145,7 +144,6 @@ class FCOSDecoder(BaseFCOSDecoder):
             bn_momentum,
             bn_epsilon,
         )
-
 
     @classmethod
     def postprocess(

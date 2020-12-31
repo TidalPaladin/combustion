@@ -88,7 +88,6 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         base_size = 512
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
-
         pred_cls = [torch.zeros(2, num_classes, *size, requires_grad=True) for size in sizes]
         pred_reg = [torch.ones(2, 4, *size, requires_grad=True).mul(10).round() for size in sizes]
         pred_centerness = [torch.ones(2, 1, *size, requires_grad=True).mul(0.5) for size in sizes]

@@ -34,13 +34,47 @@ class TestFCOSLoss:
             expected = expected.roll(1)
         assert torch.allclose(grid[:, -1, -1], expected)
 
-    def test_assign_boxes_to_level(self):
-        upper_bounds = torch.tensor([64, 128, 256, 512])
+    @pytest.mark.parametrize("inclusive", ["lower", "upper", "both"])
+    def test_assign_boxes_to_level(self, inclusive):
+        bounds = (
+            (-1, 64),
+            (64, 128),
+            (128, 256),
+            (256, 512),
+            (512, 10000000),
+        )
+        bounds = torch.tensor(bounds)
 
-        bbox = torch.tensor([0, 0, 1, 1]).unsqueeze_(0).repeat(len(upper_bounds), 1).mul_(upper_bounds.unsqueeze(-1))
+        batch_size = 2
+        bbox = (
+            torch.tensor([0, 0, 1, 1])
+            .unsqueeze_(0)
+            .repeat(len(bounds), 1)
+            .mul_(bounds[..., 1].unsqueeze(-1))
+            .clamp_max_(1024)
+        )
         bbox = torch.cat([torch.tensor([0, 0, 10, 10]).unsqueeze_(0), bbox], dim=0)
-        assignments = FCOSLoss.assign_boxes_to_levels(bbox, upper_bounds)
-        assert False
+        bbox = bbox.unsqueeze(0).repeat(batch_size, 1, 1)
+        assignments = FCOSLoss.assign_boxes_to_levels(bbox, bounds, inclusive)
+
+        has_assignment = assignments.any(dim=-1)
+        assert has_assignment.all(), "one or more boxes was not assigned a level"
+
+        diag = torch.eye(bbox.shape[-2] - 1, bounds.shape[-2]).bool()
+        upper = torch.cat((diag[0:1], diag), dim=-2)
+        lower = torch.cat((diag, diag[-1:]), dim=-2)
+        both = upper.logical_or(lower)
+
+        if inclusive == "lower":
+            expected = lower
+        elif inclusive == "upper":
+            expected = upper
+        elif inclusive == "both":
+            expected = both
+        else:
+            raise ValueError(f"{inclusive}")
+
+        assert (expected == assignments).all()
 
     @pytest.mark.parametrize(
         "stride,center_radius,size_target",
@@ -137,31 +171,31 @@ class TestFCOSLoss:
                 assert pos_region.max() <= box.max()
 
             def discretize(x):
-                return x.floor_divide(stride).mul_(stride).add_(stride // 2)
+                return x.float().floor_divide(stride).mul_(stride).add_(stride / 2)
 
             # left
-            assert res[0, hs1, ws1] == stride // 2, "left target at top left corner"
-            assert res[0, hs2, ws1] == stride // 2, "left target at bottom left corner"
+            assert res[0, hs1, ws1] == stride / 2, "left target at top left corner"
+            assert res[0, hs2, ws1] == stride / 2, "left target at bottom left corner"
             assert res[0, hs1, ws2] == discretize(w2 - w1), "left target at top right corner"
             assert res[0, hs2, ws2] == discretize(w2 - w1), "left target at bottom right corner"
 
             # top
-            assert res[1, hs1, ws1] == stride // 2, "top target at top left corner"
+            assert res[1, hs1, ws1] == stride / 2, "top target at top left corner"
             assert res[1, hs2, ws1] == discretize(h2 - h1), "top target at bottom left corner"
-            assert res[1, hs1, ws2] == stride // 2, "top target at top right corner"
+            assert res[1, hs1, ws2] == stride / 2, "top target at top right corner"
             assert res[1, hs2, ws2] == discretize(h2 - h1), "top target at bottom right corner"
 
             # right
-            assert res[2, hs1, ws1] == w2 - w1 - stride // 2, "right target at top left corner"
-            assert res[2, hs2, ws1] == w2 - w1 - stride // 2, "right target at bottom left corner"
-            assert res[2, hs1, ws2] == stride // 2, "right target at top right corner"
-            assert res[2, hs2, ws2] == stride // 2, "right target at bottom right corner"
+            assert res[2, hs1, ws1] == w2 - w1 - stride / 2, "right target at top left corner"
+            assert res[2, hs2, ws1] == w2 - w1 - stride / 2, "right target at bottom left corner"
+            assert res[2, hs1, ws2] == stride / 2, "right target at top right corner"
+            assert res[2, hs2, ws2] == stride / 2, "right target at bottom right corner"
 
             # bottom
-            assert res[3, hs1, ws1] == h2 - h1 - stride // 2, "right target at top left corner"
-            assert res[3, hs2, ws1] == stride // 2, "right target at bottom left corner"
-            assert res[3, hs1, ws2] == h2 - h1 - stride // 2, "right target at top right corner"
-            assert res[3, hs2, ws2] == stride // 2, "right target at bottom right corner"
+            assert res[3, hs1, ws1] == h2 - h1 - stride / 2, "right target at top left corner"
+            assert res[3, hs2, ws1] == stride / 2, "right target at bottom left corner"
+            assert res[3, hs1, ws2] == h2 - h1 - stride / 2, "right target at top right corner"
+            assert res[3, hs2, ws2] == stride / 2, "right target at bottom right corner"
 
     @pytest.mark.parametrize(
         "stride,center_radius,size_target",

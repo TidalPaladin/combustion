@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Optional, Tuple, Union
+import os
+from typing import Optional, Tuple
 
 import torch
-import os
-import torch.nn as nn
 import torch.distributed as dist
+import torch.nn as nn
 from torch import Tensor
 
 from combustion.util import check_dimension, check_dimension_match, check_is_tensor
@@ -258,9 +258,9 @@ class FCOSLoss:
 
         # use the regression targets to determine boxes of interest for this level
         # is of interest if lower_bound <= max(l, r, t, b) <= upper_bound
-        max_size = reg_target.amax(dim=(1, 2, 3))
-        lower_bound, upper_bound = interest_range
-        is_box_of_interest = (max_size >= lower_bound).logical_and_(max_size < upper_bound)
+        bounds = bbox.new_tensor(interest_range).unsqueeze_(0)
+        is_box_of_interest = FCOSLoss.assign_boxes_to_levels(bbox, bounds, inclusive="lower").squeeze_(-1)
+
         if not is_box_of_interest.any():
             reg_target.fill_(IGNORE)
             centerness = torch.empty_like(reg_target[..., 0:1, :, :]).fill_(IGNORE)
@@ -279,9 +279,11 @@ class FCOSLoss:
         reg_target[reg_target == INF] = IGNORE
 
         # build centerness target
-        centerness_target = FCOSLoss.compute_centerness_targets(reg_target)
-        centerness_target[~inside_box_mask.any(dim=-3, keepdim=True)] = IGNORE
-        reg_target[~mask.any(dim=-3, keepdim=True).expand_as(reg_target)] = IGNORE
+        centerness_target = torch.empty_like(reg_target[..., 0:1, :, :]).fill_(IGNORE)
+        ind = (reg_target == IGNORE).all(dim=-3).logical_not_()
+        if ind.any():
+            pos_reg_targets = reg_target[..., ind].permute(1, 0)
+            centerness_target[..., ind] = FCOSLoss.compute_centerness_targets(pos_reg_targets).view(-1)
 
         return cls_target, reg_target, centerness_target
 
@@ -358,10 +360,7 @@ class FCOSLoss:
         return mask
 
     @staticmethod
-    def create_regression_target(
-        bbox: Tensor,
-        stride: int,
-    ) -> Tuple[Tensor, Tensor]:
+    def create_regression_target(bbox: Tensor, stride: int, size_target: Tuple[int, int]) -> Tensor:
         r"""Given a set of anchor boxes, creates regression targets each anchor box.
         Each location in the resultant target gives the distance from that location to the
         left, top, right, and bottom of the ground truth anchor box (in that order).
@@ -381,12 +380,11 @@ class FCOSLoss:
         check_dimension(bbox, -1, 4, "bbox")
 
         # create starting grid
+
         num_boxes = bbox.shape[-2]
-        h = torch.arange(size_target[0], dtype=bbox.dtype, device=bbox.device)
-        w = torch.arange(size_target[1], dtype=bbox.dtype, device=bbox.device)
-        grid = torch.meshgrid(h, w)
-        grid = torch.stack([grid[1], grid[0]], dim=0).unsqueeze_(0).repeat(num_boxes, 2, 1, 1)
-        grid.mul_(stride).add_(int(stride / 2))
+        height, width = size_target[0], size_target[1]
+        grid = FCOSLoss.coordinate_grid(height, width, stride, indexing="xy")
+        grid = grid.unsqueeze_(0).repeat(num_boxes, 2, 1, 1)
 
         # compute distance to box edges relative to each grid location
         grid.sub_(bbox[..., None, None]).abs_()
@@ -450,14 +448,14 @@ class FCOSLoss:
         left_right = reg_targets[..., (0, 2)].float()
         top_bottom = reg_targets[..., (1, 3)].float()
 
-        lr_min = left_right.min(dim=-1).values.clamp_min_(0)
-        lr_max = left_right.max(dim=-1).values.clamp_min_(1)
-        tb_min = top_bottom.min(dim=-1).values.clamp_min_(0)
-        tb_max = top_bottom.max(dim=-1).values.clamp_min_(1)
+        lr_min = left_right.amin(dim=-1).clamp_min_(0)
+        lr_max = left_right.amax(dim=-1).clamp_min_(1)
+        tb_min = top_bottom.amin(dim=-1).clamp_min_(0)
+        tb_max = top_bottom.amax(dim=-1).clamp_min_(1)
 
         centerness_lr = lr_min.true_divide_(lr_max)
         centerness_tb = tb_min.true_divide_(tb_max)
-        centerness = centerness_lr.mul_(centerness_tb).sqrt_().unsqueeze_(-3)
+        centerness = centerness_lr.mul_(centerness_tb).sqrt_().unsqueeze_(-1)
 
         assert centerness.shape[:-1] == reg_targets.shape[:-1]
         assert centerness.shape[-1] == 1
@@ -519,12 +517,54 @@ class FCOSLoss:
         return grid.mul_(stride).add_(stride / 2)
 
     @staticmethod
-    def assign_boxes_to_levels(bbox: Tensor, upper_bounds: Union[Tensor, Tuple[int, ...]]) -> Tensor:
-        r"""Given a set of bounding boxes and a maximum size threshold for each FPN level,
-        assign each box to a single FPN level.
-        """
-        upper_bounds = bbox.new_tensor(upper_bounds).abs_().unique().unsqueeze_(0)
-        bbox = bbox.view(-1, 2, 2)
-        longest_edge = (bbox[..., 1, :] - bbox[..., 0, :]).max(dim=-1).values.unsqueeze_(0)
+    @torch.jit.script
+    def assign_boxes_to_levels(bbox: Tensor, bounds: Tensor, inclusive: str = "lower") -> Tensor:
+        r"""Given bounding boxes and upper/lower size threshold for each FPN level,
+        determine assignments of boxes to FPN levels. Boxes are assigned to a FPN level
+        if the longest box edge falls between the upper and lower bound for that level.
 
-        assert False
+        Args:
+            bbox (:class:`torch.Tensor`):
+                Bounding boxes to be assigned to levels in order :math:`x_1, y_1, x_2, y_2`
+
+            bounds (:class:`torch.Tensor`):
+                Lower and upper size interest ranges for each FPN level
+
+            inclusive (str):
+                Determines if comparisons at the lower and upper bounds are inclusive or
+                exclusive. Should be one of ``"lower"``, ``"upper"``, ``"both"``.
+
+        Returns:
+            Bool tensor indicating which level(s) a box is assigned to
+
+        Shape:
+            * ``bbox`` - :math:`(*, N, 4)` in :math:`x_1, y_1, x_2, y_2` order
+            * ``bounds`` - :math:`(B, 2)` in :math:`lower, upper` order
+            * Output - :math:`(*, N, B)`
+        """
+        # check_is_tensor(bbox, "bbox")
+        # check_is_tensor(bounds, "bounds")
+        # check_dimension(bounds, -1, 2, "bounds")
+        # check_dimension(bbox, -1, 4, "bbox")
+        inclusive = str(inclusive).lower()
+        if inclusive not in ("lower", "upper", "both"):
+            raise ValueError(f"Invalid value for `inclusive`: {inclusive}")
+
+        box_low, box_high = torch.split(bbox, 2, dim=-1)
+        bound_low, bound_high = bounds[..., 0], bounds[..., 1]
+
+        longest_edge = (box_high - box_low).amax(dim=-1, keepdim=True)
+
+        if inclusive in ("lower", "both"):
+            mask = longest_edge >= bound_low
+        else:
+            mask = longest_edge > bound_low
+
+        if inclusive in ("upper", "both"):
+            mask.logical_and_(longest_edge <= bound_high)
+        else:
+            mask.logical_and_(longest_edge < bound_high)
+
+        assert mask.shape[:-1] == bbox.shape[:-1]
+        assert mask.shape[-1] == bounds.shape[-2]
+        return mask

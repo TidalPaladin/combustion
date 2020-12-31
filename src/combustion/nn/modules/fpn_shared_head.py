@@ -90,7 +90,6 @@ class _SharedDecoder(nn.Sequential):
         return result
 
 
-
 class SharedDecoder2d(_SharedDecoder, metaclass=_SharedMeta):
     r"""Implementation of a FPN decoder / head that is shared across all levels
     of the feature pyramid. The decoder consists of multiple depthwise separable
