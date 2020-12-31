@@ -33,5 +33,10 @@ Loss Functions
 
 Utilities
 ----------------------------------
+
+.. function:: combustion.nn.functional.clamp_normalize
+
+  See :class:`combustion.nn.ClampAndNormalize`
+
 .. autofunction:: combustion.nn.functional.patch_dynamic_same_pad
 .. autofunction:: combustion.nn.functional.fill_normal

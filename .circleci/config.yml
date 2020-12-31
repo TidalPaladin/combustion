@@ -10,28 +10,25 @@ jobs:
     check_code_quality:
         working_directory: ~/combustion
         docker:
-            - image: circleci/python:3.7
+            - image: circleci/python:3.8
         parallelism: 1
         steps:
             - checkout
             - run: 
-                name: Install dependencies
-                command: sudo pip install black flake8
-            - run: 
                 name: Run quality tests
-                command: make ci-quality
+                command: make quality
 
 
     run_tests:
         working_directory: ~/combustion
         docker:
-            - image: circleci/python:3.7
+            - image: circleci/python:3.8
         parallelism: 1
         steps:
             - checkout
             - run: 
                 name: Install dependencies
-                command: make ci-venv
+                command: make venv
             - save_cache:
                 paths:
                   - ~/.cache/pip

@@ -121,6 +121,7 @@ def test_input_unchanged():
     assert torch.allclose(points, points_orig)
 
 
+@pytest.mark.xfail
 def test_corner_case():
     input = torch.tensor(
         [
