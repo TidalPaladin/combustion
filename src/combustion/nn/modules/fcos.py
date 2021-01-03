@@ -3,7 +3,7 @@
 
 
 import math
-from abc import ABC, abstractclassmethod
+from abc import ABC, abstractclassmethod, abstractstaticmethod
 from typing import Callable, List, Optional, Tuple
 
 import torch
@@ -67,8 +67,8 @@ class BaseFCOSDecoder(nn.Module, ABC):
         reg = [self.reg_activation(layer[..., 1:, :, :] * s) for s, layer in zip(self.strides, _)]
         return cls, reg, centerness
 
-    @abstractclassmethod
-    def postprocess(clazz, cls: List[Tensor], reg: List[Tensor], centerness: List[Tensor]) -> Tensor:
+    @abstractstaticmethod
+    def postprocess(cls: List[Tensor], reg: List[Tensor], centerness: List[Tensor]) -> Tensor:
         raise NotImplementedError()
 
     @staticmethod
@@ -145,13 +145,13 @@ class FCOSDecoder(BaseFCOSDecoder):
             bn_epsilon,
         )
 
-    @classmethod
+    @staticmethod
+    @torch.jit.script
     def postprocess(
-        clazz,
-        cls: Tuple[Tensor, ...],
-        reg: Tuple[Tensor, ...],
-        centerness: Tuple[Tensor, ...],
-        strides: Tuple[int, ...],
+        cls: List[Tensor],
+        reg: List[Tensor],
+        centerness: List[Tensor],
+        strides: List[int],
         threshold: float = 0.05,
         pad_value: float = -1,
         from_logits: bool = False,
@@ -228,19 +228,19 @@ class FCOSDecoder(BaseFCOSDecoder):
             scaled_score = (level_cls * level_centerness.expand_as(level_cls)).sqrt_()
 
             # get indices of positions that exceed threshold
-            positive_locations = (level_cls >= threshold).nonzero(as_tuple=False)
+            positive_locations = (level_cls >= threshold).nonzero()
 
-            if not positive_locations.numel():
-                continue
+            #if not positive_locations.numel():
+            #    continue
 
             # extract coordinates of positive predictions and drop scores for negative predictions
-            batch, cls, y, x = positive_locations.split(1, dim=-1)
-            raw_score = level_cls[batch, cls, y, x]
-            scaled_score = scaled_score[batch, cls, y, x]
+            batch, class_id, y, x = positive_locations.split(1, dim=-1)
+            raw_score = level_cls[batch, class_id, y, x]
+            scaled_score = scaled_score[batch, class_id, y, x]
 
             # use stride to compute base coodinates within the original image
             # use pred regression to compute l, t, r, b offset
-            base = positive_locations[..., (-1, -2)].float().mul_(stride).add_(stride / 2.0).repeat(1, 2)
+            base = positive_locations[..., -2:].float().mul_(stride).add_(stride / 2.0).repeat(1, 2)
             offset = level_reg[batch, :, y, x].view_as(base)
             offset[..., :2].neg_()
 
@@ -250,46 +250,49 @@ class FCOSDecoder(BaseFCOSDecoder):
             coords[..., 3].clamp_max_(y_lim)
 
             # record the boxes and box -> batch mapping
-            boxes.append(torch.cat([coords, raw_score, scaled_score, cls], dim=-1))
+            boxes.append(torch.cat([coords, raw_score, scaled_score, class_id], dim=-1))
             batch_idx.append(batch)
 
         # combine boxes across all FPN levels
-        if boxes:
-            boxes = torch.cat(boxes, dim=-2)
-            batch_idx = torch.cat(batch_idx, dim=-2)
+        if len(boxes):
+            final_boxes = torch.cat(boxes, dim=-2)
+            final_batch_idx = torch.cat(batch_idx, dim=-2)
+            del boxes
+            del batch_idx
         else:
-            return level_reg.new_empty(batch_size, 0, 6)
+            return reg[0].new_empty(batch_size, 0, 6)
 
-        # apply NMS to boxes
+        # apply NMS to final_boxes
         if nms_threshold is not None:
-            coords = boxes[..., :4]
-            raw_score = boxes[..., -3, None]
-            scaled_score = boxes[..., -2, None]
-            cls = boxes[..., -1, None]
+            coords = final_boxes[..., :4]
+            raw_score = final_boxes[..., -3, None]
+            scaled_score = final_boxes[..., -2, None]
+            class_id = final_boxes[..., -1, None]
 
             # torchvision NMS cant do batches of images, but it can separate based on class id
             # create a new "class id" that distinguishes batch and class
-            idx = (batch_idx * num_classes + cls.view_as(batch_idx)).view(-1).long()
+            idx = (final_batch_idx * num_classes + class_id.view_as(final_batch_idx)).view(-1).long()
             keep = batched_nms(coords.float(), scaled_score.view(-1), idx, nms_threshold)
-            boxes = boxes[keep, :]
-            batch_idx = batch_idx[keep, :]
+            final_boxes = final_boxes[keep, :]
+            final_batch_idx = final_batch_idx[keep, :]
 
         # create final box using raw or centerness adjusted score as specified
+        coords, raw_score, scaled_score, class_id = final_boxes.split((4, 1, 1, 1), dim=-1)
         if use_raw_score:
-            boxes = boxes[..., (0, 1, 2, 3, 4, 6)]
+            final_boxes = torch.cat((coords, raw_score, class_id), dim=-1)
         else:
-            boxes = boxes[..., (0, 1, 2, 3, 5, 6)]
+            final_boxes = torch.cat((coords, scaled_score, class_id), dim=-1)
 
         # enforce max box limit if one is given
         # TODO should this be done before or after NMS?
-        # Doing it before makes NMS faster, but may drop more boxes than desired
-        score = boxes[..., -2]
+        # Doing it before makes NMS faster, but may drop more final_boxes than desired
+        score = final_boxes[..., -2]
         if max_boxes is not None:
             keep = score.argsort(descending=True)[:max_boxes]
-            boxes = boxes[keep]
-            batch_idx = batch_idx[keep]
+            final_boxes = final_boxes[keep]
+            final_batch_idx = final_batch_idx[keep]
 
-        # pack boxes into a padded batch
-        boxes = [boxes[(batch_idx == i).view(-1), :] for i in range(batch_size)]
-        boxes = batch_box_target(boxes, pad_value)
-        return boxes
+        # pack final_boxes into a padded batch
+        final_boxes = [final_boxes[(final_batch_idx == i).view(-1), :] for i in range(batch_size)]
+        final_boxes = batch_box_target(final_boxes, pad_value)
+        return final_boxes
