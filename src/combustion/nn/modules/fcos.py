@@ -3,7 +3,7 @@
 
 
 import math
-from abc import ABC, abstractclassmethod, abstractstaticmethod
+from abc import ABC, abstractstaticmethod
 from typing import Callable, List, Optional, Tuple
 
 import torch
@@ -230,7 +230,8 @@ class FCOSDecoder(BaseFCOSDecoder):
             # get indices of positions that exceed threshold
             positive_locations = (level_cls >= threshold).nonzero()
 
-            #if not positive_locations.numel():
+            # TODO this isnt torchscriptable
+            # if not positive_locations.numel():
             #    continue
 
             # extract coordinates of positive predictions and drop scores for negative predictions
@@ -283,16 +284,19 @@ class FCOSDecoder(BaseFCOSDecoder):
         else:
             final_boxes = torch.cat((coords, scaled_score, class_id), dim=-1)
 
-        # enforce max box limit if one is given
-        # TODO should this be done before or after NMS?
-        # Doing it before makes NMS faster, but may drop more final_boxes than desired
-        score = final_boxes[..., -2]
-        if max_boxes is not None:
-            keep = score.argsort(descending=True)[:max_boxes]
-            final_boxes = final_boxes[keep]
-            final_batch_idx = final_batch_idx[keep]
+        # ensure boxes sorted by score
+        if use_raw_score or nms_threshold is None:
+            score = final_boxes[..., -2]
+            sorted_idx = score.argsort(dim=-1, descending=True)
+            final_boxes = final_boxes[sorted_idx, :]
+            final_batch_idx = final_batch_idx[sorted_idx]
 
         # pack final_boxes into a padded batch
         final_boxes = [final_boxes[(final_batch_idx == i).view(-1), :] for i in range(batch_size)]
         final_boxes = batch_box_target(final_boxes, pad_value)
+
+        # enforce max box limit if one is given
+        if max_boxes is not None:
+            final_boxes = final_boxes[..., :max_boxes, :]
+
         return final_boxes

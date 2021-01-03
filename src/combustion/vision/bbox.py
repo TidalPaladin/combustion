@@ -405,7 +405,7 @@ def batch_box_target(target: List[Tensor], pad_value: float = -1) -> Tensor:
     """
     max_boxes = 0
     for elem in target:
-        #check_is_tensor(elem, "target_elem")
+        # check_is_tensor(elem, "target_elem")
         max_boxes = max(max_boxes, elem.shape[-2])
 
     # add a batch dim if not present

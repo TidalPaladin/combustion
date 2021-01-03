@@ -68,19 +68,23 @@ class TestFCOSDecoder(TorchScriptTestMixin):
             assert reg.shape[2:] == data[i].shape[2:]
             assert cls.shape[2:] == data[i].shape[2:]
 
-    def test_postprocess(self, model_type):
+    def test_postprocess_max_boxes(self, model_type):
         num_classes = 2
         strides = [8, 16, 32, 64, 128]
         base_size = 512
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
+        torch.random.manual_seed(42)
         pred_cls = [torch.rand(2, num_classes, *size, requires_grad=True) for size in sizes]
         pred_reg = [torch.rand(2, 4, *size, requires_grad=True).mul(512).round() for size in sizes]
         pred_centerness = [torch.rand(2, 1, *size, requires_grad=True) for size in sizes]
 
-        boxes = model_type.postprocess(pred_cls, pred_reg, pred_centerness, strides)
+        max_boxes = 10
+        boxes = model_type.postprocess(pred_cls, pred_reg, pred_centerness, strides, max_boxes=max_boxes)
         assert isinstance(boxes, Tensor)
         assert boxes.shape[-1] == 6
+        assert boxes.shape[-2] == max_boxes
+        assert (boxes[..., -1] >= 0).all()
 
     def test_postprocess2(self, model_type):
         num_classes = 2
@@ -101,7 +105,7 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         boxes = model_type.postprocess(pred_cls, pred_reg, pred_centerness, strides, use_raw_score=True)
         assert isinstance(boxes, Tensor)
 
-    def test_postprocess3(self, model_type):
+    def test_postprocess_no_positives(self, model_type):
         num_classes = 2
         strides = [8, 16, 32, 64, 128]
         base_size = 512
@@ -247,88 +251,3 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         batched = batched[(batched != -1).all(dim=-1)]
         assert batched.shape == unbatched.shape
         assert torch.allclose(batched, unbatched)
-
-
-class PostprocessMeta(type):
-    r"""Metaclass to parametrize ``test_raises_exception`` using cases from
-    ``get_test_cases``.
-    """
-
-    def __new__(cls, name, bases, dct):
-        x = super().__new__(cls, name, bases, dct)
-        x.test_postprocess = pytest.mark.parametrize(
-            "pred_cls,pred_reg,pred_centerness,strides,threshold,nms_threshold,max_boxes,use_raw_score,expected",
-            x.get_test_cases()
-        )(cls.copy_func(bases[0].test_postprocess))
-        return x
-
-    @classmethod
-    def copy_func(cls, f, name=None):
-        """Used to copy parametrized method so parametrization's dont stack"""
-        fn = types.FunctionType(f.__code__, f.__globals__, name or f.__name__, f.__defaults__, f.__closure__)
-        # in case f was given attrs (note this dict is a shallow copy):
-        fn.__dict__.update(f.__dict__)
-        return fn
-
-class TestFCOSPostprocess(metaclass=PostprocessMeta):
-
-    @staticmethod
-    def get_base_inputs(batch_size, num_classes, sizes):
-        cls = [torch.zeros(batch_size, num_classes, *size, requires_grad=True) for size in sizes]
-        reg = [torch.empty(batch_size, 4, *size, requires_grad=True).fill_(10.0) for size in sizes]
-        centerness = [torch.ones(batch_size, 1, *size, requires_grad=True) for size in sizes]
-        return cls, reg, centerness
-
-    @classmethod
-    def get_test_cases(cls):
-        batch_size = 2
-        num_classes = 2
-        strides = [8, 16, 32, 64, 128]
-        base_size = 512
-        sizes = [(base_size // stride,) * 2 for stride in strides]
-        cases = []
-
-        # case 1
-        threshold = 0.5
-        nms_threshold = 0.5
-        max_boxes = 100
-        use_raw_score = False
-        pred_cls, pred_reg, pred_centerness = cls.get_base_inputs(batch_size, num_classes, sizes)
-        pred_cls[-1][0, 0, 1, 1] = 0.91
-        pred_cls[-3][0, 1, 5, 5] = 0.92
-        pred_cls[-2][1, 1, 3, 3] = 0.93
-        pred_cls[0][1, 1, 2, 2] = 0.94
-        pred_cls[2][0, 1, 10, 10] = 0.95
-        expected = torch.empty(batch_size, 4, 6).fill_(-1)
-        case = pytest.param(
-            pred_cls, 
-            pred_reg, 
-            pred_centerness, 
-            strides,
-            threshold,
-            nms_threshold, 
-            max_boxes, 
-            use_raw_score, 
-            expected, 
-            id="case1"
-        )
-        cases.append(case)
-        return cases
-
-    def test_postprocess(
-        self, 
-        pred_cls, 
-        pred_reg, 
-        pred_centerness, 
-        strides, 
-        threshold, 
-        nms_threshold, 
-        max_boxes, 
-        use_raw_score, 
-        expected
-    ):
-        boxes = model_type.postprocess(pred_cls, pred_reg, pred_centerness, strides)
-        assert isinstance(boxes, Tensor)
-        assert boxes.shape[-1] == 6
-        assert torch.allclose(boxes, expected)
-
