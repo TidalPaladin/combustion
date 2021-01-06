@@ -10,7 +10,13 @@ from torch import Tensor
 from combustion.util import check_dimension, check_is_tensor, check_shapes_match
 
 
-def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean") -> Tensor:
+def absolute_to_center_delta(bbox: Tensor) -> Tensor:
+    _ = bbox.view(-1, 2, 2)
+    _ = _ - _[..., 0:1, :]
+    return _.view_as(bbox)
+
+
+def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean", absolute: bool = False) -> Tensor:
     # validation
     check_is_tensor(inputs, "inputs")
     check_is_tensor(targets, "targets")
@@ -21,9 +27,14 @@ def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean") 
     inputs = inputs.float().clone()
     targets = targets.float().clone()
 
-    # x1, y1 are negative deltas relative to center
-    inputs[..., :2] = inputs[..., :2].neg()
-    targets[..., :2] = targets[..., :2].neg()
+    # convert absolute coordinates to distance from box center if needed
+    if absolute:
+        inputs = absolute_to_center_delta(inputs)
+        targets = absolute_to_center_delta(targets)
+    else:
+        # x1, y1 are negative deltas relative to center
+        inputs[..., :2] = inputs[..., :2].neg()
+        targets[..., :2] = targets[..., :2].neg()
 
     # compute euclidean distance between pred and true box centers
     pred_size = (inputs[..., 2:] - inputs[..., :2]).clamp_min(1)

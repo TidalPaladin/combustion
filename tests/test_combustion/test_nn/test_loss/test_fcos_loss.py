@@ -449,8 +449,13 @@ class TestFCOSLoss:
                 ],
                 [
                     [32, 32, 88, 88],
+                    [42, 32, 84, 96],
                     [-1, -1, -1, -1],
-                    [-1, -1, -1, -1],
+                ],
+                [
+                    [10, 20, 50, 60],
+                    [10, 20, 500, 600],
+                    [20, 20, 84, 84],
                 ],
                 [
                     [-1, -1, -1, -1],
@@ -463,7 +468,8 @@ class TestFCOSLoss:
         target_cls = torch.tensor(
             [
                 [0, 1, -1],
-                [0, -1, -1],
+                [0, 0, -1],
+                [0, 0, 1],
                 [-1, -1, -1],
             ]
         ).unsqueeze_(-1)
@@ -476,5 +482,11 @@ class TestFCOSLoss:
 
         criterion = FCOSLoss(strides, num_classes)
         pred_cls, pred_reg, pred_centerness = criterion.create_targets(target_bbox, target_cls, sizes)
+        pred_cls = [torch.logit(x, 1e-6) for x in pred_cls]
+        pred_centerness = [torch.logit(x.clamp_(min=0, max=1), 1e-6) for x in pred_centerness]
+        pred_reg = [x.clamp_min(0) for x in pred_reg]
 
         output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, strides)
+
+        loss = criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
+        assert False

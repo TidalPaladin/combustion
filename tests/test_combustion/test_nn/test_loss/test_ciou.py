@@ -95,3 +95,34 @@ class TestCompleteIouLoss:
         inputs.requires_grad = True
         loss = criterion(inputs, targets)
         loss.sum().backward()
+
+    def test_absolute(self):
+        inputs1 = torch.tensor(
+            [
+                [1, 1, 10, 10],
+                [1, 1, 1, 1],
+            ]
+        )
+        targets1 = torch.tensor(
+            [
+                [1, 1, 10, 10],
+                [3, 3, 1, 1],
+            ]
+        )
+
+        inputs2 = torch.tensor(
+            [
+                [0, 0, 11, 11],
+                [2, 2, 4, 4],
+            ]
+        )
+        targets2 = torch.tensor(
+            [
+                [0, 0, 11, 11],
+                [0, 0, 4, 4],
+            ]
+        )
+
+        loss1 = complete_iou_loss(inputs1, targets1)
+        loss2 = complete_iou_loss(inputs2, targets2, absolute=True)
+        assert torch.allclose(loss1, loss2, atol=0.001)

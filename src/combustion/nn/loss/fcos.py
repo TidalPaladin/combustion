@@ -177,15 +177,18 @@ class FCOSLoss:
         z = zip(cls_pred, reg_pred, centerness_pred, fcos_target)
         for cls_pred_i, reg_pred_i, centerness_pred_i, (cls_true, reg_true, centerness_true) in z:
             _cls_loss = self.cls_criterion(cls_pred_i, cls_true)
-            _reg_loss = (
-                self.reg_criterion(reg_pred_i.view(4, -1).permute(1, 0), reg_true.view(4, -1).permute(1, 0))
-                .view(reg_pred_i.shape[1:])
-                .unsqueeze_(0)
-            )
-            _centerness_loss = self.centerness_criterion(centerness_pred_i, centerness_true)
 
-            _reg_loss[(reg_true == IGNORE).all(dim=-3, keepdim=True)] = 0
-            _centerness_loss[centerness_true == IGNORE] = 0
+            reg_ignore = (reg_true == IGNORE).all(dim=-3)
+            centerness_ignore = centerness_true == IGNORE
+
+            centerness_pred_i = centerness_pred_i[~centerness_ignore]
+            reg_pred_i = reg_pred_i[:, ~reg_ignore].view(4, -1)
+            centerness_true = centerness_true[~centerness_ignore]
+            reg_true = reg_true[:, ~reg_ignore].view(4, -1)
+
+            _reg_loss = self.reg_criterion(reg_pred_i.permute(1, 0), reg_true.permute(1, 0))
+            _centerness_loss = self.centerness_criterion(centerness_pred_i, centerness_true)
+            assert False
 
             cls_loss.append(_cls_loss)
             reg_loss.append(_reg_loss)

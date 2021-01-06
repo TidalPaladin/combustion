@@ -230,10 +230,6 @@ class FCOSDecoder(BaseFCOSDecoder):
             # get indices of positions that exceed threshold
             positive_locations = (level_cls >= threshold).nonzero()
 
-            # TODO this isnt torchscriptable
-            # if not positive_locations.numel():
-            #    continue
-
             # extract coordinates of positive predictions and drop scores for negative predictions
             batch, class_id, y, x = positive_locations.split(1, dim=-1)
             raw_score = level_cls[batch, class_id, y, x]
@@ -260,6 +256,7 @@ class FCOSDecoder(BaseFCOSDecoder):
             final_batch_idx = torch.cat(batch_idx, dim=-2)
             del boxes
             del batch_idx
+        # handle case of no boxes across entire batch
         else:
             return reg[0].new_empty(batch_size, 0, 6)
 
