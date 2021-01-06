@@ -241,7 +241,7 @@ class FCOSDecoder(BaseFCOSDecoder):
 
             # use stride to compute base coodinates within the original image
             # use pred regression to compute l, t, r, b offset
-            base = positive_locations[..., -2:].float().mul_(stride).add_(stride / 2.0).repeat(1, 2)
+            base = positive_locations[..., -2:].roll(1, -1).float().mul_(stride).add_(stride / 2.0).repeat(1, 2)
             offset = level_reg[batch, :, y, x].view_as(base)
             offset[..., :2].neg_()
 

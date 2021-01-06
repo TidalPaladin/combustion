@@ -273,7 +273,7 @@ class FCOSLoss:
         # build classification target
         cls_target = FCOSLoss.create_classification_target(bbox, cls, mask, num_classes, size_target)
 
-        # apply mask to regression target and take per pixel maximum for all boxes
+        # apply mask to regression target and take per pixel minimum for all boxes
         reg_target[reg_target == IGNORE] = INF
         reg_target = reg_target.amin(dim=-4)
         reg_target[reg_target == INF] = IGNORE
@@ -284,6 +284,8 @@ class FCOSLoss:
         if ind.any():
             pos_reg_targets = reg_target[..., ind].permute(1, 0)
             centerness_target[..., ind] = FCOSLoss.compute_centerness_targets(pos_reg_targets).view(-1)
+
+        reg_target[:, ~mask.any(dim=-3)] = IGNORE
 
         return cls_target, reg_target, centerness_target
 
@@ -383,7 +385,7 @@ class FCOSLoss:
 
         num_boxes = bbox.shape[-2]
         height, width = size_target[0], size_target[1]
-        grid = FCOSLoss.coordinate_grid(height, width, stride, indexing="xy")
+        grid = FCOSLoss.coordinate_grid(height, width, stride, indexing="xy", device=bbox.device)
         grid = grid.unsqueeze_(0).repeat(num_boxes, 2, 1, 1)
 
         # compute distance to box edges relative to each grid location
@@ -468,7 +470,9 @@ class FCOSLoss:
 
     @staticmethod
     @torch.jit.script
-    def coordinate_grid(height: int, width: int, stride: int = 1, indexing: str = "hw") -> Tensor:
+    def coordinate_grid(
+        height: int, width: int, stride: int = 1, indexing: str = "hw", device: Optional[torch.device] = None
+    ) -> Tensor:
         r"""Creates a coordinate grid of a given height and width where each location
         This is used to map locations in a FCOS predication at a given stride.
 
@@ -487,6 +491,9 @@ class FCOSLoss:
                 describes a coordinate by x and y. Otherwise, each coordinate
                 pair describes a coordinate by height and width.
 
+            device (:class:`torch.device`):
+                Device for the resultant grid to be placed on
+
         Shape:
             * Output - :math:`(2, H, W)`
 
@@ -503,8 +510,8 @@ class FCOSLoss:
             >>> grid = FCOSLoss.coordinate_grid(32, 32, stride=16)
             >>> box_center_hw = grid[..., 4, 4] # center at 4 * 16 + 16 / 2
         """
-        h = torch.arange(height, dtype=torch.float)
-        w = torch.arange(width, dtype=torch.float)
+        h = torch.arange(height, dtype=torch.float, device=device)
+        w = torch.arange(width, dtype=torch.float, device=device)
         grid_h, grid_w = torch.meshgrid(h, w)
 
         if indexing == "hw":

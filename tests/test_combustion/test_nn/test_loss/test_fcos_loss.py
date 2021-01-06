@@ -8,7 +8,7 @@ import pytest
 import torch
 from torch import Tensor
 
-from combustion.nn import FCOSLoss
+from combustion.nn import FCOSDecoder, FCOSLoss
 from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import visualize_bbox
 
@@ -438,3 +438,43 @@ class TestFCOSLoss:
             for cls_idx in range(c.shape[1]):
                 filename = os.path.join(image_path, f"cls_{cls_idx}_level_{level}.png")
                 self.blend_and_save(filename, c[..., cls_idx, :, :][None], img_with_box)
+
+    def test_forward_backward(self):
+        target_bbox = torch.tensor(
+            [
+                [
+                    [0, 0, 9, 9],
+                    [10, 10, 490, 490],
+                    [-1, -1, -1, -1],
+                ],
+                [
+                    [32, 32, 88, 88],
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                ],
+                [
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                ],
+            ]
+        )
+
+        target_cls = torch.tensor(
+            [
+                [0, 1, -1],
+                [0, -1, -1],
+                [-1, -1, -1],
+            ]
+        ).unsqueeze_(-1)
+
+        target_bbox.shape[0]
+        num_classes = 2
+        strides = [8, 16, 32, 64, 128]
+        base_size = 512
+        sizes = [(base_size // stride,) * 2 for stride in strides]
+
+        criterion = FCOSLoss(strides, num_classes)
+        pred_cls, pred_reg, pred_centerness = criterion.create_targets(target_bbox, target_cls, sizes)
+
+        output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, strides)
