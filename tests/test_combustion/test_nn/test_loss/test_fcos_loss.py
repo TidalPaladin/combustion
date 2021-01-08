@@ -480,13 +480,13 @@ class TestFCOSLoss:
         base_size = 512
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
-        criterion = FCOSLoss(strides, num_classes)
+        criterion = FCOSLoss(strides, num_classes, radius=1.5)
         pred_cls, pred_reg, pred_centerness = criterion.create_targets(target_bbox, target_cls, sizes)
-        pred_cls = [torch.logit(x, 1e-6) for x in pred_cls]
-        pred_centerness = [torch.logit(x.clamp_(min=0, max=1), 1e-6) for x in pred_centerness]
+        pred_cls = [torch.logit(x, 1e-4) for x in pred_cls]
+        pred_centerness = [torch.logit(x.clamp_(min=0, max=1), 1e-4) for x in pred_centerness]
         pred_reg = [x.clamp_min(0) for x in pred_reg]
 
-        output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, strides)
+        output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, strides, from_logits=True)
 
         loss = criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
         assert False

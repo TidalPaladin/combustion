@@ -188,7 +188,6 @@ class FCOSLoss:
 
             _reg_loss = self.reg_criterion(reg_pred_i.permute(1, 0), reg_true.permute(1, 0))
             _centerness_loss = self.centerness_criterion(centerness_pred_i, centerness_true)
-            assert False
 
             cls_loss.append(_cls_loss)
             reg_loss.append(_reg_loss)

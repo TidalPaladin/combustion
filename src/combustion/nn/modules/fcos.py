@@ -146,7 +146,6 @@ class FCOSDecoder(BaseFCOSDecoder):
         )
 
     @staticmethod
-    @torch.jit.script
     def postprocess(
         cls: List[Tensor],
         reg: List[Tensor],
@@ -234,6 +233,9 @@ class FCOSDecoder(BaseFCOSDecoder):
             batch, class_id, y, x = positive_locations.split(1, dim=-1)
             raw_score = level_cls[batch, class_id, y, x]
             scaled_score = scaled_score[batch, class_id, y, x]
+
+            assert not raw_score.isnan().any()
+            assert not scaled_score.isnan().any()
 
             # use stride to compute base coodinates within the original image
             # use pred regression to compute l, t, r, b offset
