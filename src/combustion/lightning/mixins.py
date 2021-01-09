@@ -111,7 +111,7 @@ class HydraMixin(ModelIO):
                 self.__class__.__name__ = f"ModelWrapper<{model.__class__.__name__}>"
 
                 # replace hparams property with hydra dictconfig
-                self.hparams = OmegaConf.create()
+                self.hparams.clear()
                 self.save_hyperparameters()
 
         return ModelWrapper(**hparams)
@@ -456,14 +456,18 @@ class HydraMixin(ModelIO):
 
             # instantiate recursively, remove those keys from config used in hydra instantiate call
             for key, subconfig in subclasses.items():
-                subconfig = DictConfig(subconfig)
-                # avoid issues when cls given without params
-                if "params" not in subconfig:
-                    subconfig["params"] = {}
-                subconfig._set_parent(config)
-                subclasses[key] = HydraMixin.instantiate(subconfig)
+
+                if isinstance(subconfig, (dict, DictConfig)):
+                    subconfig = DictConfig(subconfig)
+                    # avoid issues when cls given without params
+                    if "params" not in subconfig:
+                        subconfig["params"] = {}
+                    subconfig._set_parent(config)
+                    subclasses[key] = HydraMixin.instantiate(subconfig)
+                else:
+                    subclasses[key] = [HydraMixin.instantiate(x) for x in subconfig]
+
                 del config.get("params")[key]
 
             subclasses.update(kwargs)
-
             return instantiate(config, *args, **subclasses)

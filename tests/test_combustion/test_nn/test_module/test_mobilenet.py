@@ -8,6 +8,7 @@ from combustion.nn import MobileNetBlockConfig, MobileNetConvBlock1d, MobileNetC
 from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
+@pytest.mark.filterwarnings("ignore::torch.jit.TracerWarning")
 class TestMobileNetConvBlock1d(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     @pytest.fixture
     def model_type(self):

@@ -15,6 +15,12 @@ from combustion import MultiRunError
 pytest.importorskip("torchvision", reason="test requires torchvision")
 
 
+@pytest.mark.filterwarnings("ignore: .*To copy construct from a tensor, it is recommended to use.*")
+@pytest.fixture(autouse=True)
+def ignore_warning():
+    ...
+
+
 @pytest.fixture(autouse=False)
 def set_caplog(caplog):
     caplog.set_level(logging.CRITICAL, logger="__main__")
@@ -23,6 +29,7 @@ def set_caplog(caplog):
 
 
 @pytest.mark.parametrize("deterministic", [True, False])
+@pytest.mark.filterwarnings("ignore: .*To copy construct from a tensor, it is recommended to use.*")
 def test_fast_dev_run(mocker, deterministic):
     pl.Trainer()
     fit = mocker.spy(pl.Trainer, "fit")
@@ -81,9 +88,10 @@ def test_preprocess_train(mocker, tmp_path):
     assert num_files_written >= size
 
 
+@pytest.mark.filterwarnings("ignore: .*To copy construct from a tensor, it is recommended to use.*")
 def test_load_checkpoint(tmp_path):
-    callback = pl.callbacks.ModelCheckpoint(dirpath=tmp_path, filename="{epoch}")
-    trainer = pl.Trainer(default_root_dir=tmp_path, checkpoint_callback=callback, max_epochs=1)
+    callback = pl.callbacks.ModelCheckpoint(dirpath=tmp_path, filename="{epoch}", mode="min")
+    trainer = pl.Trainer(default_root_dir=tmp_path, callbacks=[callback], max_epochs=1)
 
     sys.argv = [
         sys.argv[0],
@@ -116,6 +124,7 @@ def test_initialize_checks_hydra_version(mocker):
 # NOTE: for some reason, this test needs to run before the multirun tests
 
 
+@pytest.mark.filterwarnings("ignore: .*To copy construct from a tensor, it is recommended to use.*")
 def test_lr_auto_find():
     sys.argv = [
         sys.argv[0],
@@ -127,16 +136,19 @@ def test_lr_auto_find():
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
+@pytest.mark.filterwarnings("ignore: .*To copy construct from a tensor, it is recommended to use.*")
 def test_multirun():
     sys.argv = [sys.argv[0], "-m", "trainer=test", "dataset.batch_size=8,32"]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
+@pytest.mark.filterwarnings("ignore: .*To copy construct from a tensor, it is recommended to use.*")
 def test_multirun_from_yaml():
     sys.argv = [sys.argv[0], "-m", "trainer=test", "sweeper=sweep1"]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
 
 
+@pytest.mark.filterwarnings("ignore: .*To copy construct from a tensor, it is recommended to use.*")
 def test_multirun_handles_exception():
     sys.argv = [sys.argv[0], "-m", "trainer=test", "dataset.batch_size=-1, 8"]
     with pytest.raises(MultiRunError):
