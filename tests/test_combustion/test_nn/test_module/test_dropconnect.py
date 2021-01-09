@@ -8,6 +8,7 @@ from combustion.nn import DropConnect
 from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
+@pytest.mark.filterwarnings("ignore::torch.jit.TracerWarning")
 class TestDropConnect(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     @pytest.fixture(params=["train", "eval"])
     def mode(self, request):

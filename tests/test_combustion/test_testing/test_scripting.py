@@ -46,6 +46,7 @@ class TestTorchScriptTestMixin(TorchScriptTestMixin):
         return model_class(1, 10, 3)
 
 
+@pytest.mark.filterwarnings("ignore::torch.jit.TracerWarning")
 class TestTorchScriptTraceTestMixin(TorchScriptTraceTestMixin):
     @pytest.fixture
     def model(self, model_class):

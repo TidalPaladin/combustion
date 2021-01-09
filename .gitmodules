@@ -1,0 +1,3 @@
+[submodule "trainers/efficientdet-fcos/efficientdet-pytorch"]
+	path = trainers/efficientdet-fcos/efficientdet-pytorch
+	url = https://github.com/rwightman/efficientdet-pytorch.git

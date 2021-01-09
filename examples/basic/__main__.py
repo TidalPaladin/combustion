@@ -36,34 +36,27 @@ class FakeModel(HydraMixin, pl.LightningModule):
         x, y = batch
         y_hat = self(x)
         loss = F.cross_entropy(y_hat, y)
-        tensorboard_logs = {"train_loss": loss}
 
         # sample progress bar override with lr logging
-        bar = {"lr": self.get_lr()}
+        self.log("train/lr", self.get_lr(), on_step=True, prog_bar=True)
+        self.log("train/loss", loss, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_nb):
         # OPTIONAL
         x, y = batch
         y_hat = self(x)
-        return {"val_loss": F.cross_entropy(y_hat, y)}
-
-    def validation_epoch_end(self, outputs):
-        # OPTIONAL
-        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-        return avg_loss
+        loss = F.cross_entropy(y_hat, y)
+        self.log("val/loss", loss)
+        return loss
 
     def test_step(self, batch, batch_nb):
         # OPTIONAL
         x, y = batch
         y_hat = self(x)
-        return {"test_loss": F.cross_entropy(y_hat, y)}
-
-    def test_epoch_end(self, outputs):
-        # OPTIONAL
-        avg_loss = torch.stack([x["test_loss"] for x in outputs]).mean()
-        logs = {"test_loss": avg_loss}
-        return {"avg_test_loss": avg_loss, "log": logs, "progress_bar": logs}
+        loss = F.cross_entropy(y_hat, y)
+        self.log("test/loss", loss)
+        return loss
 
 
 combustion.initialize(config_path="./conf", config_name="config")
