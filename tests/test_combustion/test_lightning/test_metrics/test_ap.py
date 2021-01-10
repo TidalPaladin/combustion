@@ -7,6 +7,7 @@ import torch
 from combustion.lightning.metrics import BoxAveragePrecision
 
 
+@pytest.mark.filterwarnings("ignore:.*To copy construct from a tensor, it is recommended to use sourceTensor.*")
 class TestBoxAveragePrecision:
     @pytest.mark.parametrize("true_positive_limit", [True, False])
     @pytest.mark.parametrize("pos_label", [None, 0, 1, 2])

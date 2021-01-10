@@ -8,33 +8,6 @@ import torch.nn.functional as F
 from torch import Tensor
 
 
-def _check_mul_complex_inputs(a: Tensor, b: Tensor):
-    if a.shape[-1] != 2:
-        raise ValueError(f"Expected a.shape[-1] == 2, but found shape {a.shape}")
-    if b.shape[-1] != 2:
-        raise ValueError(f"Expected b.shape[-1] == 2, but found shape {b.shape}")
-    if a.shape != b.shape:
-        raise ValueError(f"Expected a.shape == b.shape, but found {a.shape}, {b.shape}")
-
-
-def mul_complex(a: Tensor, b: Tensor) -> Tensor:
-    _check_mul_complex_inputs(a, b)
-    op = "bc...,dc...->bd..."
-    t1 = torch.einsum(op, a[..., 0], b[..., 0]) + torch.einsum(op, a[..., 1], b[..., 1])
-    t2 = torch.einsum(op, a[..., 1], b[..., 0]) - torch.einsum(op, a[..., 0], b[..., 1])
-    return torch.stack([t1, t2], dim=-1)
-
-
-@torch.jit.script
-def mul_complex_(a: Tensor, b: Tensor) -> Tensor:
-    _check_mul_complex_inputs(a, b)
-    t1 = (a[..., 0] * b[..., 0]).add_(a[..., 1] * b[..., 1])
-    t2 = (a[..., 1] * b[..., 0]).sub_(a[..., 0] * b[..., 1])
-    a[..., 0] = t1
-    a[..., 1] = t2
-    return a
-
-
 @torch.jit.script
 def fourier_conv2d(
     inputs: Tensor,
@@ -86,7 +59,7 @@ def fourier_conv2d(
     # pad inputs and fft
     _pad = (padding[1], padding[1], padding[0], padding[0])
     inputs = F.pad(inputs, _pad, padding_mode, fill_value)
-    fft_inputs = torch.rfft(inputs, spatial_ndim)
+    fft_inputs = torch.fft.fft2(inputs, s=inputs.shape[2:])
 
     # get padding to place kernel in tensor of shape input.shape
     kernel_padding: List[int] = []
@@ -98,10 +71,10 @@ def fourier_conv2d(
 
     # pad kernel and fft
     _ = F.pad(kernel, kernel_padding)
-    fft_kernel = torch.rfft(_, spatial_ndim)
+    fft_kernel = torch.fft.fft2(_, s=inputs.shape[2:])
 
     # do convolution as multiplication in frequency domain and inverse fourier
-    result = mul_complex(fft_inputs, fft_kernel).irfft(spatial_ndim, signal_sizes=inputs.shape[2:])
+    result = torch.fft.irfft2(fft_inputs * fft_kernel.conj(), inputs.shape[2:])
     result = result[..., :: stride[0], :: stride[1]]
 
     # crop to match expected output shape
