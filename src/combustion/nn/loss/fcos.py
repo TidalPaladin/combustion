@@ -72,8 +72,8 @@ class FCOSLoss:
         strides: Tuple[int, ...],
         num_classes: int,
         interest_range: Tuple[Tuple[int, int], ...] = DEFAULT_INTEREST_RANGE,
-        gamma: float = 2.0,
-        alpha: float = 0.5,
+        gamma: float = 1.5,
+        alpha: float = 0.2,
         radius: Optional[int] = 1,
         pad_value: float = -1,
     ):
@@ -135,8 +135,8 @@ class FCOSLoss:
         centerness_loss = sum([x.sum() for x in centerness_loss])
 
         cls_loss = cls_loss / max(num_pos_avg_per_gpu, 1.0)
-        reg_loss = reg_loss / max(sum_centerness_targets_avg_per_gpu, 1.0)
-        centerness_loss = centerness_loss / max(num_pos_avg_per_gpu, 1.0)
+        reg_loss = reg_loss / max(num_pos_avg_per_gpu, 1.0)
+        centerness_loss = centerness_loss / max(sum_centerness_targets_avg_per_gpu, 1.0)
         return cls_loss, reg_loss, centerness_loss
 
     def get_num_gpus(self) -> int:

@@ -12,8 +12,11 @@ from torch import Tensor
 from combustion.lightning import HydraMixin
 from combustion.lightning.metrics import BoxAveragePrecision
 from combustion.models import EfficientDetFCOS as EffDetFCOS
-from combustion.nn import FCOSLoss
+from combustion.nn import FCOSLoss, FCOSDecoder
 from combustion.vision import split_bbox_scores_class, split_box_target, to_8bit
+
+# from timm import create_model
+from effdet import create_model
 
 from ..mixins import VisualizationMixin
 
@@ -35,13 +38,20 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
         self.num_classes = int(num_classes)
         self.strides = [int(x) for x in strides]
         self.sizes = [(int(x), int(y)) for x, y in sizes]
-        self._model = EffDetFCOS.from_predefined(
-            compound_coeff, self.num_classes, fpn_levels=[3, 5, 7, 8, 9], strides=self.strides
-        )
+        # self._model = EffDetFCOS.from_predefined(
+        #    compound_coeff, self.num_classes, fpn_levels=[3, 5, 7, 8, 9], strides=self.strides
+        # )
 
-        self._model.input_filters
+        self._model = create_model("tf_efficientdet_d4", pretrained=True)
+        del self._model.box_net
+        del self._model.class_net
 
-        self.threshold = float(threshold)if threshold is not None else 0.05
+        fpn_filters = self._model.config.fpn_channels
+        num_repeats = 4
+
+        self.fcos = FCOSDecoder(fpn_filters, self.num_classes, num_repeats, strides)
+
+        self.threshold = float(threshold) if threshold is not None else 0.05
         self.nms_threshold = float(nms_threshold) if nms_threshold is not None else 0.1
         self._criterion = FCOSLoss(self.strides, self.num_classes, radius=1, interest_range=self.sizes)
 
@@ -50,6 +60,11 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
             BoxAveragePrecision(iou_threshold=thresh, compute_on_step=False, dist_sync_on_step=False)
             for thresh in (0.25, 0.5, 0.75)
         ]
+
+        # freeze backbone
+        for param in self._model.parameters():
+            param.requires_grad = False
+        print(self.fcos)
 
     def update_bn(self, x: nn.Module):
         for name, child in x.named_children():
@@ -60,7 +75,10 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor]:
         height, width = inputs.shape[-2], inputs.shape[-1]
-        cls, reg, centerness = self._model.forward(inputs)
+        # cls, reg, centerness = self._model.forward(inputs)
+        features = self._model.backbone(inputs)
+        features = self._model.fpn(features)
+        cls, reg, centerness = self.fcos(features)
         return cls, reg, centerness
 
     def criterion(
@@ -151,11 +169,31 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
             text_color=(0, 0, 0),
         )
 
+        reflected_boxes = FCOSDecoder.postprocess(
+            cls_heatmap,
+            reg,
+            [x.sigmoid() for x in centerness],
+            self._criterion.strides,
+            from_logits=False,
+            threshold=self.threshold,
+            nms_threshold=self.nms_threshold,
+            max_boxes=140,
+        )
+        # overlay target boxes onto image for visualization
+        viz = self.overlay_boxes(
+            img_with_boxes.clone(),
+            reflected_boxes[..., :4],
+            reflected_boxes[..., 5:6],
+            reflected_boxes[..., 4:5],
+            # class_names=COCO_EMBEDDINGS,
+        )
+        self.add_images(self.logger.experiment, "train/reflect", viz, step, split_batches=False)
+
         self.log_heatmap(
             self.logger.experiment,
             "train/heatmap/pred/",
             img_with_boxes,
-            EffDetFCOS.reduce_heatmap([torch.sigmoid(x) for x in types]),
+            FCOSDecoder.reduce_heatmaps([torch.sigmoid(x) for x in types]),
             step,
             # COCO_EMBEDDINGS,
             image_alpha=1.0,
@@ -163,7 +201,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
             split_batches=False,
         )
 
-        pred_boxes, _ = EffDetFCOS.create_boxes(
+        pred_boxes = FCOSDecoder.postprocess(
             types,
             reg,
             centerness,
@@ -171,7 +209,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
             from_logits=True,
             threshold=self.threshold,
             nms_threshold=self.nms_threshold,
-            max_boxes=140
+            max_boxes=140,
         )
         pred_boxes[..., :4].mul_(scale)
 
@@ -188,7 +226,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
         reg_heatmap = [torch.norm(x.float().clamp_min_(0), p=2, dim=-3, keepdim=True) for x in reg_heatmap]
         reg_heatmap = [x.div(x.amax(dim=(-1, -2, -3), keepdim=True).clamp_min(1)) for x in reg_heatmap]
 
-        hm = EffDetFCOS.reduce_heatmap(reg_heatmap)
+        hm = FCOSDecoder.reduce_heatmaps(reg_heatmap)
         hm = F.interpolate(hm, scale_factor=scale, mode="nearest")
         self.log_heatmap(
             self.logger.experiment,
@@ -202,7 +240,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
             split_batches=False,
         )
 
-        hm = EffDetFCOS.reduce_heatmap(cls_heatmap)
+        hm = FCOSDecoder.reduce_heatmaps(cls_heatmap)
         hm = F.interpolate(hm, scale_factor=scale, mode="nearest")
         self.log_heatmap(
             self.logger.experiment,
@@ -215,7 +253,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
             heatmap_alpha=0.7,
             split_batches=False,
         )
-        hm = EffDetFCOS.reduce_heatmap([x.clamp_min(0) for x in centerness_heatmap])
+        hm = FCOSDecoder.reduce_heatmaps([x.clamp_min(0) for x in centerness_heatmap])
         hm = F.interpolate(hm, scale_factor=scale, mode="nearest")
         self.log_heatmap(
             self.logger.experiment,
@@ -267,7 +305,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
 
         # turn postprocessed heatmaps into predicted boxes
         # x1, y1, x2, y2, type_score, type_class
-        pred_boxes, _ = EffDetFCOS.create_boxes(
+        pred_boxes = FCOSDecoder.postprocess(
             cls,
             reg,
             centerness,
@@ -275,7 +313,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
             from_logits=True,
             threshold=self.threshold,
             nms_threshold=self.nms_threshold,
-            max_boxes=140
+            max_boxes=140,
         )
 
         # compute metrics
@@ -321,7 +359,7 @@ class EfficientDetFCOS(HydraMixin, pl.LightningModule, VisualizationMixin):
 
         sizes = [x.shape[-2:] for x in types]
 
-        hm = EffDetFCOS.reduce_heatmap([torch.sigmoid(x.detach()) for x in types])
+        hm = FCOSDecoder.reduce_heatmaps([torch.sigmoid(x.detach()) for x in types])
         hm = F.interpolate(hm, scale_factor=scale, mode="nearest")
         self.log_heatmap(
             self.logger.experiment,

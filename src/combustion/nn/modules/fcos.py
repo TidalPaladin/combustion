@@ -8,6 +8,7 @@ from typing import Callable, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 from torchvision.ops import batched_nms
 
@@ -24,10 +25,10 @@ class BaseFCOSDecoder(nn.Module, ABC):
         num_regressions: int,
         num_convs: int,
         strides: Optional[Tuple[int]] = None,
-        activation: nn.Module = nn.ReLU(),
+        activation: nn.Module = nn.SiLU(),
         reg_activation: nn.Module = nn.ReLU(),
-        bn_momentum: float = 0.01,
-        bn_epsilon: float = 1e-3,
+        num_groups: int = 32,
+        gn_epsilon: float = 1e-5,
     ):
         super().__init__()
         self.cls_head = SharedDecoder2d(
@@ -38,8 +39,8 @@ class BaseFCOSDecoder(nn.Module, ABC):
             strides=strides,
             activation=activation,
             final_activation=nn.Identity(),
-            bn_momentum=bn_momentum,
-            bn_epsilon=bn_epsilon,
+            num_groups=num_groups,
+            gn_epsilon=gn_epsilon,
         )
 
         self.reg_head = SharedDecoder2d(
@@ -50,8 +51,8 @@ class BaseFCOSDecoder(nn.Module, ABC):
             strides=strides,
             activation=activation,
             final_activation=nn.Identity(),
-            bn_momentum=bn_momentum,
-            bn_epsilon=bn_epsilon,
+            num_groups=num_groups,
+            gn_epsilon=gn_epsilon,
         )
         self.reg_activation = reg_activation
         self.strides = strides
@@ -78,8 +79,8 @@ class BaseFCOSDecoder(nn.Module, ABC):
         result = heatmap[0]
         for i in range(len(heatmap) - 1):
             current_level = F.interpolate(heatmap[i + 1], result.shape[-2:], mode=mode)
-            result = combine(current_level, result)
-        return top
+            result = reduction(current_level, result)
+        return result
 
 
 class FCOSDecoder(BaseFCOSDecoder):
@@ -128,9 +129,9 @@ class FCOSDecoder(BaseFCOSDecoder):
         num_classes: int,
         num_convs: int,
         strides: Optional[Tuple[int]] = None,
-        activation: nn.Module = nn.ReLU(inplace=True),
-        bn_momentum: float = 0.1,
-        bn_epsilon: float = 1e-5,
+        activation: nn.Module = nn.SiLU(),
+        num_groups: float = 32,
+        gn_epsilon: float = 1e-5,
     ):
 
         super().__init__(
@@ -140,9 +141,9 @@ class FCOSDecoder(BaseFCOSDecoder):
             num_convs,
             strides,
             activation,
-            nn.ReLU(inplace=True),
-            bn_momentum,
-            bn_epsilon,
+            nn.ReLU(),
+            num_groups,
+            gn_epsilon,
         )
 
     @staticmethod
