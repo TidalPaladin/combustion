@@ -3,12 +3,18 @@
 
 import timeit
 
+import pytest
 import torch
 from kornia.filters import GaussianBlur2d as KorniaGaussianBlur
+from packaging import version
 
 from combustion.vision.filters import GaussianBlur2d
 
 
+has_torch18 = version.parse(torch.__version__) > version.parse("1.7.1")
+
+
+@pytest.mark.skipif(not has_torch18, reason="torch>=1.8 is required")
 def test_fourier_blur():
     torch.random.manual_seed(42)
     inputs = torch.rand(1, 1, 2048, 1024)
@@ -19,6 +25,7 @@ def test_fourier_blur():
     assert torch.allclose(output, expected, atol=0.0001)
 
 
+@pytest.mark.skipif(not has_torch18, reason="torch>=1.8 is required")
 def test_fourier_time():
     torch.random.manual_seed(42)
     inputs = torch.rand(1, 1, 1024, 1024)
@@ -42,6 +49,7 @@ def test_repr():
     print(layer)
 
 
+@pytest.mark.skipif(not has_torch18, reason="torch>=1.8 is required")
 def test_grad():
     torch.random.manual_seed(42)
     inputs = torch.rand(1, 1, 2048, 1024, requires_grad=True)

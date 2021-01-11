@@ -38,4 +38,4 @@ class BoxAveragePrecision(BoxClassificationMetric):
     """
 
     def compute(self):
-        return average_precision(self.pred_score, self.binary_target)
+        return average_precision(self.pred_score, self.binary_target, pos_label=1)

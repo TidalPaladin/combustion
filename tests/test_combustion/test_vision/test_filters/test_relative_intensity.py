@@ -5,8 +5,12 @@ import timeit
 
 import pytest
 import torch
+from packaging import version
 
 from combustion.vision.filters import RelativeIntensity, relative_intensity
+
+
+has_torch18 = version.parse(torch.__version__) > version.parse("1.7.1")
 
 
 @pytest.fixture
@@ -16,6 +20,7 @@ def inputs():
     return inputs
 
 
+@pytest.mark.skipif(not has_torch18, reason="torch>=1.8 is required")
 class TestRelativeIntensityFunctional:
     def test_intensity_single_kernel(self, inputs):
         kernel = [
@@ -73,6 +78,7 @@ class TestRelativeIntensityFunctional:
         assert t <= 0.1
 
 
+@pytest.mark.skipif(not has_torch18, reason="torch>=1.8 is required")
 class TestRelativeIntensityClass:
     def test_intensity_single_kernel(self, inputs):
         kernel = [

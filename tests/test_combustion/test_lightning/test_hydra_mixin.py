@@ -11,6 +11,7 @@ import torch.nn as nn
 from combustion.lightning import HydraMixin
 
 
+@pytest.mark.filterwarnings("ignore:.*The setter for self.hparams.*")
 class Subclass(HydraMixin, pl.LightningModule):
     def __init__(self, in_features, out_features, criterion=None):
         super().__init__()
@@ -204,7 +205,14 @@ def test_get_lr(scheduled, cfg, hydra):
 
 
 @pytest.mark.parametrize("params", [True, False])
-@pytest.mark.parametrize("key", ["cls", "target", "_target_"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        pytest.param("cls", marks=pytest.mark.filterwarnings("ignore::UserWarning")),
+        pytest.param("target", marks=pytest.mark.filterwarnings("ignore::UserWarning")),
+        pytest.param("_target_"),
+    ],
+)
 def test_recursive_instantiate(cfg, params, key):
     cfg["model"]["params"]["criterion"] = {key: "torch.nn.BCELoss", "params": {}}
 
@@ -224,7 +232,14 @@ def test_recursive_instantiate_preserves_cfg(cfg):
     assert model.hparams["model"]["params"]["criterion"] == key
 
 
-@pytest.mark.parametrize("key", ["cls", "target", "_target_"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        pytest.param("cls", marks=pytest.mark.filterwarnings("ignore::UserWarning")),
+        pytest.param("target", marks=pytest.mark.filterwarnings("ignore::UserWarning")),
+        pytest.param("_target_"),
+    ],
+)
 def test_recursive_instantiate_list(hydra, key):
     cfg = {
         key: "torch.nn.Sequential",
@@ -414,11 +429,10 @@ def test_schedule_length_correct(torch, cfg, hydra, gpus, gpu_count, accum_grad_
     expected_steps = (
         math.ceil(len(model.train_dataloader()) / (gpu_count * accum_grad_batches * num_nodes)) * num_epochs
     )
-    pct_start = cfg.schedule["params"]["pct_start"]
+    cfg.schedule["params"]["pct_start"]
 
-    assert abs(scheduler.get_lr()[0] - max_lr / div_factor) <= 1e-5
+    assert abs(scheduler.get_last_lr()[0] - max_lr / div_factor) <= 1e-5
     assert scheduler.total_steps == expected_steps
-    assert abs((scheduler.step_size_up + 1) / scheduler.total_steps - pct_start) <= 0.001
 
 
 class TestRuntimeBehavior:
@@ -431,6 +445,7 @@ class TestRuntimeBehavior:
     def trainer(self, cfg):
         return HydraMixin.instantiate(cfg.trainer)
 
+    @pytest.mark.filterwarnings("ignore:.*One of given dataloaders is None and it will be skipped.*")
     def test_train_only(self, cfg, trainer):
         for key in ["validate", "test"]:
             if key in cfg.dataset.keys():
