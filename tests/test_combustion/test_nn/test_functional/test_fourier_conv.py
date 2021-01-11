@@ -4,10 +4,15 @@
 import pytest
 import torch
 import torch.nn as nn
+from packaging import version
 
 from combustion.nn.functional import fourier_conv2d
 
 
+has_torch18 = version.parse(torch.__version__) > version.parse("1.7.1")
+
+
+@pytest.mark.skipif(not has_torch18, reason="torch>=1.8 is required")
 @pytest.mark.parametrize(
     "kernel_size",
     [

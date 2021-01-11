@@ -4,6 +4,9 @@ import os
 
 import pytest
 
+from combustion.testing import cuda_or_skip as cuda_or_skip_mark
+from combustion.testing.utils import cuda_available
+
 
 @pytest.fixture(scope="session")
 def torch():
@@ -15,19 +18,14 @@ def ignite():
     return pytest.importorskip("ignite", reason="test requires ignite")
 
 
-@pytest.fixture(params=[True, False])
+@pytest.fixture(params=[pytest.param(True, marks=cuda_or_skip_mark), False])
 def cuda(torch, request):
-    if request.param:
-        if not torch.cuda.is_available():
-            pytest.skip("test requires cuda")
-        return True
-    else:
-        return False
+    return request.param
 
 
 @pytest.fixture(scope="session")
 def cuda_or_skip(torch):
-    if not torch.cuda.is_available():
+    if not cuda_available():
         pytest.skip("test requires cuda")
 
 
