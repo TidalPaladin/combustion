@@ -46,7 +46,7 @@ class _SharedDecoder(nn.Sequential):
     ):
         self.scaled = bool(scaled)
         self.strides = strides
-        self.num_groups = max(1, in_channels // num_groups)
+        self.num_groups = min(in_channels, num_groups)
 
         super().__init__()
         for i in range(num_convs):
