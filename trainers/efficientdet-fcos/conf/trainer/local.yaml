@@ -3,7 +3,7 @@
 _target_: pytorch_lightning.Trainer
 params:
   max_epochs: 100
-  gpus: [1,]
+  gpus: 1
   amp_level: O1
   #amp_backend: apex
   precision: 16
@@ -15,7 +15,7 @@ params:
   #track_grad_norm: 2
   # gradient_clip_val: 1.0
   terminate_on_nan: true
-  #num_sanity_val_steps: -1
+  num_sanity_val_steps: 0
   #accelerator: ddp
   #sync_batchnorm: true
   #limit_val_batches: 8
@@ -27,7 +27,7 @@ params:
   logger:
     _target_: pytorch_lightning.loggers.TensorBoardLogger
     params:
-      save_dir: /mnt/active_0/chase/outputs/fcos
+      save_dir: /mnt/iscsi/output
       name: ${now:%Y-%m-%d}
       version: ${now:%H-%M-%S}
               

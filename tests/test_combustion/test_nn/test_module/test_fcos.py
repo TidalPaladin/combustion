@@ -75,9 +75,9 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
         torch.random.manual_seed(42)
-        pred_cls = [torch.rand(2, num_classes, *size, requires_grad=True) for size in sizes]
-        pred_reg = [torch.rand(2, 4, *size, requires_grad=True).mul(512).round() for size in sizes]
-        pred_centerness = [torch.rand(2, 1, *size, requires_grad=True) for size in sizes]
+        pred_cls = [torch.rand(2, num_classes, *size) for size in sizes]
+        pred_reg = [torch.rand(2, 4, *size).mul(512).round() for size in sizes]
+        pred_centerness = [torch.rand(2, 1, *size) for size in sizes]
 
         max_boxes = 10
         boxes = model_type.postprocess(pred_cls, pred_reg, pred_centerness, strides, max_boxes=max_boxes)
@@ -92,9 +92,9 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         base_size = 512
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
-        pred_cls = [torch.zeros(2, num_classes, *size, requires_grad=True) for size in sizes]
-        pred_reg = [torch.ones(2, 4, *size, requires_grad=True).mul(10).round() for size in sizes]
-        pred_centerness = [torch.ones(2, 1, *size, requires_grad=True).mul(0.5) for size in sizes]
+        pred_cls = [torch.zeros(2, num_classes, *size) for size in sizes]
+        pred_reg = [torch.ones(2, 4, *size).mul(10).round() for size in sizes]
+        pred_centerness = [torch.ones(2, 1, *size).mul(0.5) for size in sizes]
 
         pred_cls[-1][0, 0, 1, 1] = 0.91
         pred_cls[-3][0, 1, 5, 5] = 0.92
@@ -111,9 +111,9 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         base_size = 512
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
-        pred_cls = [torch.zeros(2, num_classes, *size, requires_grad=True) for size in sizes]
-        pred_reg = [torch.ones(2, 4, *size, requires_grad=True).mul(10).round() for size in sizes]
-        pred_centerness = [torch.ones(2, 1, *size, requires_grad=True).mul(0.5) for size in sizes]
+        pred_cls = [torch.zeros(2, num_classes, *size) for size in sizes]
+        pred_reg = [torch.ones(2, 4, *size).mul(10).round() for size in sizes]
+        pred_centerness = [torch.ones(2, 1, *size).mul(0.5) for size in sizes]
 
         boxes = model_type.postprocess(pred_cls, pred_reg, pred_centerness, strides, use_raw_score=True)
         assert isinstance(boxes, Tensor)

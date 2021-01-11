@@ -41,11 +41,12 @@ class _SharedDecoder(nn.Sequential):
         strides: Optional[Tuple[int]] = None,
         activation: nn.Module = nn.ReLU(inplace=True),
         final_activation: nn.Module = nn.Identity(),
-        bn_momentum: float = 0.1,
-        bn_epsilon: float = 1e-5,
+        num_groups: int = 32,
+        gn_epsilon: float = 1e-5,
     ):
         self.scaled = bool(scaled)
         self.strides = strides
+        self.num_groups = max(1, in_channels // num_groups)
 
         super().__init__()
         for i in range(num_convs):
@@ -65,9 +66,9 @@ class _SharedDecoder(nn.Sequential):
 
             # bn + act
             if not is_last_repeat:
-                bn = self.BatchNorm(out, bn_momentum, bn_epsilon)
-                torch.nn.init.constant_(bn.bias, 0)
-                self.add_module(f"bn_{i}", bn)
+                gn = nn.GroupNorm(self.num_groups, out, gn_epsilon)
+                torch.nn.init.constant_(gn.bias, 0)
+                self.add_module(f"gn_{i}", gn)
             else:
                 torch.nn.init.constant_(pw.bias, 0)
 

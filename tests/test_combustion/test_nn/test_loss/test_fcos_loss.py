@@ -488,5 +488,41 @@ class TestFCOSLoss:
 
         output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, strides, from_logits=True)
 
-        loss = criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
-        assert False
+        criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
+
+    def test_forward_backward2(self):
+        num_classes = 90
+        batch_size = 1
+        max_roi = 32
+        strides = [8, 16, 32, 64, 128]
+        base_size = 512
+        sizes = [(base_size // stride,) * 2 for stride in strides]
+
+        torch.random.manual_seed(42)
+
+        target_bbox = torch.randint(0, base_size, (batch_size, max_roi, 4))
+        target_bbox[..., -2:] = torch.max(target_bbox[..., :2] + 9, target_bbox[..., -2:]).clamp_max_(base_size)
+        target_cls = torch.randint(-1, num_classes, (batch_size, max_roi, 1))
+
+        targets = torch.cat([target_bbox, target_cls], dim=-1)
+        is_padding = targets[..., -1] == -1
+        targets[is_padding, :] = -1
+
+        criterion = FCOSLoss(strides, num_classes, radius=1)
+        pred_cls, pred_reg, pred_centerness = criterion.create_targets(targets[..., :4], targets[..., -1:], sizes)
+        pred_cls = [torch.logit(x, 1e-4) for x in pred_cls]
+        pred_centerness = [torch.logit(x.clamp_(min=0, max=1), 1e-4) for x in pred_centerness]
+        pred_reg = [x.clamp_min(0) for x in pred_reg]
+
+        for batch_idx, target_i in enumerate(targets):
+            unique_target_classes = target_i[..., -1].unique()
+            max_prob = torch.stack(
+                [x[batch_idx, unique_target_classes, ...].amax((-1, -2)).sigmoid() for x in pred_cls], dim=-1
+            )
+            max_prob = max_prob.amax(-1, keepdim=True)
+            unique_target_classes[(max_prob < 0.5).squeeze().nonzero()]
+            # assert not unassigned.numel()
+
+        output = FCOSDecoder.postprocess(
+            pred_cls, pred_reg, pred_centerness, strides, from_logits=True, use_raw_score=True, nms_threshold=None
+        )

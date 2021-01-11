@@ -1,2 +1,5 @@
 albumentations
 pycocotools
+timm
+./efficientdet-pytorch
+
