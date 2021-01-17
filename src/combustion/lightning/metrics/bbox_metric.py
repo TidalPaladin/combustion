@@ -69,7 +69,7 @@ class BoxClassificationMetric(Metric, ABC):
 
         self.add_state("pred_score", default=torch.empty(0), dist_reduce_fx="cat")
         self.add_state("target_class", default=torch.empty(0), dist_reduce_fx="cat")
-        self.add_state("binary_target", default=torch.empty(0, dtype=torch.uint8), dist_reduce_fx="cat")
+        self.add_state("binary_target", default=torch.empty(0), dist_reduce_fx="cat")
 
     def update(self, pred: torch.Tensor, target: torch.Tensor):
         """
@@ -148,9 +148,9 @@ class BoxClassificationMetric(Metric, ABC):
         xform = CategoricalLabelIoU(self.iou_threshold, self.true_positive_limit)
         pred_boxes, pred_scores, pred_cls = split_bbox_scores_class(pred)
         target_bbox, target_cls = split_box_target(target)
-        pred_out, is_correct, target_out = xform(pred_boxes, pred_scores, pred_cls, target_bbox, target_cls)
+        pred_out, binary_target, target_out = xform(pred_boxes, pred_scores, pred_cls, target_bbox, target_cls)
 
         assert pred_out.ndim == 1
         assert target_out.ndim == 1
         assert pred_out.shape == target_out.shape
-        return pred_out, target_out.long(), is_correct
+        return pred_out, target_out.long(), binary_target
