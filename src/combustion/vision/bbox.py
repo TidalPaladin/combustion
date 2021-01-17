@@ -143,6 +143,7 @@ def visualize_bbox(
         scores = scores.unsqueeze(0) if not batched else scores
 
     # convert image to 8-bit and convert to channels_last
+    img_was_float = img.is_floating_point()
     img = to_8bit(img.clone(), per_channel=False, same_on_batch=True)
     img = img.permute(0, 2, 3, 1).contiguous()
 
@@ -226,9 +227,8 @@ def visualize_bbox(
     if batched and batch_size == 1:
         result = result.view(1, *result.shape)
 
-    # convert result to 8-bit
-    if result.dtype != torch.uint8:
-        result = to_8bit(result, per_channel=False, same_on_batch=True)
+    if img_was_float:
+        result = result.float().div_(255)
 
     return result
 
@@ -405,14 +405,14 @@ def batch_box_target(target: List[Tensor], pad_value: float = -1) -> Tensor:
     """
     max_boxes = 0
     for elem in target:
-        check_is_tensor(elem, "target_elem")
+        # check_is_tensor(elem, "target_elem")
         max_boxes = max(max_boxes, elem.shape[-2])
 
     # add a batch dim if not present
-    target = [x.view(1, *x.shape) if x.ndim < 3 else x for x in target]
+    target = [x.unsqueeze(0) if x.ndim < 3 else x for x in target]
 
     # compute output batch size
-    batch_size = sum([x.shape[0] for x in target])
+    batch_size = torch.tensor([x.shape[0] for x in target]).sum().item()
 
     # create empty output tensor of correct shape
     output_shape = (batch_size, max_boxes, target[0].shape[-1])

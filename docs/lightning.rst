@@ -25,6 +25,12 @@ Callbacks
 .. autoclass:: combustion.lightning.callbacks.CountMACs
     :members:
 
+.. autoclass:: combustion.lightning.callbacks.VisualizeCallback
+
+.. autoclass:: combustion.lightning.callbacks.KeypointVisualizeCallback
+
+.. autoclass:: combustion.lightning.callbacks.BlendVisualizeCallback
+
 Metrics
 ----------------------------------
 .. autoclass:: combustion.lightning.metrics.AUROC

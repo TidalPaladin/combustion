@@ -143,7 +143,6 @@ class TestVisualizeBbox:
 
         result = visualize_bbox(img, bbox, label, scores, class_names)
         assert isinstance(result, torch.Tensor)
-        assert result.dtype == torch.uint8
         assert result.shape[-2:] == img.shape[-2:]
         assert result.shape[-3] == 3
         if img.ndim != 2:
