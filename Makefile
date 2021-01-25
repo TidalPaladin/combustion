@@ -20,6 +20,7 @@ VERSION := $(shell cat version.txt)
 
 check: 
 	$(MAKE) style
+	$(MAKE) quality
 	$(MAKE) docs
 	$(MAKE) test
 
@@ -72,6 +73,7 @@ pre-commit:
 	pre-commit install
 
 quality: $(VENV)/bin/activate-quality
+	$(MAKE) clean
 	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
 	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 

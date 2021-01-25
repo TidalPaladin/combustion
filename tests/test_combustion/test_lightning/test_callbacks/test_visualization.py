@@ -344,8 +344,6 @@ class TestKeypointVisualizeCallback(TestVisualizeCallback):
 
         # channel splitting
         if callback.split_channels:
-            # mock = mocker.MagicMock(spec_set=combustion.vision.visualize_bbox, side_effect=(lambda *args, **kwargs: args[0]))
-            # mocker.patch("combustion.vision.visualize_bbox", new=mock)
             img, name = [], []
             splits = torch.split(data, callback.split_channels, dim=-3)
             for i, s in enumerate(splits):
