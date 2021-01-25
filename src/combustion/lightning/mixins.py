@@ -4,14 +4,16 @@
 import math
 import warnings
 from copy import deepcopy
-from typing import Any, Iterable, Optional, Tuple, Union
+from typing import Any, Generator, Iterable, Optional, Tuple, Union
 
 import pytorch_lightning as pl
+import torch.nn as nn
 from hydra.utils import instantiate
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from pytorch_lightning.core.saving import ModelIO
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 from torch import Tensor
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset, random_split
 
 
@@ -167,7 +169,7 @@ class HydraMixin(ModelIO):
 
             optimizer:
               name: adam
-              cls: torch.optim.Adam
+              _target_: torch.optim.Adam
               params:
                 lr: 0.001
 
@@ -175,7 +177,7 @@ class HydraMixin(ModelIO):
               interval: step
               monitor: val_loss
               frequency: 1
-              cls: torch.optim.lr_scheduler.OneCycleLR
+              _target_: torch.optim.lr_scheduler.OneCycleLR
               params:
                 max_lr: ${optimizer.params.lr}
                 epochs: 10
@@ -185,19 +187,87 @@ class HydraMixin(ModelIO):
                 final_div_factor: 10000.0
                 anneal_strategy: cos
         """
-        lr = self.hparams.optimizer["params"]["lr"]
-        optim = instantiate(self.hparams.optimizer, self.parameters())
+        scheduler = self.hparams.get("schedule", None)
+        optim = self.hparams.get("optimizer")
+        # multiple optimizers
+        if isinstance(optim, ListConfig):
+            num_optims = len(optim)
+            optim_params = [self.get_optimizer_parameters(idx) for idx in range(num_optims)]
+            optim_configs = optim
+
+            if not scheduler:
+                scheduler_configs = [None] * num_optims
+            elif isinstance(scheduler, DictConfig):
+                scheduler_configs = [scheduler] * num_optims
+            elif isinstance(scheduler, ListConfig):
+                scheduler_configs = scheduler
+            else:
+                raise TypeError(f"Unable to process scheduler config: \n{scheduler}")
+
+            optims = []
+            schedulers = []
+            zipped = zip(optim_configs, optim_params, scheduler_configs)
+            for optim_config, optim_param, schedule_config in zipped:
+                result = self._configure_optimizers(optim_config, optim_param, schedule_config)
+                if isinstance(result, Optimizer):
+                    optims.append(result)
+                elif isinstance(result, tuple) and len(result) == 2:
+                    optims.append(result[0][0])
+                    schedulers.append(result[1][0])
+                else:
+                    raise RuntimeError(f"Unable to process result: {result}")
+
+            if schedulers:
+                return optims, schedulers
+            else:
+                return optims
+
+        # single optimizer
+        else:
+            return self._configure_optimizers(optim, self.parameters(), scheduler)
+
+    def get_optimizer_parameters(self, optim_idx: int) -> Generator[nn.Parameter, None, None]:
+        r"""Abstract method that must be implemented when using multiple optimizers. With multiple
+        optimizers, the instantiation process is roughly:
+
+            >>> optimizers = []
+            >>> for optim_idx, optim_config in enumerate(optimizer_configs):
+            >>>     params = self.get_optimizer_parameters(optim_idx)
+            >>>     optim = self.instantiate(optim_config, params)
+            >>>     optimizers.append(optim)
+
+        Args:
+            optim_idx (int):
+                Index of the optimizer to retrieve associated module parameters for. Indices
+                follow the order in which optimizers were specified in the optimizer config.
+
+        Returns:
+            Parameters to be optimized by the ``optim_idx``'th optimizer.'
+        """
+        if optim_idx != 0:
+            raise NotImplementedError(
+                "HydraMixin modules using multiple optimizers must implement `get_optimizer_parameters`."
+            )
+        return self.parameters()
+
+    def _configure_optimizers(
+        self,
+        optim_config: DictConfig,
+        params: Generator[nn.Parameter, None, None],
+        schedule_config: Optional[DictConfig],
+    ):
+        lr = optim_config["params"]["lr"]
+        optim = instantiate(optim_config, params)
 
         # scheduler setup
-        schedule = self.hparams.get("schedule")
-        if schedule is not None:
+        if schedule_config is not None:
             # interval/frequency keys required or schedule wont run
             for required_key in ["interval", "frequency"]:
-                if required_key not in schedule.keys():
+                if required_key not in schedule_config.keys():
                     raise MisconfigurationException(f"{required_key} key is required for hydra lr scheduler")
 
             # monitor key is only required for schedules that watch loss
-            if "monitor" not in schedule.keys():
+            if "monitor" not in schedule_config.keys():
                 warnings.warn("'monitor' missing from lr schedule config")
 
             test_only = self.hparams.trainer.get("test_only", False)
@@ -214,10 +284,10 @@ class HydraMixin(ModelIO):
                 steps_per_epoch = math.ceil(len(dl) / (accum_grad_batches * gpus * num_nodes))
 
                 schedule_dict = {
-                    "interval": schedule.get("interval", "epoch"),
-                    "monitor": schedule.get("monitor", "val_loss"),
-                    "frequency": schedule.get("frequency", 1),
-                    "scheduler": instantiate(schedule, optim, max_lr=lr, steps_per_epoch=steps_per_epoch),
+                    "interval": schedule_config.get("interval", "epoch"),
+                    "monitor": schedule_config.get("monitor", "val_loss"),
+                    "frequency": schedule_config.get("frequency", 1),
+                    "scheduler": instantiate(schedule_config, optim, max_lr=lr, steps_per_epoch=steps_per_epoch),
                 }
                 result = [optim], [schedule_dict]
 
