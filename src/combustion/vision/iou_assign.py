@@ -256,14 +256,14 @@ class CategoricalLabelIoU(ConfusionMatrixIoU):
         num_pred_boxes = tp.numel()
         num_fn = fn.sum()
 
-        pred = torch.empty(num_pred_boxes + num_fn, device=pred_boxes.device).type_as(pred_scores).fill_(0)
-        target = torch.empty(num_pred_boxes + num_fn, device=pred_boxes.device).type_as(pred_scores).fill_(-1)
-        is_correct = torch.zeros(num_pred_boxes + num_fn, device=pred_boxes.device).bool()
+        pred = pred_scores.new_zeros(num_pred_boxes + num_fn)
+        target = pred_scores.new_empty(num_pred_boxes + num_fn).fill_(-1)
+        binary_target = pred_scores.new_zeros(num_pred_boxes + num_fn, dtype=torch.uint8)
 
         pred[:num_pred_boxes] = pred_scores.view(-1)
         target[:num_pred_boxes][tp] = pred_classes[tp].view(-1)
         target[num_pred_boxes:] = true_classes[fn].view(-1)
         target[:num_pred_boxes][~tp] = pred_classes[~tp].view(-1)
-        is_correct[:num_pred_boxes][tp] = True
-        is_correct[num_pred_boxes:] = True
-        return pred, is_correct, target
+        binary_target[:num_pred_boxes][tp] = 1.0
+        binary_target[num_pred_boxes:] = 1.0
+        return pred, binary_target, target

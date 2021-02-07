@@ -1,5 +1,6 @@
-.PHONY: docs docker docker-dev clean clean-venv check ci-test pre-commit quality run style tag-version test venv upload upload-test
+.PHONY: docs docker clean clean-venv check ci-test pre-commit quality run style tag-version test venv upload upload-test
 
+PROJECT=combustion
 PY_VER=python3.8
 PY_VER_SHORT=py$(shell echo $(PY_VER) | sed 's/[^0-9]*//g')
 QUALITY_DIRS=src tests setup.py
@@ -8,10 +9,8 @@ VENV=$(shell pwd)/venv
 PYTHON=$(VENV)/bin/python
 
 SPHINXBUILD=$(VENV)/bin/sphinx-build
-#SPHINXOPTS=-W
 export SPHINXBUILD
 export SPHINXOPTS
-
 
 LINE_LEN=120
 DOC_LEN=120
@@ -20,6 +19,7 @@ VERSION := $(shell cat version.txt)
 
 check: 
 	$(MAKE) style
+	$(MAKE) quality
 	$(MAKE) docs
 	$(MAKE) test
 
@@ -33,20 +33,12 @@ ci-test: $(VENV)/bin/activate-test
 		./tests/
 
 docs: $(VENV)/bin/activate-docs
-	#$(VENV)/bin/sphinx-apidoc -d 1 -E --implicit-namespaces -o docs src/combustion
 	cd docs && make html 
 
 docker: 
 	docker build \
 		--target release \
-		-t combustion:latest \
-		--file ./docker/Dockerfile \
-		./
-
-docker-dev:
-	docker build \
-		--target dev \
-		-t combustion:latest-dev \
+		-t $(PROJECT):latest \
 		--file ./docker/Dockerfile \
 		./
 
@@ -72,6 +64,7 @@ pre-commit:
 	pre-commit install
 
 quality: $(VENV)/bin/activate-quality
+	$(MAKE) clean
 	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
 	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
@@ -81,13 +74,13 @@ OUTPUT_PATH=$(shell pwd)/examples/basic/outputs
 
 run: docker
 	mkdir -p ./outputs ./data ./conf
-	docker run --rm -it --name combustion \
+	docker run --rm -it --name $(PROJECT) \
 		--gpus all \
 		--shm-size 8G \
 		-v $(DATA_PATH):/app/data \
 		-v $(CONF_PATH):/app/conf \
 		-v $(OUTPUT_PATH):/app/outputs \
-		combustion:latest \
+		$(PROJECT):latest \
 		-c "python examples/basic"
 
 style: $(VENV)/bin/activate-quality

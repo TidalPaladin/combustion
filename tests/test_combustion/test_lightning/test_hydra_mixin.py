@@ -156,7 +156,6 @@ def test_instantiate_report_error(hydra, target, exception):
 
 @pytest.mark.parametrize("scheduled", [True, False])
 def test_configure_optimizer(torch, cfg, hydra, scheduled):
-    cfg["model"]["params"]
     if not scheduled:
         del cfg["schedule"]
     model = HydraMixin.create_model(cfg)
@@ -170,6 +169,41 @@ def test_configure_optimizer(torch, cfg, hydra, scheduled):
         assert isinstance(optims[0], torch.optim.Adam)
         assert isinstance(schedulers[0], dict)
         assert isinstance(schedulers[0]["scheduler"], torch.optim.lr_scheduler.OneCycleLR)
+
+
+@pytest.mark.parametrize("scheduled", [True, False])
+def test_configure_multiple_optimizers(torch, cfg, hydra, scheduled):
+    num_optimizers = 2
+    cfg["optimizer"] = [
+        cfg["optimizer"],
+    ] * num_optimizers
+
+    if not scheduled:
+        del cfg["schedule"]
+    else:
+        cfg["schedule"] = [
+            cfg["schedule"],
+        ] * num_optimizers
+
+    model = HydraMixin.create_model(cfg)
+    model.get_optimizer_parameters = lambda idx: model.parameters()
+    model.get_datasets()
+
+    if not scheduled:
+        optims = model.configure_optimizers()
+        assert len(optims) == 2
+        assert isinstance(optims[0], torch.optim.Adam)
+        assert isinstance(optims[1], torch.optim.Adam)
+    else:
+        optims, schedulers = model.configure_optimizers()
+        assert len(optims) == 2
+        assert len(schedulers) == 2
+        assert isinstance(optims[0], torch.optim.Adam)
+        assert isinstance(optims[1], torch.optim.Adam)
+        assert isinstance(schedulers[0], dict)
+        assert isinstance(schedulers[0]["scheduler"], torch.optim.lr_scheduler.OneCycleLR)
+        assert isinstance(schedulers[1], dict)
+        assert isinstance(schedulers[1]["scheduler"], torch.optim.lr_scheduler.OneCycleLR)
 
 
 @pytest.mark.parametrize("missing", ["interval", "frequency"])
@@ -202,6 +236,29 @@ def test_get_lr(scheduled, cfg, hydra):
     model.get_datasets()
     model.configure_optimizers()
     assert model.get_lr() == cfg["optimizer"]["params"]["lr"]
+
+
+@pytest.mark.parametrize("scheduled", [True, False])
+def test_get_lr_multiple_optimizers(scheduled, cfg, hydra):
+    num_optimizers = 2
+    cfg["optimizer"] = [
+        cfg["optimizer"],
+    ] * num_optimizers
+
+    if not scheduled:
+        del cfg["schedule"]
+    else:
+        cfg["schedule"] = [
+            cfg["schedule"],
+        ] * num_optimizers
+
+    model = HydraMixin.create_model(cfg)
+    model.get_optimizer_parameters = lambda idx: model.parameters()
+    model.configure_optimizers()
+    lr1 = model.get_lr(0, 0)
+    lr2 = model.get_lr(1, 0)
+    assert lr1 == cfg["optimizer"][0]["params"]["lr"]
+    assert lr2 == cfg["optimizer"][1]["params"]["lr"]
 
 
 @pytest.mark.parametrize("params", [True, False])

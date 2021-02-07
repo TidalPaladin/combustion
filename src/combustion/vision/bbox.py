@@ -143,6 +143,7 @@ def visualize_bbox(
         scores = scores.unsqueeze(0) if not batched else scores
 
     # convert image to 8-bit and convert to channels_last
+    img_was_float = img.is_floating_point()
     img = to_8bit(img.clone(), per_channel=False, same_on_batch=True)
     img = img.permute(0, 2, 3, 1).contiguous()
 
@@ -226,9 +227,8 @@ def visualize_bbox(
     if batched and batch_size == 1:
         result = result.view(1, *result.shape)
 
-    # convert result to 8-bit
-    if result.dtype != torch.uint8:
-        result = to_8bit(result, per_channel=False, same_on_batch=True)
+    if img_was_float:
+        result = result.float().div_(255)
 
     return result
 
