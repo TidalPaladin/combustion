@@ -462,6 +462,9 @@ class HydraMixin(ModelIO):
             collate_fn = dataset_config.get("collate_fn", None)
             batch_size = dataset_config.get("batch_size", self.hparams.dataset["batch_size"])
 
+            if collate_fn is not None:
+                collate_fn = self.instantiate(collate_fn)
+
             return DataLoader(
                 dataset,
                 num_workers=num_workers,
