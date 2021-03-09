@@ -112,7 +112,7 @@ class VisualizeCallback(Callback):
     def __init__(
         self,
         name: Union[str, List[str]],
-        on: Union[str, Iterable[str]] = ("train", "val", "test"),
+        triggers: Union[str, Iterable[str]] = ("train", "val", "test"),
         attr_name: str = "last_image",
         epoch_counter: bool = False,
         max_resolution: Optional[Tuple[int, int]] = None,
@@ -128,7 +128,7 @@ class VisualizeCallback(Callback):
         per_img_norm: Optional[bool] = None,
     ):
         self.name = name
-        self.on = tuple(str(x) for x in on) if isinstance(on, Iterable) else (str(on),)
+        self.triggers = tuple(str(x) for x in triggers) if isinstance(triggers, Iterable) else (str(triggers),)
         self.max_resolution = tuple(int(x) for x in max_resolution) if max_resolution is not None else None
         self.split_channels = split_channels
         self.split_batches = bool(split_batches)
@@ -173,7 +173,7 @@ class VisualizeCallback(Callback):
             self._on_batch_end("test", trainer, pl_module)
 
     def _on_batch_end(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if mode not in self.on:
+        if mode not in self.triggers:
             return
         if not hasattr(pl_module, self.attr_name):
             if self.ignore_errors:
@@ -203,7 +203,8 @@ class VisualizeCallback(Callback):
         self.counter += 1
 
     def on_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        delattr(pl_module, self.attr_name)
+        if hasattr(pl_module, self.attr_name):
+            delattr(pl_module, self.attr_name)
         self.counter = 0
 
     def _process_image(
@@ -241,6 +242,7 @@ class VisualizeCallback(Callback):
         # convert to byte
         if as_uint8:
             images = {k: to_8bit(v, same_on_batch=not self.per_img_norm) for k, v in images.items()}
+
 
         return images
 
@@ -290,8 +292,12 @@ class VisualizeCallback(Callback):
         # ensure batch dim present
         if dest.ndim == 3:
             dest = dest[None]
+        elif dest.ndim > 4:
+            dest = dest.view(-1, *dest.shape[-3:])
         if src.ndim == 3:
-            dest = dest[None]
+            src = src[None]
+        elif dest.ndim > 4:
+            src = src.view(-1, *src.shape[-3:])
 
         B1, C1, H1, W1 = dest.shape
         B2, C2, H2, W2 = src.shape
@@ -405,7 +411,7 @@ class KeypointVisualizeCallback(VisualizeCallback):
     def __init__(
         self,
         name: Union[str, List[str]],
-        on: Union[str, List[str]] = ["train", "val", "test"],
+        triggers: Union[str, List[str]] = ["train", "val", "test"],
         attr_name: str = "last_image",
         epoch_counter: bool = False,
         max_resolution: Optional[Tuple[int, int]] = None,
@@ -423,7 +429,7 @@ class KeypointVisualizeCallback(VisualizeCallback):
     ):
         super().__init__(
             name,
-            on,
+            triggers,
             attr_name,
             epoch_counter,
             max_resolution,
@@ -444,6 +450,8 @@ class KeypointVisualizeCallback(VisualizeCallback):
             self.overlay_keypoints = KeypointVisualizeCallback.bbox_overlay
 
     def _on_batch_end(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if mode not in self.triggers:
+            return
         if not hasattr(pl_module, self.attr_name):
             if self.ignore_errors:
                 return
@@ -452,6 +460,7 @@ class KeypointVisualizeCallback(VisualizeCallback):
 
         img, keypoint_dict = getattr(pl_module, self.attr_name)
         step = pl_module.current_epoch if self.epoch_counter else pl_module.global_step
+
 
         # skip if enough images have already been logged
         if self.image_limit is not None and self.counter >= self.image_limit:
@@ -589,7 +598,7 @@ class BlendVisualizeCallback(VisualizeCallback):
     def __init__(
         self,
         name: Union[str, List[str]],
-        on: Union[str, List[str]] = ["train", "val", "test"],
+        triggers: Union[str, List[str]] = ["train", "val", "test"],
         attr_name: str = "last_image",
         epoch_counter: bool = False,
         max_resolution: Optional[Tuple[int, int]] = None,
@@ -612,7 +621,7 @@ class BlendVisualizeCallback(VisualizeCallback):
 
         super().__init__(
             name,
-            on,
+            triggers,
             attr_name,
             epoch_counter,
             max_resolution,
@@ -632,6 +641,8 @@ class BlendVisualizeCallback(VisualizeCallback):
         self.alpha = alpha
 
     def _on_batch_end(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        if mode not in self.triggers:
+            return
         if not hasattr(pl_module, self.attr_name):
             if self.ignore_errors:
                 return
