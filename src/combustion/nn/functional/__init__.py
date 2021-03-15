@@ -10,6 +10,7 @@ from ..loss.ciou import complete_iou_loss
 from ..modules.dynamic_pad import patch_dynamic_same_pad
 from .clamp_normalize import clamp_normalize
 from .fill_masked import fill_normal
+from .polar import cartesian_to_polar, polar_to_cartesian
 
 
 if version.parse(torch.__version__) > version.parse("1.7.1"):
@@ -29,4 +30,6 @@ __all__ = [
     "patch_dynamic_same_pad",
     "fill_normal",
     "fourier_conv2d",
+    "cartesian_to_polar",
+    "polar_to_cartesian",
 ]
