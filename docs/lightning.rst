@@ -16,7 +16,7 @@ Utilities to facilitate operation with
 .. autoclass:: combustion.lightning.HydraMixin
     :members:
 
-Callbacks
+General Callbacks
 ----------------------------------
 
 .. autoclass:: combustion.lightning.callbacks.TorchScriptCallback
@@ -24,6 +24,13 @@ Callbacks
 
 .. autoclass:: combustion.lightning.callbacks.CountMACs
     :members:
+
+Visualization Callbacks
+----------------------------------
+Combustion provides a set of callbacks that integrate with PyTorch Lightning
+to provide a simplistic yet powerful visualization feature set. Tensors to be
+visualized are attached as model attributes during training or inference steps,
+and callbacks read these attributes to create visualizations.
 
 .. autoclass:: combustion.lightning.callbacks.VisualizeCallback
 
@@ -33,8 +40,6 @@ Callbacks
 
 Metrics
 ----------------------------------
-.. autoclass:: combustion.lightning.metrics.AUROC
-    :members:
 .. autoclass:: combustion.lightning.metrics.BoxAUROC
     :members:
 .. autoclass:: combustion.lightning.metrics.BoxAveragePrecision
