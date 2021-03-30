@@ -237,10 +237,10 @@ class TestVisualizeCallback:
     @pytest.mark.parametrize(
         "callback",
         [
-            pytest.param(dict(name="image", image_limit=10)),
-            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, image_limit=5)),
-            pytest.param(dict(name="image", split_batches=True, image_limit=20)),
-            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, split_batches=True, image_limit=5)),
+            pytest.param(dict(name="image", max_calls=10)),
+            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, max_calls=5)),
+            pytest.param(dict(name="image", split_batches=True, max_calls=20)),
+            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, split_batches=True, max_calls=5)),
         ],
         indirect=True,
     )
@@ -250,7 +250,7 @@ class TestVisualizeCallback:
         for i in range(num_steps):
             callback.trigger()
 
-        limit = callback.image_limit
+        limit = callback.max_calls
         expected = min(limit, num_steps) if limit is not None else num_steps
 
         if callback.split_channels:
@@ -492,10 +492,10 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
     @pytest.mark.parametrize(
         "callback",
         [
-            pytest.param(dict(name="image", image_limit=10)),
-            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, image_limit=5)),
-            pytest.param(dict(name="image", split_batches=True, image_limit=20)),
-            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, split_batches=True, image_limit=5)),
+            pytest.param(dict(name="image", max_calls=10)),
+            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, max_calls=5)),
+            pytest.param(dict(name="image", split_batches=True, max_calls=20)),
+            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, split_batches=True, max_calls=5)),
         ],
         indirect=True,
     )
@@ -505,7 +505,7 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
         for i in range(num_steps):
             callback.trigger()
 
-        limit = callback.image_limit
+        limit = callback.max_calls
         expected = min(limit, num_steps) if limit is not None else num_steps
 
         if any(callback.split_channels):
