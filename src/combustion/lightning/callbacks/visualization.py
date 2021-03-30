@@ -113,6 +113,7 @@ class VisualizeCallback(Callback):
         self,
         name: Union[str, List[str]],
         triggers: Union[str, Iterable[str]] = ("train", "val", "test"),
+        hook: str = "step",
         attr_name: str = "last_image",
         epoch_counter: bool = False,
         max_resolution: Optional[Tuple[int, int]] = None,
@@ -129,6 +130,7 @@ class VisualizeCallback(Callback):
     ):
         self.name = name
         self.triggers = tuple(str(x) for x in triggers) if isinstance(triggers, Iterable) else (str(triggers),)
+        self.hook = str(hook)
         self.max_resolution = tuple(int(x) for x in max_resolution) if max_resolution is not None else None
         self.split_channels = split_channels
         self.split_batches = bool(split_batches)
@@ -161,18 +163,30 @@ class VisualizeCallback(Callback):
                 )
 
     def on_train_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
-        with torch.no_grad():
-            self._on_batch_end("train", trainer, pl_module)
+        return self._on_hook_end("step", "train", trainer, pl_module)
 
     def on_validation_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
-        with torch.no_grad():
-            self._on_batch_end("val", trainer, pl_module)
+        return self._on_hook_end("step", "val", trainer, pl_module)
 
     def on_test_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
-        with torch.no_grad():
-            self._on_batch_end("test", trainer, pl_module)
+        return self._on_hook_end("step", "test", trainer, pl_module)
 
-    def _on_batch_end(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
+        return self._on_hook_end("epoch", "train", trainer, pl_module)
+
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
+        return self._on_hook_end("epoch", "val", trainer, pl_module)
+
+    def on_test_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
+        return self._on_hook_end("epoch", "test", trainer, pl_module)
+
+    def _on_hook_end(self, hook: str, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
+        if self.hook != hook or mode not in self.triggers:
+            return
+        with torch.no_grad():
+            self._hook(mode, trainer, pl_module)
+
+    def _hook(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if mode not in self.triggers:
             return
         if not hasattr(pl_module, self.attr_name):
@@ -310,7 +324,7 @@ class VisualizeCallback(Callback):
                 raise ValueError(f"could not match shapes {dest.shape}, {src.shape}")
 
         if (H1, W1) != (H2, W2):
-            src = F.interpolate(src, (H1, W1), mode=resize_mode)
+            src = F.interpolate(src, (H1, W1), mode=resize_mode, align_corners=True)
 
         blended, _ = alpha_blend(src, dest, *args, **kwargs)
         return blended.view_as(dest)
@@ -411,6 +425,7 @@ class KeypointVisualizeCallback(VisualizeCallback):
         self,
         name: Union[str, List[str]],
         triggers: Union[str, List[str]] = ["train", "val", "test"],
+        hook: str = "step",
         attr_name: str = "last_image",
         epoch_counter: bool = False,
         max_resolution: Optional[Tuple[int, int]] = None,
@@ -429,6 +444,7 @@ class KeypointVisualizeCallback(VisualizeCallback):
         super().__init__(
             name,
             triggers,
+            hook,
             attr_name,
             epoch_counter,
             max_resolution,
@@ -448,7 +464,7 @@ class KeypointVisualizeCallback(VisualizeCallback):
         else:
             self.overlay_keypoints = KeypointVisualizeCallback.bbox_overlay
 
-    def _on_batch_end(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    def _hook(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if mode not in self.triggers:
             return
         if not hasattr(pl_module, self.attr_name):
@@ -597,6 +613,7 @@ class BlendVisualizeCallback(VisualizeCallback):
         self,
         name: Union[str, List[str]],
         triggers: Union[str, List[str]] = ["train", "val", "test"],
+        hook: str = "step",
         attr_name: str = "last_image",
         epoch_counter: bool = False,
         max_resolution: Optional[Tuple[int, int]] = None,
@@ -620,6 +637,7 @@ class BlendVisualizeCallback(VisualizeCallback):
         super().__init__(
             name,
             triggers,
+            hook,
             attr_name,
             epoch_counter,
             max_resolution,
@@ -638,9 +656,7 @@ class BlendVisualizeCallback(VisualizeCallback):
         self.colormap = tuple(colormap)
         self.alpha = alpha
 
-    def _on_batch_end(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if mode not in self.triggers:
-            return
+    def _hook(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         if not hasattr(pl_module, self.attr_name):
             if self.ignore_errors:
                 return

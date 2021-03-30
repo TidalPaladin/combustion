@@ -4,10 +4,12 @@
 import math
 import warnings
 from copy import deepcopy
+from inspect import signature
 from typing import Any, Generator, Iterable, Optional, Tuple, Union
 
 import pytorch_lightning as pl
 import torch.nn as nn
+from hydra.errors import InstantiationException
 from hydra.utils import instantiate
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from pytorch_lightning.core.saving import ModelIO
@@ -105,8 +107,16 @@ class HydraMixin(ModelIO):
                         f"Model type {type(model)} is not a HydraMixin instance. "
                         "Default methods provided by combustion.lightning.HydraMixin will not be available"
                     )
-                if not hasattr(model, "hparams"):
-                    raise RuntimeError("Please call self.save_hyperparameters() in your model's __init__ method")
+
+                # check that save_hyperparameters was called
+                has_params = bool(signature(model).parameters)
+                if not hasattr(model, "hparams") or (has_params and not model.hparams):
+                    import pdb
+
+                    pdb.set_trace()
+                    raise InstantiationException(
+                        "Please call self.save_hyperparameters() in your model's __init__ method"
+                    )
 
                 # construct the wrapped model by reading instantiated hyperparams
                 super().__init__(**model.hparams)
