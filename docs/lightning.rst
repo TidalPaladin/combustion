@@ -19,11 +19,15 @@ Utilities to facilitate operation with
 General Callbacks
 ----------------------------------
 
+.. autoclass:: combustion.lightning.callbacks.SaveTensors
+    :members:
+
 .. autoclass:: combustion.lightning.callbacks.TorchScriptCallback
     :members:
 
 .. autoclass:: combustion.lightning.callbacks.CountMACs
     :members:
+
 
 Visualization Callbacks
 ----------------------------------

@@ -105,9 +105,9 @@ class BaseAttributeCallbackTest:
     @pytest.mark.parametrize(
         "callback",
         [
-            pytest.param(dict(max_calls=5)),
-            pytest.param(dict(max_calls=10)),
-            pytest.param(dict(max_calls=20)),
+            pytest.param(dict(max_calls=5), id="max_calls=5"),
+            pytest.param(dict(max_calls=10), id="max_calls=10"),
+            pytest.param(dict(max_calls=20), id="max_calls=20"),
         ],
         indirect=True,
     )
@@ -123,21 +123,21 @@ class BaseAttributeCallbackTest:
     @pytest.mark.parametrize(
         "model",
         [
-            pytest.param(dict(epoch=1, step=1)),
-            pytest.param(dict(epoch=1, step=10)),
-            pytest.param(dict(epoch=10, step=1)),
-            pytest.param(dict(epoch=20, step=20)),
-            pytest.param(dict(epoch=32, step=32)),
+            pytest.param(dict(epoch=1, step=1), id="epoch=1,step=1"),
+            pytest.param(dict(epoch=1, step=10), id="epoch=1,step=10"),
+            pytest.param(dict(epoch=10, step=1), id="epoch=10,step=1"),
+            pytest.param(dict(epoch=20, step=20), id="epoch=20,step=20"),
+            pytest.param(dict(epoch=32, step=32), id="epoch=32,step=32"),
         ],
         indirect=True,
     )
     @pytest.mark.parametrize(
         "callback",
         [
-            pytest.param(dict(interval=10, epoch_counter=False)),
-            pytest.param(dict(interval=10, epoch_counter=True)),
-            pytest.param(dict(interval=1, epoch_counter=False)),
-            pytest.param(dict(interval=1, epoch_counter=True)),
+            pytest.param(dict(interval=10, epoch_counter=False), id="interval=10,epoch_counter=False"),
+            pytest.param(dict(interval=10, epoch_counter=True), id="interval=10,epoch_counter=True"),
+            pytest.param(dict(interval=1, epoch_counter=False), id="interval=1,epoch_counter=False"),
+            pytest.param(dict(interval=1, epoch_counter=True), id="interval=1,epoch_counter=True"),
         ],
         indirect=True,
     )
