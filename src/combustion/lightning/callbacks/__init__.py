@@ -5,7 +5,7 @@
 from .base import AttributeCallback
 from .other import CountMACs, TorchScriptCallback
 from .tensors import SaveTensors
-from .visualization import BlendVisualizeCallback, KeypointVisualizeCallback, VisualizeCallback
+from .visualization import BlendVisualizeCallback, ImageSave, KeypointVisualizeCallback, VisualizeCallback
 
 
 __all__ = [
@@ -16,4 +16,5 @@ __all__ = [
     "BlendVisualizeCallback",
     "SaveTensors",
     "AttributeCallback",
+    "ImageSave",
 ]

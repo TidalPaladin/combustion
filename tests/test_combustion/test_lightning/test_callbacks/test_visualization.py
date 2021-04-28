@@ -9,7 +9,12 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 
-from combustion.lightning.callbacks import BlendVisualizeCallback, KeypointVisualizeCallback, VisualizeCallback
+from combustion.lightning.callbacks import (
+    BlendVisualizeCallback,
+    ImageSave,
+    KeypointVisualizeCallback,
+    VisualizeCallback,
+)
 from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import to_8bit
 
@@ -299,6 +304,31 @@ class TestVisualizeCallback:
             logger_func.assert_called()
         else:
             logger_func.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            pytest.param(dict(epoch=1, step=1)),
+            pytest.param(dict(epoch=1, step=10)),
+            pytest.param(dict(epoch=10, step=1)),
+        ],
+        indirect=True,
+    )
+    @pytest.mark.parametrize(
+        "callback",
+        [
+            pytest.param(dict(name="image", epoch_counter=False)),
+            pytest.param(dict(name="image", epoch_counter=True)),
+        ],
+        indirect=True,
+    )
+    def test_log_custom_fn(self, callback, model, logger_func, tmp_path, mocker):
+        PIL = pytest.importorskip("PIL", reason="test requires PIL")
+        spy = mocker.spy(PIL.Image.Image, "save")
+        callback.log_fn = ImageSave(tmp_path)
+        callback.trigger()
+        spy.assert_called()
+        # TODO make this test more thorough
 
 
 class TestKeypointVisualizeCallback(TestVisualizeCallback):

@@ -42,6 +42,8 @@ and callbacks read these attributes to create visualizations.
 
 .. autoclass:: combustion.lightning.callbacks.BlendVisualizeCallback
 
+.. autoclass:: combustion.lightning.callbacks.ImageSave
+
 Metrics
 ----------------------------------
 .. autoclass:: combustion.lightning.metrics.BoxAUROC

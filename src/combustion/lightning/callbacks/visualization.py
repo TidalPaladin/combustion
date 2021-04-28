@@ -2,11 +2,13 @@
 # -*- coding: utf-8 -*-
 
 
+from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
+from PIL import Image
 from torch import Tensor
 
 from combustion.util import alpha_blend, apply_colormap
@@ -28,6 +30,64 @@ def tensorboard_log(targets: Dict[str, Tensor], trainer: pl.Trainer, pl_module: 
             experiment.add_images(name, img, step)
         else:
             experiment.add_image(name, img, step)
+
+
+class ImageSave:
+    r"""Log function for :class:`VisualizeCallback` that saves image tensors as PNG files.
+
+    Args:
+        path (:class:`Path`):
+            Path where images will be saved. Defaults to ``trainer.default_root_dir``.
+
+        quality (int):
+            Quality value 1-100 for :func:`PIL.Image.save`
+
+    Example:
+        >>> log_fn = ImageSave()
+        >>> callback = VisualizeCallback("inputs", log_fn=log_fn)
+        >>>
+        >>> # LightningModule.training_step
+        >>> def training_step(self, batch, batch_idx):
+        >>>     image, target = batch
+        >>>     ...
+        >>>     # attribute will be logged to trainer.default_root_dir under 'train/inputs_i/batch_i.png'
+        >>>     self.last_image = image
+    """
+
+    def __init__(self, path: Optional[Path] = None, quality: int = 95):
+        self.path = Path(path) if path is not None else None
+        self.quality = int(quality)
+
+    @staticmethod
+    def save_image(data: Tensor, dest: Path, quality: int = 95) -> None:
+        if data.ndim > 3 or data.ndim < 2:
+            raise ValueError(f"Invalid tensor of shape {data.shape}")
+        elif data.ndim == 3:
+            data = data.permute(1, 2, 0)  # channels last
+        assert data.ndim == 2 or data.shape[-1] in (1, 3, 4)
+        img = Image.fromarray(data.cpu().numpy())
+        img.save(str(dest), quality=quality)
+
+    @staticmethod
+    def save_batch(data: Tensor, dest: Path, quality: int = 95) -> None:
+        if data.ndim < 4:
+            raise ValueError(f"Invalid tensor of shape {data.shape}")
+
+        dest.mkdir(exist_ok=True, parents=True)
+        for i, elem in enumerate(data):
+            path = Path(dest, f"{i}.png")
+            ImageSave.save_image(elem, path, quality)
+
+    def __call__(
+        self, targets: Dict[str, Tensor], trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+    ) -> None:
+        root = Path(self.path) if self.path is not None else Path(trainer.default_root_dir)
+        for name, img in targets.items():
+            dest = Path(root, f"{name}_{step}")
+            if img.ndim == 4:
+                self.save_batch(img, dest, self.quality)
+            else:
+                self.save_batch(img, dest.with_suffix(".png"), self.quality)
 
 
 def bbox_overlay(img: Tensor, keypoint_dict: Dict[str, Tensor], **kwargs) -> Tensor:
@@ -96,8 +156,8 @@ class VisualizeCallback(AttributeCallback):
         ignore_errors (bool):
             If ``True``, do not raise an exception if ``attr_name`` cannot be found.
 
-        log_fn (callable):
-            Callable that logs the processed image(s).
+        log_fn (callable or iterable of callables):
+            Callable(s) that logs the processed image(s).
 
         as_uint8 (bool):
             Sets whether or not the processed images will be converted to normalized byte
@@ -124,7 +184,7 @@ class VisualizeCallback(AttributeCallback):
         resize_mode: str = "bilinear",
         colormap: Optional[Colormap] = None,
         ignore_errors: bool = False,
-        log_fn: LogFunction = tensorboard_log,
+        log_fn: Union[LogFunction, Iterable[LogFunction]] = tensorboard_log,
         as_uint8: bool = True,
         per_img_norm: Optional[bool] = None,
     ):
@@ -233,7 +293,11 @@ class VisualizeCallback(AttributeCallback):
         else:
             targets = {f"{mode}/{n}": v for n, v in targets.items()}
 
-        self.log_fn(targets, trainer, pl_module, step)
+        if isinstance(self.log_fn, Iterable):
+            for f in self.log_fn:
+                f(targets, trainer, pl_module, step)
+        else:
+            self.log_fn(targets, trainer, pl_module, step)
 
     def _apply_log_resolution(self, img: Tensor, limit: Tuple[int, int], mode: str) -> Tensor:
         H, W = img.shape[-2:]
@@ -347,8 +411,8 @@ class KeypointVisualizeCallback(VisualizeCallback):
         ignore_errors (bool):
             If ``True``, do not raise an exception if ``attr_name`` cannot be found.
 
-        log_fn (callable):
-            Callable that logs the processed image(s). By default, :func:`VisualizeCallback.tensorboard_log`
+        log_fn (callable or iterable of callables):
+            Callable(s) that logs the processed image(s). By default, :func:`VisualizeCallback.tensorboard_log`
             is used to provide logging suitable for :class:`pytorch_lightning.loggers.TensorBoardLogger`.
         as_uint8 (bool):
             Sets whether or not the processed images will be converted to normalized byte
@@ -532,8 +596,8 @@ class BlendVisualizeCallback(VisualizeCallback):
         ignore_errors (bool):
             If ``True``, do not raise an exception if ``attr_name`` cannot be found.
 
-        log_fn (callable):
-            Callable that logs the processed image(s). By default, :func:`VisualizeCallback.tensorboard_log`
+        log_fn (callable or iterable of callables):
+            Callable(s) that logs the processed image(s). By default, :func:`VisualizeCallback.tensorboard_log`
             is used to provide logging suitable for :class:`pytorch_lightning.loggers.TensorBoardLogger`.
         as_uint8 (bool):
             Sets whether or not the processed images will be converted to normalized byte
