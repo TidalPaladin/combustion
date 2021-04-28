@@ -9,7 +9,9 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from PIL import Image
+from pytorch_lightning.callbacks import Callback
 from torch import Tensor
+from torchvision.utils import make_grid
 
 from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import to_8bit, visualize_bbox
@@ -18,12 +20,14 @@ from .base import AttributeCallback
 
 
 Colormap = Union[str, List[Optional[str]]]
-LogFunction = Callable[[Dict[str, Tensor], pl.Trainer, pl.LightningModule, int], None]
+LogFunction = Callable[[Dict[str, Tensor], pl.Trainer, pl.LightningModule, int, Callback], None]
 ChannelSplits = Union[int, List[int]]
 KeypointFunction = Callable[[Tensor, Tensor], Tensor]
 
 
-def tensorboard_log(targets: Dict[str, Tensor], trainer: pl.Trainer, pl_module: pl.LightningModule, step: int) -> None:
+def tensorboard_log(
+    targets: Dict[str, Tensor], trainer: pl.Trainer, pl_module: pl.LightningModule, step: int, caller: Callback
+) -> None:
     experiment = pl_module.logger.experiment
     for name, img in targets.items():
         if img.ndim == 4:
@@ -66,28 +70,31 @@ class ImageSave:
             data = data.permute(1, 2, 0)  # channels last
         assert data.ndim == 2 or data.shape[-1] in (1, 3, 4)
         img = Image.fromarray(data.cpu().numpy())
+        dest.parent.mkdir(exist_ok=True, parents=True)
         img.save(str(dest), quality=quality)
 
     @staticmethod
     def save_batch(data: Tensor, dest: Path, quality: int = 95) -> None:
         if data.ndim < 4:
             raise ValueError(f"Invalid tensor of shape {data.shape}")
-
-        dest.mkdir(exist_ok=True, parents=True)
-        for i, elem in enumerate(data):
-            path = Path(dest, f"{i}.png")
-            ImageSave.save_image(elem, path, quality)
+        grid = make_grid(data)
+        ImageSave.save_image(grid, dest, quality)
 
     def __call__(
-        self, targets: Dict[str, Tensor], trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+        self,
+        targets: Dict[str, Tensor],
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        step: int,
+        caller: Callback,
     ) -> None:
         root = Path(self.path) if self.path is not None else Path(trainer.default_root_dir)
         for name, img in targets.items():
-            dest = Path(root, f"{name}_{step}")
+            dest = Path(root, name, caller.read_step_as_str(pl_module)).with_suffix(".png")
             if img.ndim == 4:
                 self.save_batch(img, dest, self.quality)
             else:
-                self.save_batch(img, dest.with_suffix(".png"), self.quality)
+                self.save_image(img, dest, self.quality)
 
 
 def bbox_overlay(img: Tensor, keypoint_dict: Dict[str, Tensor], **kwargs) -> Tensor:
@@ -118,9 +125,13 @@ class VisualizeCallback(AttributeCallback):
             selected, ``name`` should be a list of strings assigning names to each split
             section.
 
-        on (str or list of str):
+        triggers (str or list of str):
             Modes for which the callback should run. Must be one of
             ``"train"``, ``"val"``, ``"test"``.
+
+        hook (str):
+            One of ``"step"`` or ``"epoch"``, determining if the callback will be triggered on
+            batch end or epoch end.
 
         attr_name (str):
             Name of the attribute where the callback will search for the image to be logged.
@@ -203,11 +214,9 @@ class VisualizeCallback(AttributeCallback):
         self.split_channels = split_channels
         self.split_batches = bool(split_batches)
         self.resize_mode = str(resize_mode)
-        self.max_calls = int(max_calls) if max_calls is not None else None
         self.colormap = colormap if colormap is not None else None
         self.log_fn = log_fn
         self.as_uint8 = bool(as_uint8)
-        self.counter = 0
         self.per_img_norm = per_img_norm if per_img_norm is not None else self.split_batches
 
         if self.split_channels is not None:
@@ -295,9 +304,9 @@ class VisualizeCallback(AttributeCallback):
 
         if isinstance(self.log_fn, Iterable):
             for f in self.log_fn:
-                f(targets, trainer, pl_module, step)
+                f(targets, trainer, pl_module, step, self)
         else:
-            self.log_fn(targets, trainer, pl_module, step)
+            self.log_fn(targets, trainer, pl_module, step, self)
 
     def _apply_log_resolution(self, img: Tensor, limit: Tuple[int, int], mode: str) -> Tensor:
         H, W = img.shape[-2:]
@@ -373,9 +382,13 @@ class KeypointVisualizeCallback(VisualizeCallback):
             selected, ``name`` should be a list of strings assigning names to each split
             section.
 
-        on (str or list of str):
+        triggers (str or list of str):
             Modes for which the callback should run. Must be one of
             ``"train"``, ``"val"``, ``"test"``.
+
+        hook (str):
+            One of ``"step"`` or ``"epoch"``, determining if the callback will be triggered on
+            batch end or epoch end.
 
         attr_name (str):
             Name of the attribute where the callback will search for the image to be logged.
@@ -558,9 +571,13 @@ class BlendVisualizeCallback(VisualizeCallback):
             selected, ``name`` should be a list of strings assigning names to each split
             section.
 
-        on (str or list of str):
+        triggers (str or list of str):
             Modes for which the callback should run. Must be one of
             ``"train"``, ``"val"``, ``"test"``.
+
+        hook (str):
+            One of ``"step"`` or ``"epoch"``, determining if the callback will be triggered on
+            batch end or epoch end.
 
         attr_name (str):
             Name of the attribute where the callback will search for the image to be logged.

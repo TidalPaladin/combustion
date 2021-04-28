@@ -130,7 +130,7 @@ class AttributeCallback(Callback, ABC):
         return getattr(pl_module, self.attr_name)
 
     def read_step(self, pl_module: pl.LightningModule) -> int:
-        r"""Attempts to read the callback step value from a LightningModule. The step will
+        r"""Attempts to read the callback step value from a LightningModule.
 
         Args:
             pl_module (:class:`pytorch_lightning.LightningModule`):
@@ -141,6 +141,24 @@ class AttributeCallback(Callback, ABC):
             be in units of epochs, otherwise it will be in units of global steps.
         """
         return pl_module.current_epoch if self.epoch_counter else pl_module.global_step
+
+    def read_step_as_str(self, pl_module: pl.LightningModule) -> str:
+        r"""Attempts to read the callback step value from a LightningModule as a string
+
+        Args:
+            pl_module (:class:`pytorch_lightning.LightningModule`):
+                Module to read from
+
+        Returns:
+            Current step associated with the module. When ``epoch_counter=True`` this will
+            be in units of epochs, otherwise it will be in units of global steps. The string
+            will be prefixed with ``"epoch"`` or ``"step"`` depending on ``epoch_counter``.
+        """
+        step = self.read_step(pl_module)
+        if self.epoch_counter:
+            return f"epoch_{step}"
+        else:
+            return f"step_{step}"
 
     def on_train_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
         return self._on_hook_end(("step", "train"), trainer, pl_module)
