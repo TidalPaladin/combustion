@@ -44,7 +44,7 @@ extras["hdf5"] = ["h5py<3.0"]
 extras["vision"] = ["kornia", "opencv-python", "torchvision", "Pillow"]
 extras["points"] = ["torch-scatter<2.0.5"]
 
-extras["dev"] = extras["testing"] + extras["macs"] + extras["vision"]
+extras["dev"] = extras["testing"] + extras["macs"] + extras["vision"] + ["scipy", "pandas"]
 
 
 def write_version_info():

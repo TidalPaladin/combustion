@@ -26,7 +26,8 @@ def clamp_normalize(
 
     delta = maximum - minimum
     output_delta = norm_max - norm_min
-    assert delta > 0
+    if delta == 0:
+        delta = maximum
     assert output_delta > 0
 
     if inplace:

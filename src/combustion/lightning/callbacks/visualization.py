@@ -2,32 +2,99 @@
 # -*- coding: utf-8 -*-
 
 
-import inspect
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
+from PIL import Image
 from pytorch_lightning.callbacks import Callback
 from torch import Tensor
+from torchvision.utils import make_grid
 
 from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import to_8bit, visualize_bbox
 
+from .base import AttributeCallback
+
 
 Colormap = Union[str, List[Optional[str]]]
-LogFunction = Callable[[Dict[str, Tensor], pl.Trainer, pl.LightningModule, int], None]
+LogFunction = Callable[[Dict[str, Tensor], pl.Trainer, pl.LightningModule, int, Callback], None]
 ChannelSplits = Union[int, List[int]]
 KeypointFunction = Callable[[Tensor, Tensor], Tensor]
 
 
-def tensorboard_log(targets: Dict[str, Tensor], trainer: pl.Trainer, pl_module: pl.LightningModule, step: int) -> None:
+def tensorboard_log(
+    targets: Dict[str, Tensor], trainer: pl.Trainer, pl_module: pl.LightningModule, step: int, caller: Callback
+) -> None:
     experiment = pl_module.logger.experiment
     for name, img in targets.items():
         if img.ndim == 4:
             experiment.add_images(name, img, step)
         else:
             experiment.add_image(name, img, step)
+
+
+class ImageSave:
+    r"""Log function for :class:`VisualizeCallback` that saves image tensors as PNG files.
+
+    Args:
+        path (:class:`Path`):
+            Path where images will be saved. Defaults to ``trainer.default_root_dir``.
+
+        quality (int):
+            Quality value 1-100 for :func:`PIL.Image.save`
+
+    Example:
+        >>> log_fn = ImageSave()
+        >>> callback = VisualizeCallback("inputs", log_fn=log_fn)
+        >>>
+        >>> # LightningModule.training_step
+        >>> def training_step(self, batch, batch_idx):
+        >>>     image, target = batch
+        >>>     ...
+        >>>     # attribute will be logged to trainer.default_root_dir under 'train/inputs_i/batch_i.png'
+        >>>     self.last_image = image
+    """
+
+    def __init__(self, path: Optional[Path] = None, quality: int = 95):
+        self.path = Path(path) if path is not None else None
+        self.quality = int(quality)
+
+    @staticmethod
+    def save_image(data: Tensor, dest: Path, quality: int = 95) -> None:
+        if data.ndim > 3 or data.ndim < 2:
+            raise ValueError(f"Invalid tensor of shape {data.shape}")
+        elif data.ndim == 3:
+            data = data.permute(1, 2, 0)  # channels last
+        assert data.ndim == 2 or data.shape[-1] in (1, 3, 4)
+        img = Image.fromarray(data.cpu().numpy())
+        dest.parent.mkdir(exist_ok=True, parents=True)
+        img.save(str(dest), quality=quality)
+
+    @staticmethod
+    def save_batch(data: Tensor, dest: Path, quality: int = 95) -> None:
+        if data.ndim < 4:
+            raise ValueError(f"Invalid tensor of shape {data.shape}")
+        grid = make_grid(data)
+        ImageSave.save_image(grid, dest, quality)
+
+    def __call__(
+        self,
+        targets: Dict[str, Tensor],
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        step: int,
+        caller: Callback,
+    ) -> None:
+        root = Path(self.path) if self.path is not None else Path(trainer.default_root_dir)
+        for name, img in targets.items():
+            dest = Path(root, name, caller.read_step_as_str(pl_module)).with_suffix(".png")
+            if img.ndim == 4:
+                self.save_batch(img, dest, self.quality)
+            else:
+                self.save_image(img, dest, self.quality)
 
 
 def bbox_overlay(img: Tensor, keypoint_dict: Dict[str, Tensor], **kwargs) -> Tensor:
@@ -39,7 +106,7 @@ def bbox_overlay(img: Tensor, keypoint_dict: Dict[str, Tensor], **kwargs) -> Ten
     return result
 
 
-class VisualizeCallback(Callback):
+class VisualizeCallback(AttributeCallback):
     r"""Callback for visualizing image tensors using a PyTorch Lightning logger.
 
     Example:
@@ -58,9 +125,13 @@ class VisualizeCallback(Callback):
             selected, ``name`` should be a list of strings assigning names to each split
             section.
 
-        on (str or list of str):
+        triggers (str or list of str):
             Modes for which the callback should run. Must be one of
             ``"train"``, ``"val"``, ``"test"``.
+
+        hook (str):
+            One of ``"step"`` or ``"epoch"``, determining if the callback will be triggered on
+            batch end or epoch end.
 
         attr_name (str):
             Name of the attribute where the callback will search for the image to be logged.
@@ -72,8 +143,8 @@ class VisualizeCallback(Callback):
         max_resolution (tuple of ints, optional):
             If given, resize images to the given :math:`(H, W)` before logging.
 
-        image_limit (int, optional):
-            If given, do not log more than ``image_limit`` batches per epoch.
+        max_calls (int, optional):
+            If given, do not log more than ``max_calls`` batches per epoch.
 
         split_channels (int or list of ints, optional):
             If given, decompose the input tensor using :func:`torch.split`. Each section
@@ -96,8 +167,8 @@ class VisualizeCallback(Callback):
         ignore_errors (bool):
             If ``True``, do not raise an exception if ``attr_name`` cannot be found.
 
-        log_fn (callable):
-            Callable that logs the processed image(s).
+        log_fn (callable or iterable of callables):
+            Callable(s) that logs the processed image(s).
 
         as_uint8 (bool):
             Sets whether or not the processed images will be converted to normalized byte
@@ -112,36 +183,40 @@ class VisualizeCallback(Callback):
     def __init__(
         self,
         name: Union[str, List[str]],
-        on: Union[str, Iterable[str]] = ("train", "val", "test"),
+        triggers: Union[str, Iterable[str]] = ("train", "val", "test"),
+        hook: str = "step",
         attr_name: str = "last_image",
         epoch_counter: bool = False,
         max_resolution: Optional[Tuple[int, int]] = None,
-        image_limit: Optional[int] = None,
+        max_calls: Optional[int] = None,
         split_channels: Optional[ChannelSplits] = None,
         split_batches: bool = False,
         interval: Optional[int] = None,
         resize_mode: str = "bilinear",
         colormap: Optional[Colormap] = None,
         ignore_errors: bool = False,
-        log_fn: LogFunction = tensorboard_log,
+        log_fn: Union[LogFunction, Iterable[LogFunction]] = tensorboard_log,
         as_uint8: bool = True,
         per_img_norm: Optional[bool] = None,
     ):
+        super().__init__(
+            triggers,
+            hook,
+            attr_name,
+            epoch_counter,
+            max_calls,
+            interval,
+            ignore_errors,
+        )
+
         self.name = name
-        self.on = tuple(str(x) for x in on) if isinstance(on, Iterable) else (str(on),)
         self.max_resolution = tuple(int(x) for x in max_resolution) if max_resolution is not None else None
         self.split_channels = split_channels
         self.split_batches = bool(split_batches)
         self.resize_mode = str(resize_mode)
-        self.attr_name = str(attr_name)
-        self.image_limit = int(image_limit) if image_limit is not None else None
         self.colormap = colormap if colormap is not None else None
-        self.ignore_errors = bool(ignore_errors)
-        self.interval = int(interval) if interval is not None else None
-        self.epoch_counter = bool(epoch_counter)
         self.log_fn = log_fn
         self.as_uint8 = bool(as_uint8)
-        self.counter = 0
         self.per_img_norm = per_img_norm if per_img_norm is not None else self.split_batches
 
         if self.split_channels is not None:
@@ -160,51 +235,18 @@ class VisualizeCallback(Callback):
                     "Expected str for `name` when `split_channels` is not provided, " f"found {type(self.name)}"
                 )
 
-    def on_train_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
-        with torch.no_grad():
-            self._on_batch_end("train", trainer, pl_module)
-
-    def on_validation_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
-        with torch.no_grad():
-            self._on_batch_end("val", trainer, pl_module)
-
-    def on_test_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, *args) -> None:
-        with torch.no_grad():
-            self._on_batch_end("test", trainer, pl_module)
-
-    def _on_batch_end(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if mode not in self.on:
-            return
-        if not hasattr(pl_module, self.attr_name):
-            if self.ignore_errors:
-                return
-            else:
-                raise AttributeError(f"Module missing expected attribute {self.attr_name}")
-
-        img = getattr(pl_module, self.attr_name)
-        step = pl_module.current_epoch if self.epoch_counter else pl_module.global_step
-
-        # skip if enough images have already been logged
-        if self.image_limit is not None and self.counter >= self.image_limit:
-            return
-        # skip if logging is desired at a non-unit interval
-        elif self.interval is not None and step % self.interval != 0:
-            return
-
+    def callback_fn(
+        self, hook: Tuple[str, str], attr: Any, trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+    ) -> None:
         # single tensor
-        if isinstance(img, Tensor):
+        _hook, _mode = hook
+        if isinstance(attr, Tensor):
             images = self._process_image(
-                img, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8
+                attr, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8
             )
-            self._log(mode, images, trainer, pl_module, step)
+            self._log(_mode, images, trainer, pl_module, step)
         elif not self.ignore_errors:
-            raise TypeError(f"Expected {self.attr_name} to be a tensor or tuple of tensors, " f"but found {type(img)}")
-
-        self.counter += 1
-
-    def on_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule):
-        delattr(pl_module, self.attr_name)
-        self.counter = 0
+            raise TypeError(f"Expected {self.attr_name} to be a tensor or tuple of tensors, " f"but found {type(attr)}")
 
     def _process_image(
         self,
@@ -260,7 +302,11 @@ class VisualizeCallback(Callback):
         else:
             targets = {f"{mode}/{n}": v for n, v in targets.items()}
 
-        self.log_fn(targets, trainer, pl_module, step)
+        if isinstance(self.log_fn, Iterable):
+            for f in self.log_fn:
+                f(targets, trainer, pl_module, step, self)
+        else:
+            self.log_fn(targets, trainer, pl_module, step, self)
 
     def _apply_log_resolution(self, img: Tensor, limit: Tuple[int, int], mode: str) -> Tensor:
         H, W = img.shape[-2:]
@@ -290,8 +336,12 @@ class VisualizeCallback(Callback):
         # ensure batch dim present
         if dest.ndim == 3:
             dest = dest[None]
+        elif dest.ndim > 4:
+            dest = dest.view(-1, *dest.shape[-3:])
         if src.ndim == 3:
-            dest = dest[None]
+            src = src[None]
+        elif dest.ndim > 4:
+            src = src.view(-1, *src.shape[-3:])
 
         B1, C1, H1, W1 = dest.shape
         B2, C2, H2, W2 = src.shape
@@ -305,25 +355,10 @@ class VisualizeCallback(Callback):
                 raise ValueError(f"could not match shapes {dest.shape}, {src.shape}")
 
         if (H1, W1) != (H2, W2):
-            src = F.interpolate(src, (H1, W1), mode=resize_mode)
+            src = F.interpolate(src, (H1, W1), mode=resize_mode, align_corners=True)
 
         blended, _ = alpha_blend(src, dest, *args, **kwargs)
         return blended.view_as(dest)
-
-    def __repr__(self):
-        s = f"{self.__class__.__name__}(name='{self.name}'"
-        init_signature = inspect.signature(self.__class__)
-        defaults = {
-            k: v.default for k, v in init_signature.parameters.items() if v.default is not inspect.Parameter.empty
-        }
-
-        for name, default in defaults.items():
-            val = getattr(self, name)
-            display_val = f"'{val}'" if isinstance(val, str) else val
-            if val != default:
-                s += f", {name}={display_val}"
-        s += ")"
-        return s
 
 
 class KeypointVisualizeCallback(VisualizeCallback):
@@ -347,9 +382,13 @@ class KeypointVisualizeCallback(VisualizeCallback):
             selected, ``name`` should be a list of strings assigning names to each split
             section.
 
-        on (str or list of str):
+        triggers (str or list of str):
             Modes for which the callback should run. Must be one of
             ``"train"``, ``"val"``, ``"test"``.
+
+        hook (str):
+            One of ``"step"`` or ``"epoch"``, determining if the callback will be triggered on
+            batch end or epoch end.
 
         attr_name (str):
             Name of the attribute where the callback will search for the image to be logged.
@@ -361,8 +400,8 @@ class KeypointVisualizeCallback(VisualizeCallback):
         max_resolution (tuple of ints, optional):
             If given, resize images to the given :math:`(H, W)` before logging.
 
-        image_limit (int, optional):
-            If given, do not log more than ``image_limit`` batches per epoch.
+        max_calls (int, optional):
+            If given, do not log more than ``max_calls`` batches per epoch.
 
         split_channels (int or list of ints, optional):
             If given, decompose the input tensor using :func:`torch.split`. Each section
@@ -385,8 +424,8 @@ class KeypointVisualizeCallback(VisualizeCallback):
         ignore_errors (bool):
             If ``True``, do not raise an exception if ``attr_name`` cannot be found.
 
-        log_fn (callable):
-            Callable that logs the processed image(s). By default, :func:`VisualizeCallback.tensorboard_log`
+        log_fn (callable or iterable of callables):
+            Callable(s) that logs the processed image(s). By default, :func:`VisualizeCallback.tensorboard_log`
             is used to provide logging suitable for :class:`pytorch_lightning.loggers.TensorBoardLogger`.
         as_uint8 (bool):
             Sets whether or not the processed images will be converted to normalized byte
@@ -405,11 +444,12 @@ class KeypointVisualizeCallback(VisualizeCallback):
     def __init__(
         self,
         name: Union[str, List[str]],
-        on: Union[str, List[str]] = ["train", "val", "test"],
+        triggers: Union[str, List[str]] = ["train", "val", "test"],
+        hook: str = "step",
         attr_name: str = "last_image",
         epoch_counter: bool = False,
         max_resolution: Optional[Tuple[int, int]] = None,
-        image_limit: Optional[int] = None,
+        max_calls: Optional[int] = None,
         split_channels: Optional[ChannelSplits] = None,
         split_batches: bool = False,
         interval: Optional[int] = None,
@@ -423,11 +463,12 @@ class KeypointVisualizeCallback(VisualizeCallback):
     ):
         super().__init__(
             name,
-            on,
+            triggers,
+            hook,
             attr_name,
             epoch_counter,
             max_resolution,
-            image_limit,
+            max_calls,
             split_channels,
             split_batches,
             interval,
@@ -443,22 +484,19 @@ class KeypointVisualizeCallback(VisualizeCallback):
         else:
             self.overlay_keypoints = KeypointVisualizeCallback.bbox_overlay
 
-    def _on_batch_end(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if not hasattr(pl_module, self.attr_name):
+    def callback_fn(
+        self, hook: Tuple[str, str], attr: Any, trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+    ) -> None:
+        _hook, _mode = hook
+        if not hasattr(attr, "__len__") or len(attr) != 2:
             if self.ignore_errors:
                 return
             else:
-                raise AttributeError(f"Module missing expected attribute {self.attr_name}")
+                raise TypeError(f"Expected {self.attr_name} to be a 2-tuple of tensor and dict, " f"but found {attr}")
 
-        img, keypoint_dict = getattr(pl_module, self.attr_name)
-        step = pl_module.current_epoch if self.epoch_counter else pl_module.global_step
-
-        # skip if enough images have already been logged
-        if self.image_limit is not None and self.counter >= self.image_limit:
-            return
-        # skip if logging is desired at a non-unit interval
-        elif self.interval is not None and step % self.interval != 0:
-            return
+        img, keypoint_dict = attr
+        img: Tensor
+        keypoint_dict: Dict[str, Tensor]
 
         if isinstance(img, Tensor):
             # this error can't be handled w/ ignore_errors
@@ -468,10 +506,11 @@ class KeypointVisualizeCallback(VisualizeCallback):
             images = self._process_image(
                 img, keypoint_dict, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8
             )
-            self._log(mode, images, trainer, pl_module, step)
+            self._log(_mode, images, trainer, pl_module, step)
         elif not self.ignore_errors:
-            raise TypeError(f"Expected {self.attr_name} to be a tensor or tuple of tensors, " f"but found {type(img)}")
-        self.counter += 1
+            raise TypeError(
+                f"Expected {self.attr_name}[0] to be a tensor or tuple of tensors, " f"but found {type(img)}"
+            )
 
     def _process_image(
         self,
@@ -532,9 +571,13 @@ class BlendVisualizeCallback(VisualizeCallback):
             selected, ``name`` should be a list of strings assigning names to each split
             section.
 
-        on (str or list of str):
+        triggers (str or list of str):
             Modes for which the callback should run. Must be one of
             ``"train"``, ``"val"``, ``"test"``.
+
+        hook (str):
+            One of ``"step"`` or ``"epoch"``, determining if the callback will be triggered on
+            batch end or epoch end.
 
         attr_name (str):
             Name of the attribute where the callback will search for the image to be logged.
@@ -546,8 +589,8 @@ class BlendVisualizeCallback(VisualizeCallback):
         max_resolution (tuple of ints, optional):
             If given, resize images to the given :math:`(H, W)` before logging.
 
-        image_limit (int, optional):
-            If given, do not log more than ``image_limit`` batches per epoch.
+        max_calls (int, optional):
+            If given, do not log more than ``max_calls`` batches per epoch.
 
         split_channels (int or list of ints, optional):
             If given, decompose the input tensor using :func:`torch.split`. Each section
@@ -570,8 +613,8 @@ class BlendVisualizeCallback(VisualizeCallback):
         ignore_errors (bool):
             If ``True``, do not raise an exception if ``attr_name`` cannot be found.
 
-        log_fn (callable):
-            Callable that logs the processed image(s). By default, :func:`VisualizeCallback.tensorboard_log`
+        log_fn (callable or iterable of callables):
+            Callable(s) that logs the processed image(s). By default, :func:`VisualizeCallback.tensorboard_log`
             is used to provide logging suitable for :class:`pytorch_lightning.loggers.TensorBoardLogger`.
         as_uint8 (bool):
             Sets whether or not the processed images will be converted to normalized byte
@@ -589,11 +632,12 @@ class BlendVisualizeCallback(VisualizeCallback):
     def __init__(
         self,
         name: Union[str, List[str]],
-        on: Union[str, List[str]] = ["train", "val", "test"],
+        triggers: Union[str, List[str]] = ["train", "val", "test"],
+        hook: str = "step",
         attr_name: str = "last_image",
         epoch_counter: bool = False,
         max_resolution: Optional[Tuple[int, int]] = None,
-        image_limit: Optional[int] = None,
+        max_calls: Optional[int] = None,
         split_channels: Tuple[Optional[ChannelSplits], Optional[ChannelSplits]] = (None, None),
         split_batches: bool = False,
         interval: Optional[int] = None,
@@ -612,11 +656,12 @@ class BlendVisualizeCallback(VisualizeCallback):
 
         super().__init__(
             name,
-            on,
+            triggers,
+            hook,
             attr_name,
             epoch_counter,
             max_resolution,
-            image_limit,
+            max_calls,
             split_channels[0],
             split_batches,
             interval,
@@ -631,33 +676,26 @@ class BlendVisualizeCallback(VisualizeCallback):
         self.colormap = tuple(colormap)
         self.alpha = alpha
 
-    def _on_batch_end(self, mode: str, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if not hasattr(pl_module, self.attr_name):
+    def callback_fn(
+        self, hook: Tuple[str, str], attr: Any, trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+    ) -> None:
+        _hook, _mode = hook
+        if not hasattr(attr, "__len__") or len(attr) != 2:
             if self.ignore_errors:
                 return
             else:
-                raise AttributeError(f"Module missing expected attribute {self.attr_name}")
+                raise TypeError(f"Expected {self.attr_name} to be a 2-tuple of tensor and dict, " f"but found {attr}")
 
-        dest, src = getattr(pl_module, self.attr_name)
-        step = pl_module.current_epoch if self.epoch_counter else pl_module.global_step
-
-        # skip if enough images have already been logged
-        if self.image_limit is not None and self.counter >= self.image_limit:
-            return
-        # skip if logging is desired at a non-unit interval
-        elif self.interval is not None and step % self.interval != 0:
-            return
-
+        dest, src = attr
         if isinstance(dest, Tensor) and isinstance(src, Tensor):
             images = self._process_image(
                 dest, src, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8
             )
-            self._log(mode, images, trainer, pl_module, step)
+            self._log(_mode, images, trainer, pl_module, step)
         elif not self.ignore_errors:
             raise TypeError(
                 f"Expected {self.attr_name} to be a tuple of tensors, " f"but found {type(dest)}, {type(src)}"
             )
-        self.counter += 1
 
     def _process_image(
         self,

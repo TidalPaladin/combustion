@@ -6,6 +6,13 @@ combustion.util
 
 Misc utils
 
+Tensor Ops
+----------------------------------
+.. autofunction:: combustion.util.mask_to_box
+.. autofunction:: combustion.util.mask_to_edges
+.. autofunction:: combustion.util.mask_to_instances
+.. autofunction:: combustion.util.mask_to_polygon
+
 Others
 ----------------------------------
 .. autofunction:: combustion.util.ntuple

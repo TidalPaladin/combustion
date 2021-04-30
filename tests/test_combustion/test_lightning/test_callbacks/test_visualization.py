@@ -9,7 +9,12 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 
-from combustion.lightning.callbacks import BlendVisualizeCallback, KeypointVisualizeCallback, VisualizeCallback
+from combustion.lightning.callbacks import (
+    BlendVisualizeCallback,
+    ImageSave,
+    KeypointVisualizeCallback,
+    VisualizeCallback,
+)
 from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import to_8bit
 
@@ -237,10 +242,10 @@ class TestVisualizeCallback:
     @pytest.mark.parametrize(
         "callback",
         [
-            pytest.param(dict(name="image", image_limit=10)),
-            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, image_limit=5)),
-            pytest.param(dict(name="image", split_batches=True, image_limit=20)),
-            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, split_batches=True, image_limit=5)),
+            pytest.param(dict(name="image", max_calls=10)),
+            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, max_calls=5)),
+            pytest.param(dict(name="image", split_batches=True, max_calls=20)),
+            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, split_batches=True, max_calls=5)),
         ],
         indirect=True,
     )
@@ -250,7 +255,7 @@ class TestVisualizeCallback:
         for i in range(num_steps):
             callback.trigger()
 
-        limit = callback.image_limit
+        limit = callback.max_calls
         expected = min(limit, num_steps) if limit is not None else num_steps
 
         if callback.split_channels:
@@ -299,6 +304,31 @@ class TestVisualizeCallback:
             logger_func.assert_called()
         else:
             logger_func.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            pytest.param(dict(epoch=1, step=1)),
+            pytest.param(dict(epoch=1, step=10)),
+            pytest.param(dict(epoch=10, step=1)),
+        ],
+        indirect=True,
+    )
+    @pytest.mark.parametrize(
+        "callback",
+        [
+            pytest.param(dict(name="image", epoch_counter=False)),
+            pytest.param(dict(name="image", epoch_counter=True)),
+        ],
+        indirect=True,
+    )
+    def test_log_custom_fn(self, callback, model, logger_func, tmp_path, mocker):
+        PIL = pytest.importorskip("PIL", reason="test requires PIL")
+        spy = mocker.spy(PIL.Image.Image, "save")
+        callback.log_fn = ImageSave(tmp_path)
+        callback.trigger()
+        spy.assert_called()
+        # TODO make this test more thorough
 
 
 class TestKeypointVisualizeCallback(TestVisualizeCallback):
@@ -492,10 +522,10 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
     @pytest.mark.parametrize(
         "callback",
         [
-            pytest.param(dict(name="image", image_limit=10)),
-            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, image_limit=5)),
-            pytest.param(dict(name="image", split_batches=True, image_limit=20)),
-            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, split_batches=True, image_limit=5)),
+            pytest.param(dict(name="image", max_calls=10)),
+            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, max_calls=5)),
+            pytest.param(dict(name="image", split_batches=True, max_calls=20)),
+            pytest.param(dict(name=["ch0", "ch1", "ch2"], split_channels=1, split_batches=True, max_calls=5)),
         ],
         indirect=True,
     )
@@ -505,7 +535,7 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
         for i in range(num_steps):
             callback.trigger()
 
-        limit = callback.image_limit
+        limit = callback.max_calls
         expected = min(limit, num_steps) if limit is not None else num_steps
 
         if any(callback.split_channels):

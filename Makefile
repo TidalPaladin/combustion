@@ -20,7 +20,6 @@ VERSION := $(shell cat version.txt)
 check: 
 	$(MAKE) style
 	$(MAKE) quality
-	$(MAKE) docs
 	$(MAKE) test
 
 ci-test: $(VENV)/bin/activate-test
@@ -48,7 +47,6 @@ clean:
 	find $(CLEAN_DIRS) -name '*@neomake*' -type f -delete
 	find $(CLEAN_DIRS) -name '*.pyc' -type f -delete
 	find $(CLEAN_DIRS) -name '*,cover' -type f -delete
-	cd docs && make clean
 	rm -rf docs/api docs/generated
 	rm -rf dist
 

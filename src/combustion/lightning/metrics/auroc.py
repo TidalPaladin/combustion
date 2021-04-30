@@ -45,7 +45,7 @@ class AUROC(Metric):
         self.true = torch.cat([self.true, target])
 
     def compute(self):
-        return auroc(self.pred, self.true, pos_label=self.pos_label)
+        return auroc(self.pred, self.true.long(), pos_label=self.pos_label)
 
 
 class BoxAUROC(BoxClassificationMetric):
@@ -83,4 +83,4 @@ class BoxAUROC(BoxClassificationMetric):
         if self.binary_target.sum() == self.binary_target.numel():
             return torch.tensor(float("nan"), device=self.pred_score.device)
 
-        return auroc(self.pred_score, self.binary_target)
+        return auroc(self.pred_score, self.binary_target.byte())

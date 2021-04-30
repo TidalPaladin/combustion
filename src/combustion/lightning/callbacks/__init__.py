@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
-
+from .base import AttributeCallback
+from .matplotlib import MatplotlibCallback, PyplotSave
 from .other import CountMACs, TorchScriptCallback
-from .visualization import BlendVisualizeCallback, KeypointVisualizeCallback, VisualizeCallback
+from .tensors import SaveTensors
+from .visualization import BlendVisualizeCallback, ImageSave, KeypointVisualizeCallback, VisualizeCallback
 
 
 __all__ = [
@@ -12,4 +13,9 @@ __all__ = [
     "TorchScriptCallback",
     "KeypointVisualizeCallback",
     "BlendVisualizeCallback",
+    "SaveTensors",
+    "AttributeCallback",
+    "ImageSave",
+    "MatplotlibCallback",
+    "PyplotSave",
 ]
