@@ -50,3 +50,5 @@ Metrics
     :members:
 .. autoclass:: combustion.lightning.metrics.BoxAveragePrecision
     :members:
+.. autoclass:: combustion.lightning.metrics.Entropy
+    :members:

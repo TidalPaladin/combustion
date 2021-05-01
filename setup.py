@@ -89,6 +89,7 @@ def install(version):
             "numpy",
             "progress",
             "pytorch-lightning>=1.0.0",
+            "torchmetrics",
             "hydra-core>=1.0.0",
             TORCH,
             "packaging",
