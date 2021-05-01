@@ -11,6 +11,9 @@ def cuda_available():
 
     capability = torch.cuda.get_device_capability()
     arch_list = torch.cuda.get_arch_list()
+    if isinstance(capability, tuple):
+        capability = f"sm_{''.join(str(x) for x in capability)}"
+
     if capability not in arch_list:
         return False
 

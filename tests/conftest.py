@@ -18,7 +18,12 @@ def ignite():
     return pytest.importorskip("ignite", reason="test requires ignite")
 
 
-@pytest.fixture(params=[pytest.param(True, marks=cuda_or_skip_mark), False])
+@pytest.fixture(
+    params=[
+        pytest.param(False, id="no_cuda"),
+        pytest.param(True, marks=cuda_or_skip_mark, id="cuda"),
+    ]
+)
 def cuda(torch, request):
     return request.param
 
