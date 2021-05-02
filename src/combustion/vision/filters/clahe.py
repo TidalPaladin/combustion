@@ -65,7 +65,7 @@ class CLAHE:
                 assert batch_elem.dtype in [np.uint8, np.uint16]
                 output = self.clahe.apply(batch_elem)
                 if is_float:
-                    output = output.astype(np.float)
+                    output = output.astype(float)
                 output = torch.from_numpy(output)
 
             # color CLAHE
@@ -85,7 +85,7 @@ class CLAHE:
                 # convert CLAHE YUV channel back to RGB
                 output = cv2.cvtColor(batch_elem, cv2.COLOR_YUV2RGB)
                 if is_float:
-                    output = output.astype(np.float)
+                    output = output.astype(float)
 
                 # restore numpy array to channels first tensor
                 output = torch.from_numpy(output).permute(-1, 0, 1)
