@@ -6,14 +6,14 @@ import glob
 import itertools
 import os
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional, Tuple, Union
 
 import torch
-from progress.bar import Bar, ChargingBar
-from progress.spinner import Spinner
 from torch import Tensor
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 
 try:
@@ -22,17 +22,12 @@ except ImportError:
     h5py = None
 
 
-class _DefaultBar(ChargingBar):
-    suffix = "%(index)d/%(max)d [%(elapsed_td)s < %(eta_td)s, %(avg).3f s/it]"
-
-
 def save_hdf5(
     dataset: Dataset,
     path: str,
     num_shards: Optional[int] = None,
     shard_size: Optional[int] = None,
     verbose: bool = True,
-    bar: Bar = _DefaultBar,
 ) -> None:
     r"""Saves the contents of the dataset to one or more HDF5 files.
 
@@ -66,7 +61,6 @@ def save_hdf5(
             each file contains ``shard_size`` examples. Exclusive with ``num_shards``.
             Must be a positive int.
         verbose (bool, optional): If False, do not print progress updates during saving.
-        bar (:class:`progress.bar.Bar`, optional): Progress bar class
     """
     _check_h5py()
     if num_shards is not None and shard_size is not None:
@@ -96,7 +90,7 @@ def save_hdf5(
         files.add(f)
     else:
         if not verbose:
-            bar = bar(f"Writing to {path}", max=len(dataset))
+            bar = bar(f"Saving dataset", max=len(dataset))
         else:
             bar = None
 
@@ -120,7 +114,7 @@ def save_torch(
     path: str,
     prefix: Union[str, Callable[[int, Any], str]] = "example_",
     verbose: bool = True,
-    bar: Bar = _DefaultBar,
+    threads: int = 0,
 ) -> None:
     r"""Saves the contents of the dataset to multiple files using :func:`torch.save`.
 
@@ -142,7 +136,7 @@ def save_torch(
 
         verbose (bool, optional): If False, do not print progress updates during saving.
 
-        bar (:class:`progress.bar.Bar`, optional): Progress bar class
+        threads (int): Parallel threads to use when serializing. By default, run single-threaded
 
     .. Example:
         >>> str_prefix = "example_"
@@ -157,29 +151,41 @@ def save_torch(
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
 
-    if verbose:
-        if hasattr(dataset, "__len__"):
-            bar = bar(f"Writing to {path}", max=len(dataset))
-        else:
-            bar = Spinner(f"Writing to {path}")
+    if hasattr(dataset, "__len__"):
+        total = len(dataset)
     else:
-        bar = None
+        total = None
 
-    for i, example in enumerate(dataset):
+    def save(example, index):
         if isinstance(prefix, str):
-            target = Path(path, f"{prefix}{i}.pth")
+            target = Path(path, f"{prefix}{index}.pth")
         else:
-            example_prefix = prefix(i, example)
+            example_prefix = prefix(index, example)
             if not isinstance(example_prefix, str):
                 raise ValueError(f"Callable `prefix` must return a str, got {type(example_prefix)}")
             target = Path(path, f"{example_prefix}.pth")
-
         target.parent.mkdir(parents=True, exist_ok=True)
         torch.save(example, target)
-        if bar is not None:
-            bar.next()
-    if bar is not None:
-        bar.finish()
+
+    def callback(f):
+        f.result()
+        if f.exception() is not None:
+            raise f.exception()
+        bar.update(1)
+
+    bar = tqdm(desc="Saving dataset", disable=(not verbose), total=total)
+    if threads > 0:
+        with ThreadPoolExecutor(threads) as tp:
+            for i, example in enumerate(dataset):
+                f = tp.submit(save, example, i)
+                f.add_done_callback(callback)
+        bar.close()
+
+    else:
+        for i, example in enumerate(dataset):
+            save(example, i)
+            bar.update(1)
+        bar.close()
 
 
 class SerializeMixin:
@@ -195,6 +201,7 @@ class SerializeMixin:
         shard_size: Optional[int] = None,
         prefix: str = "example_",
         verbose: bool = True,
+        threads: int = 0,
     ) -> None:
         r"""Saves the contents of the dataset to disk. See :func:`save_hdf5` and :func:`save_torch`
         respectively for more information on how saving functions for HDF5 or Torch files.
@@ -214,11 +221,12 @@ class SerializeMixin:
                 Must be a positive int. Only has an effect when ``fmt`` is ``"hdf5"``.
             prefix (str, optional): Passted to :func:`save_torch` if ``fmt`` is ``"hdf5"``
             verbose (bool, optional): If False, do not print progress updates during saving.
+            threads (int): Parallel threads to use when serializing. By default, run single-threaded
         """
         if fmt == "hdf5":
             return save_hdf5(self, path=path, num_shards=num_shards, shard_size=shard_size, verbose=verbose)
         elif fmt == "torch":
-            return save_torch(self, path=path, prefix=prefix, verbose=verbose)
+            return save_torch(self, path=path, prefix=prefix, verbose=verbose, threads=threads)
         else:
             raise ValueError(f"Expected fmt to be one of 'hdf5', 'torch': found {fmt}")
 
@@ -475,32 +483,20 @@ class TorchDataset(TransformableDataset, SerializeMixin):
             return len(self.files)
 
 
-def _write_shard(path, source, shard_size, shard_index=None, verbose=True, bar=_DefaultBar):
+def _write_shard(path, source, shard_size, shard_index=None, verbose=True):
     if shard_index is not None:
         path, ext = os.path.splitext(path)
         path = path + f"_{shard_index}" + ext
 
-    if verbose:
-        if hasattr(source, "__len__"):
-            bar = bar(f"Writing to {path}", max=len(source))
-        else:
-            bar = Spinner(f"Writing to {path} ")
-    else:
-        bar = None
-
+    bar = tqdm(enumerate(source), desc=f"Saving dataset", disable=(not verbose))
     with h5py.File(path, "w") as f:
-        for example_index, example in enumerate(source):
+        for example_index, example in bar:
             example = (example,) if isinstance(example, Tensor) else example
             for i, tensor in enumerate(example):
                 key = f"data_{i}"
                 if key not in f.keys():
                     f.create_dataset(key, (shard_size, *tensor.shape))
                 f[key][example_index, ...] = tensor
-                if bar is not None:
-                    bar.next()
-
-        if bar is not None:
-            bar.finish()
 
         if shard_index is not None:
             f.attrs["shard_index"] = int(shard_index)

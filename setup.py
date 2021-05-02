@@ -87,7 +87,6 @@ def install(version):
             "decorator",
             "matplotlib",
             "numpy",
-            "progress",
             "pytorch-lightning>=1.0.0",
             "torchmetrics>=0.3",
             "hydra-core>=1.0.0",

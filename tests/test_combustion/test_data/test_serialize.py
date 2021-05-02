@@ -293,6 +293,13 @@ class TestTorchSerialize(TestSerialize):
                 for t1, t2 in zip(e1, e2):
                     assert torch.allclose(t1, t2)
 
+    @pytest.mark.parametrize("num_workers", [1, 4])
+    def test_save_threaded(self, tmp_path, dataset, save_path, num_workers):
+        dataset.save(save_path, fmt=self.fmt, threads=num_workers)
+        for i in range(len(dataset)):
+            p = Path(save_path, f"example_{i}.pth")
+            check_file_exists(p)
+
     @pytest.mark.parametrize("length", [1000, 2000])
     def test_length_override(self, torch, tmp_path, dataset, input_file, data, length):
         path = tmp_path
