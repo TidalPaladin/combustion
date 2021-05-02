@@ -12,7 +12,9 @@ from pytorch_lightning.callbacks import Callback
 from .base import AttributeCallback, mkdir, resolve_dir
 
 
-PyplotLogFunction = Callable[[str, plt.Figure, pl.Trainer, pl.LightningModule, int], None]
+PyplotLogFunction = Callable[
+    [str, plt.Figure, pl.Trainer, pl.LightningModule, int, Optional[int], AttributeCallback], None
+]
 
 
 class PyplotSave:
@@ -44,19 +46,26 @@ class PyplotSave:
         trainer: pl.Trainer,
         pl_module: pl.LightningModule,
         step: int,
+        batch_idx: int,
         caller: Callback,
     ) -> None:
         if self.path is None:
             self.path = Path(resolve_dir(trainer, self._path, "saved_figures"))
 
         root = Path(self.path)
-        dest = Path(root, name, caller.read_step_as_str(pl_module)).with_suffix(".png")
+        dest = Path(root, name, caller.read_step_as_str(pl_module, batch_idx)).with_suffix(".png")
         mkdir(dest.parent, trainer)
         self.save_figure(dest, fig)
 
 
 def tensorboard_log_figure(
-    name: str, fig: plt.Figure, trainer: pl.Trainer, pl_module: pl.LightningModule, step: int, caller: Callback
+    name: str,
+    fig: plt.Figure,
+    trainer: pl.Trainer,
+    pl_module: pl.LightningModule,
+    step: int,
+    batch_idx: Optional[int],
+    caller: Callback,
 ) -> None:
     experiment = pl_module.logger.experiment
     experiment.add_figure(name, fig, step)
@@ -177,7 +186,13 @@ class MatplotlibCallback(AttributeCallback):
         """
 
     def callback_fn(
-        self, hook: Tuple[str, str], attr: Any, trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+        self,
+        hook: Tuple[str, str],
+        attr: Any,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        step: int,
+        batch_idx: Optional[int],
     ) -> None:
         _hook, _mode = hook
 
@@ -185,7 +200,7 @@ class MatplotlibCallback(AttributeCallback):
         if isinstance(attr, plt.Figure):
             name = f"{_mode}/{self.name}"
             for f in self.log_fn:
-                f(name, attr, trainer, pl_module, step, self)
+                f(name, attr, trainer, pl_module, step, batch_idx, self)
             if self.close:
                 plt.close(fig=attr)
 

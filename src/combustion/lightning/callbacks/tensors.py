@@ -122,7 +122,13 @@ class SaveTensors(AttributeCallback):
             raise ValueError(f"Unknown `output_format` {output_format}")
 
     def callback_fn(
-        self, hook: Tuple[str, str], attr: Any, trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+        self,
+        hook: Tuple[str, str],
+        attr: Any,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        step: int,
+        batch_idx: Optional[int],
     ) -> None:
         _hook, _mode = hook
         if not isinstance(attr, Tensor):
@@ -132,7 +138,9 @@ class SaveTensors(AttributeCallback):
                 raise TypeError(f"Expected type({self.attr_name}) == Tensor, found {type(attr)}")
 
         base_path = self.path
-        path = Path(base_path, _mode, f"{self.attr_name}", self.read_step_as_str(pl_module)).with_suffix(".pth")
+        path = Path(base_path, _mode, f"{self.attr_name}", self.read_step_as_str(pl_module, batch_idx)).with_suffix(
+            ".pth"
+        )
         output_format = (self.output_format,) if isinstance(self.output_format, str) else self.output_format
         try:
             mkdir(path.parent, trainer)

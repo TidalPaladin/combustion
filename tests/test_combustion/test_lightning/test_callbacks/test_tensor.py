@@ -35,6 +35,18 @@ class TestSaveTensors(BaseAttributeCallbackTest):
         return expected
 
     @pytest.mark.parametrize(
+        "model",
+        [
+            pytest.param(dict(epoch=1, step=1), id="epoch=1,step=1"),
+            pytest.param(dict(epoch=1, step=10), id="epoch=1,step=10"),
+            pytest.param(dict(epoch=10, step=1), id="epoch=10,step=1"),
+            pytest.param(dict(epoch=20, step=20), id="epoch=20,step=20"),
+            pytest.param(dict(epoch=32, step=32), id="epoch=32,step=32"),
+            pytest.param(dict(epoch=1, step=100, batch_idx=2), id="epoch=32,step=32,batch_idx=2"),
+        ],
+        indirect=True,
+    )
+    @pytest.mark.parametrize(
         "callback",
         [
             pytest.param(dict(output_format="pth"), id="pth"),
@@ -52,7 +64,7 @@ class TestSaveTensors(BaseAttributeCallbackTest):
             "saved_tensors",
             mode,
             f"{callback.attr_name}",
-            f"{callback.read_step_as_str(model)}",
+            f"{callback.read_step_as_str(model, model.batch_idx)}",
         ).with_suffix(".pth")
         path = path.with_suffix(f".{callback.output_format}")
         callback.ignore_errors = False
@@ -97,7 +109,7 @@ class TestSaveTensors(BaseAttributeCallbackTest):
             "saved_tensors",
             mode,
             f"{callback.attr_name}",
-            f"{callback.read_step_as_str(model)}",
+            f"{callback.read_step_as_str(model, model.batch_idx)}",
         ).with_suffix(".pth")
         path_mat = path_torch.with_suffix(".mat")
         spy_mat = mocker.spy(sio, "savemat")

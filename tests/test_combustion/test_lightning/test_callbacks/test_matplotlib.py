@@ -23,7 +23,7 @@ class TestMatplotlibCallback(BaseAttributeCallbackTest):
         return model.logger.experiment.add_figure
 
     @pytest.fixture
-    def callback(self, request, trainer, mocker):
+    def callback(self, request, trainer, mocker, hook):
         cls = self.callback_cls
         init_signature = inspect.signature(cls)
         defaults = {
@@ -37,6 +37,7 @@ class TestMatplotlibCallback(BaseAttributeCallbackTest):
             name = "image"
 
         defaults["name"] = name
+        defaults["hook"] = hook
         callback = cls(**defaults)
         callback.callback_fn = mocker.spy(callback, "callback_fn")
         return callback
@@ -70,7 +71,7 @@ class TestMatplotlibCallback(BaseAttributeCallbackTest):
 
     @pytest.mark.parametrize("relpath", [None, "subdir"])
     def test_save_plot(self, mocker, model, mode, hook, callback, attr, trainer, relpath, tmp_path):
-        subdir = Path(mode, callback.name, callback.read_step_as_str(model))
+        subdir = Path(mode, callback.name, callback.read_step_as_str(model, model.batch_idx))
         if relpath is None:
             real_path = Path(tmp_path, "lightning_logs", "version_0", "saved_figures")
             init_path = None
