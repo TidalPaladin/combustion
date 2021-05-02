@@ -6,8 +6,8 @@ from abc import ABC
 from typing import Any, Callable, Optional
 
 import torch
-from pytorch_lightning.metrics import Metric
 from torch import Tensor
+from torchmetrics import Metric
 
 from combustion.util import check_dimension, check_is_tensor, check_ndim_match
 from combustion.vision import CategoricalLabelIoU, split_bbox_scores_class, split_box_target

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 
-from pytorch_lightning.metrics.functional import average_precision
+from torchmetrics.functional import average_precision
 
 from .bbox_metric import BoxClassificationMetric
 
