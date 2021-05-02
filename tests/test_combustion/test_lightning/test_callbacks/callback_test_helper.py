@@ -6,8 +6,8 @@ import inspect
 import pytest
 import pytorch_lightning as pl
 import torch
-from torch import Tensor
 
+from combustion.testing import assert_equal
 from combustion.vision import to_8bit
 
 
@@ -24,11 +24,7 @@ def assert_calls_equal(call1, call2, **kwargs):
     call1 = tuple(call1.args) if type(call1) != tuple else call1
     call2 = tuple(call2.args) if type(call2) != tuple else call2
     for arg1, arg2 in zip(call1, call2):
-        assert type(arg1) == type(arg2)
-        if isinstance(arg1, Tensor):
-            assert torch.allclose(arg1, arg2, **kwargs)
-        else:
-            assert arg1 == arg2
+        assert_equal(arg1, arg2)
 
 
 class BaseAttributeCallbackTest:

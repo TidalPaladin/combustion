@@ -64,7 +64,7 @@ class TestSaveTensors(BaseAttributeCallbackTest):
         elif callback.output_format == "mat":
             sio = pytest.importorskip("scipy.io", reason="test requires scipy")
             spy = mocker.spy(sio, "savemat")
-            call = (path, {"tensor": attr})
+            call = (path, {"tensor": attr.cpu().numpy()})
 
         elif callback.output_format == "csv":
             spy = None
@@ -103,7 +103,7 @@ class TestSaveTensors(BaseAttributeCallbackTest):
         spy_mat = mocker.spy(sio, "savemat")
         spy_torch = mocker.spy(torch, "save")
         call_torch = (attr, path_torch)
-        call_mat = (path_mat, {"tensor": attr})
+        call_mat = (path_mat, {"tensor": attr.cpu().numpy()})
         callback.trigger()
         spy_mat.assert_called_once()
         spy_torch.assert_called_once()

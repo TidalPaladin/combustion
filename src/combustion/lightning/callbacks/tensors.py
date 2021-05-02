@@ -107,7 +107,8 @@ class SaveTensors(AttributeCallback):
             except ModuleNotFoundError:
                 print("Saving tensors in Matlab format requires scipy")
                 raise
-            savemat(p, {"tensor": t}, **kwargs)
+            # NOTE: must explicitly cast to numpy or you get empty files
+            savemat(p, {"tensor": t.cpu().numpy()}, **kwargs)
 
         elif output_format == "csv":
             if t.ndim > 2:
