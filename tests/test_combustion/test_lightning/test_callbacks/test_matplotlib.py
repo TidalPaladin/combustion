@@ -70,10 +70,9 @@ class TestMatplotlibCallback(BaseAttributeCallbackTest):
 
     @pytest.mark.parametrize("relpath", [None, "subdir"])
     def test_save_plot(self, mocker, model, mode, hook, callback, attr, trainer, relpath, tmp_path):
-        trainer.default_root_dir = tmp_path
         subdir = Path(mode, callback.name, callback.read_step_as_str(model))
         if relpath is None:
-            real_path = trainer.default_root_dir
+            real_path = Path(tmp_path, "lightning_logs", "version_0", "saved_figures")
             init_path = None
         else:
             real_path = Path(tmp_path, relpath)

@@ -2,12 +2,50 @@
 # -*- coding: utf-8 -*-
 
 import inspect
+import os
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, Iterable, Optional, Tuple, Union
 
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import Callback
+
+
+def mkdir(path, trainer):
+    r"""Creates a directory, accounting for multi-process trainers"""
+    if not trainer.fast_dev_run and trainer.is_global_zero:
+        Path(path).mkdir(exist_ok=True, parents=True)
+
+
+def resolve_dir(trainer: pl.Trainer, dirpath: Optional[str], suffix: str):
+    """
+    Determines tensor save directory at runtime. References attributes from the
+    trainer's logger to determine where to save checkpoints.
+    The base path for saving weights is set in this priority:
+    1.  ``dirpath`` if it is passed in
+    2.  The default_root_dir from trainer if trainer has no logger
+    The base path gets extended with logger name and version (if these are available)
+    and subfolder ``suffix``.
+    """
+    # Todo: required argument `pl_module` is not used
+    if dirpath is not None:
+        mkdir(dirpath, trainer)
+        return dirpath
+
+    if trainer.logger is not None:
+        save_dir = trainer.logger.save_dir or trainer.default_root_dir
+
+        version = (
+            trainer.logger.version if isinstance(trainer.logger.version, str) else f"version_{trainer.logger.version}"
+        )
+        path = os.path.join(save_dir, str(trainer.logger.name), version, suffix)
+    else:
+        path = os.path.join(trainer.weights_save_path, suffix)
+
+    path = trainer.training_type_plugin.broadcast(path)
+    mkdir(path, trainer)
+    return path
 
 
 class AttributeCallback(Callback, ABC):

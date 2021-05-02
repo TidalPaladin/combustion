@@ -10,7 +10,7 @@ import pytorch_lightning as pl
 import torch
 from torch import Tensor
 
-from .base import AttributeCallback
+from .base import AttributeCallback, mkdir, resolve_dir
 
 
 class SaveTensors(AttributeCallback):
@@ -130,14 +130,19 @@ class SaveTensors(AttributeCallback):
             else:
                 raise TypeError(f"Expected type({self.attr_name}) == Tensor, found {type(attr)}")
 
-        base_path = self.path if self.path is not None else trainer.default_root_dir
-        path = Path(base_path, _mode, f"{self.attr_name}_{step}.pth")
+        base_path = self.path
+        path = Path(base_path, _mode, f"{self.attr_name}", self.read_step_as_str(pl_module)).with_suffix(".pth")
         output_format = (self.output_format,) if isinstance(self.output_format, str) else self.output_format
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
+            mkdir(path.parent, trainer)
             for f in output_format:
                 self.save_tensor(path.with_suffix(f".{f}"), attr, f, **self.kwargs)
 
         except RuntimeError:
             if not self.ignore_errors:
                 raise
+
+    def on_pretrain_routine_start(self, trainer, pl_module):
+        """When pretrain routine starts we build the dest dir on the fly"""
+        path = resolve_dir(trainer, self.path, "saved_tensors")
+        self.path = Path(path)

@@ -16,7 +16,7 @@ from torchvision.utils import make_grid
 from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import to_8bit, visualize_bbox
 
-from .base import AttributeCallback
+from .base import AttributeCallback, mkdir, resolve_dir
 
 
 Colormap = Union[str, List[Optional[str]]]
@@ -59,7 +59,8 @@ class ImageSave:
     """
 
     def __init__(self, path: Optional[Path] = None, quality: int = 95):
-        self.path = Path(path) if path is not None else None
+        self._path = Path(path) if path is not None else None
+        self.path = None
         self.quality = int(quality)
 
     @staticmethod
@@ -88,9 +89,13 @@ class ImageSave:
         step: int,
         caller: Callback,
     ) -> None:
-        root = Path(self.path) if self.path is not None else Path(trainer.default_root_dir)
+        if self.path is None:
+            self.path = Path(resolve_dir(trainer, self._path, "saved_images"))
+
+        root = Path(self.path)
         for name, img in targets.items():
             dest = Path(root, name, caller.read_step_as_str(pl_module)).with_suffix(".png")
+            mkdir(dest.parent, trainer)
             if img.ndim == 4:
                 self.save_batch(img, dest, self.quality)
             else:

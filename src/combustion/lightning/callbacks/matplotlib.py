@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import Callback
 
-from .base import AttributeCallback
+from .base import AttributeCallback, mkdir, resolve_dir
 
 
 PyplotLogFunction = Callable[[str, plt.Figure, pl.Trainer, pl.LightningModule, int], None]
@@ -27,7 +27,8 @@ class PyplotSave:
     """
 
     def __init__(self, path: Optional[Path] = None, **kwargs):
-        self.path = Path(path) if path is not None else None
+        self._path = Path(path) if path is not None else None
+        self.path = None
         self.kwargs = kwargs
 
     @staticmethod
@@ -45,8 +46,12 @@ class PyplotSave:
         step: int,
         caller: Callback,
     ) -> None:
-        root = Path(self.path) if self.path is not None else Path(trainer.default_root_dir)
-        dest = Path(root, name, caller.read_step_as_str(pl_module))
+        if self.path is None:
+            self.path = Path(resolve_dir(trainer, self._path, "saved_figures"))
+
+        root = Path(self.path)
+        dest = Path(root, name, caller.read_step_as_str(pl_module)).with_suffix(".png")
+        mkdir(dest.parent, trainer)
         self.save_figure(dest, fig)
 
 

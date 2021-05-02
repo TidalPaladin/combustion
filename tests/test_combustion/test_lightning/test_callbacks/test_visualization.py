@@ -20,8 +20,8 @@ from combustion.vision import to_8bit
 
 
 @pytest.fixture
-def trainer(mocker):
-    trainer = mocker.MagicMock(spec=pl.Trainer)
+def trainer(tmp_path):
+    trainer = pl.Trainer(default_root_dir=tmp_path)
     return trainer
 
 
@@ -85,7 +85,7 @@ class TestVisualizeCallback:
         return data
 
     @pytest.fixture
-    def model(self, request, mocker, callback, data, mode):
+    def model(self, request, mocker, callback, data, mode, trainer):
 
         if hasattr(request, "param"):
             step = request.param.pop("step", 10)

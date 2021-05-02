@@ -39,8 +39,8 @@ class BaseAttributeCallbackTest:
         raise NotImplementedError(f"attr fixture")
 
     @pytest.fixture
-    def trainer(self, mocker):
-        trainer = mocker.MagicMock(spec=pl.Trainer)
+    def trainer(self, mocker, tmp_path):
+        trainer = pl.Trainer(default_root_dir=tmp_path)
         return trainer
 
     # training, validation, or testing mode
@@ -89,6 +89,7 @@ class BaseAttributeCallbackTest:
         _mode = "validation" if "val" in mode else mode
         func_name = f"on_{_mode}_{_hook}_end"
         callback.trigger = lambda: getattr(callback, func_name)(trainer, model)
+        callback.on_pretrain_routine_start(trainer, model)
 
         return model
 
