@@ -465,7 +465,7 @@ class HydraMixin(ModelIO):
                 dataset_config = dict(self.hparams.dataset["train"])
                 dataset_config["shuffle"] = False
 
-            num_workers = dataset_config.get("num_workers", 1)
+            num_workers = dataset_config.get("num_workers", None) or self.hparams.dataset.get("batch_size", None) or 1
             pin_memory = dataset_config.get("pin_memory", False)
             drop_last = dataset_config.get("drop_last", False)
             shuffle = dataset_config.get("shuffle", False)

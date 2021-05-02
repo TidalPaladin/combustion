@@ -406,35 +406,31 @@ def categorical_focal_loss(
     #   = exp(r * log(e^x_i / S))
     #   = exp(r * log(e^x_i) - r * log(S))))
     #   = exp(r * [x_i - r * log(S)))])
-    dims = [0, -1] + list(range(1, input.ndim - 1))
-    z = F.one_hot(target, num_classes=num_classes).type_as(input).float().permute(dims).contiguous()
+    z = F.one_hot(target, num_classes=num_classes).type_as(input).float()
 
     if pos_weight is not None:
         raise NotImplementedError("positive example weighting not yet implemented")
         pos_weight = torch.as_tensor(pos_weight, device=ce_loss.device, dtype=ce_loss.dtype)
         ce_loss = torch.where(positive_indices, pos_weight * ce_loss, (1.0 - pos_weight) * ce_loss)
 
+    input = input.movedim(1, -1).view(-1, num_classes)
+    positive_indices = positive_indices.view(-1)
+    z = z.view(-1, num_classes)
+
     if gamma != 0:
-        logS = torch.logsumexp(input, dim=1, keepdim=True)
+        logS = torch.logsumexp(input, dim=-1, keepdim=True)
         log1mexp(input - logS)
 
         # get exp sum of logits at z=0 indices
-        batch_size = input.shape[0]
-        spatial_shape = input.shape[2:]
-        z_channels_last = z.permute(0, -2, -1, 1)
-        input_channels_last = input.permute(0, -2, -1, 1)
-        non_pos_logits = (
-            input_channels_last[~z_channels_last.bool()].view(batch_size, *spatial_shape, -1).permute(0, -1, 1, 2)
-        )
-        del z_channels_last, input_channels_last
-        non_pos_logits = non_pos_logits.contiguous()
-
-        pos = torch.exp(gamma * (torch.logsumexp(non_pos_logits, dim=1, keepdim=True) - logS))
+        non_pos_logits = input[~z.bool()].view(-1, num_classes - 1)
         neg = torch.exp(gamma * F.log_softmax(input, dim=1))
+        pos = torch.exp(gamma * (torch.logsumexp(non_pos_logits, dim=1, keepdim=True) - logS)).expand_as(neg)
         focal_term = torch.where(z == 1, pos, neg)
-        loss = torch.sum(focal_term * (ce_loss.unsqueeze(1) / num_classes), dim=1)
+        loss = torch.sum(focal_term * (ce_loss.view(-1, 1) / num_classes), dim=1)
     else:
         loss = ce_loss
+
+    loss = loss.view_as(target)
 
     if reduction == "mean":
         loss = loss.mean()
