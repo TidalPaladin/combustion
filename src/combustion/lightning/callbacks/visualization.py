@@ -101,8 +101,9 @@ def bbox_overlay(img: Tensor, keypoint_dict: Dict[str, Tensor], **kwargs) -> Ten
     coords = keypoint_dict["coords"]
     cls = keypoint_dict.get("class", None)
     score = keypoint_dict.get("score", None)
+    names = keypoint_dict.get("names", None)
 
-    result = visualize_bbox(img, coords, cls, score, thickness=1, **kwargs)
+    result = visualize_bbox(img, coords, cls, score, names, thickness=1, **kwargs)
     return result
 
 
