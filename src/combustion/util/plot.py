@@ -33,9 +33,14 @@ def apply_colormap(inputs: Tensor, cmap: str = "gnuplot") -> Tensor:
     output_shape[channel_dim] = output_channels
 
     output: List[Tensor] = []
-    _ = inputs.flatten(start_dim=channel_dim, end_dim=-1).cpu().numpy()
+    _ = inputs.flatten(start_dim=channel_dim, end_dim=-1)
     for batch_elem in _:
-        mapped = torch.as_tensor(cmap(batch_elem), device=inputs.device, dtype=torch.float).transpose_(0, 1)
+        max, min = batch_elem.amax(), batch_elem.amin()
+        if max > 1 or min < 0:
+            batch_elem = batch_elem.sub(min).div_(max - min)
+        mapped = torch.as_tensor(cmap(batch_elem.cpu().numpy()), device=inputs.device, dtype=torch.float).transpose_(
+            0, 1
+        )
         output.append(mapped)
 
     return torch.stack(output, dim=batch_dim).view(*output_shape)
