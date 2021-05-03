@@ -3,7 +3,7 @@
 _target_: pytorch_lightning.Trainer
 params:
   max_epochs: 100
-  gpus: [1,]
+  gpus: 1
   amp_level: O1
   #amp_backend: apex
   precision: 16
@@ -21,13 +21,15 @@ params:
   #limit_val_batches: 8
   #default_save_path: /path/to/outputs
   #resume_from_checkpoint: /app/outputs/checkpoints/fcos_d0.ckpt
+  default_root_dir: /mnt/iscsi/fcos
+
 
   #weights_summary: full
   
   logger:
     _target_: pytorch_lightning.loggers.TensorBoardLogger
     params:
-      save_dir: /mnt/active_0/chase/outputs/fcos
+      save_dir: ${trainer.params.default_root_dir}
       name: ${now:%Y-%m-%d}
       version: ${now:%H-%M-%S}
               

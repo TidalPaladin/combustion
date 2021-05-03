@@ -1,5 +1,6 @@
 # @package _group_
 batch_size: 16
+base_path: /mnt/datasets/vision/coco
 
 train:
   num_workers: 8
@@ -11,8 +12,8 @@ train:
 
   _target_: torchvision.datasets.CocoDetection
   params:
-    root: /mnt/active_0/original/coco/train2017
-    annFile: /mnt/active_0/original/coco/annotations_trainval2017/annotations/instances_train2017.json
+    root: ${dataset.base_path}/train2017
+    annFile: ${dataset.base_path}/annotations_trainval2017/annotations/instances_train2017.json
     transforms:
       _target_: efficientdet_fcos.preprocessing.TrainingTransform
       params:
@@ -40,8 +41,9 @@ validate:
 
   _target_: torchvision.datasets.CocoDetection
   params:
-    root: /mnt/active_0/original/coco/val2017
-    annFile: /mnt/active_0/original/coco/annotations_trainval2017/annotations/instances_val2017.json
+    root: ${dataset.base_path}/val2017
+    annFile: ${dataset.base_path}/annotations_valval2017/annotations/instances_val2017.json
+
     transforms:
       _target_: efficientdet_fcos.preprocessing.TrainingTransform
       params:

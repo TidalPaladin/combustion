@@ -28,7 +28,7 @@ quality:
 	black --check --line-length $(LINE_LEN) --target-version $(PY_VER) $(QUALITY_DIRS)
 	flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
-run: docker
+run: 
 	venv/bin/python -m efficientdet_fcos
 
 prep:
