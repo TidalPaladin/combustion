@@ -162,7 +162,8 @@ class FCOSLoss:
         target_cls: Tensor,
     ) -> Tuple[Tensor, Tensor, Tensor]:
         size_targets = tuple([x.shape[-2:] for x in cls_pred])
-        fcos_targets = self.create_targets(target_bbox, target_cls, size_targets)
+        with torch.no_grad():
+            fcos_targets = self.create_targets(target_bbox, target_cls, size_targets)
         return self.compute_from_fcos_target(cls_pred, reg_pred, centerness_pred, fcos_targets)
 
     def compute_from_fcos_target(

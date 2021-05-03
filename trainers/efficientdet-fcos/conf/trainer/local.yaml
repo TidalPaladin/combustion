@@ -4,8 +4,6 @@ _target_: pytorch_lightning.Trainer
 params:
   max_epochs: 100
   gpus: 1
-  amp_level: O1
-  #amp_backend: apex
   precision: 16
   accumulate_grad_batches: 1
   #limit_train_batches: 10
@@ -19,7 +17,7 @@ params:
   #accelerator: ddp
   #sync_batchnorm: true
   #limit_val_batches: 8
-  #default_save_path: /path/to/outputs
+  limit_train_batches: 32
   #resume_from_checkpoint: /app/outputs/checkpoints/fcos_d0.ckpt
   default_root_dir: /mnt/iscsi/fcos
 
@@ -33,3 +31,75 @@ params:
       name: ${now:%Y-%m-%d}
       version: ${now:%H-%M-%S}
               
+
+  callbacks:
+
+    - _target_: combustion.lightning.callbacks.BlendVisualizeCallback
+      params: 
+        name: 'pred/types'
+        triggers: ['train']
+        attr_name: "last_cls"
+        interval: 1000
+        colormap: [null, "gnuplot"]
+        alpha: [1.0, 0.8]
+
+    - _target_: combustion.lightning.callbacks.BlendVisualizeCallback
+      params: 
+        name: 'pred/centerness'
+        triggers: ['train']
+        attr_name: "last_centerness"
+        interval: 1000
+        colormap: [null, "gnuplot"]
+        alpha: [1.0, 0.8]
+
+    - _target_: combustion.lightning.callbacks.KeypointVisualizeCallback
+      params: 
+        name: 'true/boxes'
+        triggers: ['train']
+        attr_name: "last_target"
+        interval: 1000
+
+    - _target_: combustion.lightning.callbacks.BlendVisualizeCallback
+      params: 
+        name: 'pred/types'
+        triggers: ['val', 'test']
+        attr_name: "last_cls"
+        colormap: [null, "gnuplot"]
+        alpha: [1.0, 0.8]
+        epoch_counter: True
+        max_calls: 32
+        split_batches: True
+
+    - _target_: combustion.lightning.callbacks.BlendVisualizeCallback
+      params: 
+        name: 'pred/centerness'
+        triggers: ['val', 'test']
+        attr_name: "last_centerness"
+        colormap: [null, "gnuplot"]
+        alpha: [1.0, 0.8]
+        epoch_counter: True
+        max_calls: 32
+        split_batches: True
+
+    - _target_: combustion.lightning.callbacks.KeypointVisualizeCallback
+      params: 
+        name: 'pred/boxes'
+        triggers: ['val', 'test']
+        attr_name: "last_pred"
+        epoch_counter: True
+        max_calls: 32
+        split_batches: True
+
+    - _target_: combustion.lightning.callbacks.KeypointVisualizeCallback
+      params: 
+        name: 'true/boxes'
+        triggers: ['val', 'test']
+        attr_name: "last_target"
+        epoch_counter: True
+        max_calls: 32
+        split_batches: True
+
+
+
+
+

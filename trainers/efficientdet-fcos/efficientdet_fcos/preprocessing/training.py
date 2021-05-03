@@ -73,23 +73,14 @@ class TrainingTransform:
 
         # return bbox target if desired
         target = combine_box_target(bbox, types)
-        padded_target = torch.empty(200, target.shape[-1]).fill_(-1)
-        padded_target[: target.shape[0], ...] = target
-        assert padded_target.shape[-1] == 5
-        return img, padded_target
+        return img, target
 
 
 class Collate:
+    def __init__(self, *args, **kwargs):
+        pass
+
     def __call__(self, examples):
-        batch_size, channels = len(examples), examples[0][0].shape[0]
-        max_h = max(x[0].shape[-2] for x in examples)
-        max_w = max(x[0].shape[-1] for x in examples)
         img = torch.stack([x[0] for x in examples])
-
-        img = examples[0][0].new_empty(batch_size, channels, max_h, max_w)
-        for batch_idx, sub_img in enumerate(examples):
-            h, w = sub_img.shape[-2:]
-            img[i, :, :h, :w]
-
         target = batch_box_target([x[1] for x in examples])
         return img, target

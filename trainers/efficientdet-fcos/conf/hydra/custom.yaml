@@ -9,4 +9,4 @@ hydra:
     dir: outputs/${hydra.job.name}/${now:%Y-%m-%d_%H-%M-%S}
     subdir: ${trainer.params.logger.params.version}
   run:
-    dir: ${trainer.params.logger.params.save_dir}/${trainer.params.logger.params.name}/${trainer.params.logger.params.version}
+    dir: ${trainer.params.default_root_dir}/${trainer.params.logger.params.name}/${trainer.params.logger.params.version}
