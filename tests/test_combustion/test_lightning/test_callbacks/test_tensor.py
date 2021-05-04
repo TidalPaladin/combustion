@@ -35,6 +35,18 @@ class TestSaveTensors(BaseAttributeCallbackTest):
         return expected
 
     @pytest.mark.parametrize(
+        "model",
+        [
+            pytest.param(dict(epoch=1, step=1), id="epoch=1,step=1"),
+            pytest.param(dict(epoch=1, step=10), id="epoch=1,step=10"),
+            pytest.param(dict(epoch=10, step=1), id="epoch=10,step=1"),
+            pytest.param(dict(epoch=20, step=20), id="epoch=20,step=20"),
+            pytest.param(dict(epoch=32, step=32), id="epoch=32,step=32"),
+            pytest.param(dict(epoch=1, step=100, batch_idx=2), id="epoch=32,step=32,batch_idx=2"),
+        ],
+        indirect=True,
+    )
+    @pytest.mark.parametrize(
         "callback",
         [
             pytest.param(dict(output_format="pth"), id="pth"),
@@ -45,8 +57,16 @@ class TestSaveTensors(BaseAttributeCallbackTest):
         indirect=True,
     )
     def test_save_tensor(self, mocker, model, mode, hook, callback, tmp_path, attr, trainer):
-        trainer.default_root_dir = tmp_path
-        path = Path(tmp_path, mode, f"{callback.attr_name}_{callback.read_step(model)}.{callback.output_format}")
+        path = Path(
+            tmp_path,
+            "lightning_logs",
+            "version_0",
+            "saved_tensors",
+            mode,
+            f"{callback.attr_name}",
+            f"{callback.read_step_as_str(model, model.batch_idx)}",
+        ).with_suffix(".pth")
+        path = path.with_suffix(f".{callback.output_format}")
         callback.ignore_errors = False
 
         if callback.output_format == "pth":
@@ -56,7 +76,7 @@ class TestSaveTensors(BaseAttributeCallbackTest):
         elif callback.output_format == "mat":
             sio = pytest.importorskip("scipy.io", reason="test requires scipy")
             spy = mocker.spy(sio, "savemat")
-            call = (path, {"tensor": attr})
+            call = (path, {"tensor": attr.cpu().numpy()})
 
         elif callback.output_format == "csv":
             spy = None
@@ -80,15 +100,22 @@ class TestSaveTensors(BaseAttributeCallbackTest):
         indirect=True,
     )
     def test_save_multiple_tensors(self, mocker, model, mode, hook, callback, tmp_path, attr, trainer):
-        trainer.default_root_dir = tmp_path
         callback.ignore_errors = False
         sio = pytest.importorskip("scipy.io", reason="test requires scipy")
-        path_torch = Path(tmp_path, mode, f"{callback.attr_name}_{callback.read_step(model)}.pth")
+        path_torch = Path(
+            tmp_path,
+            "lightning_logs",
+            "version_0",
+            "saved_tensors",
+            mode,
+            f"{callback.attr_name}",
+            f"{callback.read_step_as_str(model, model.batch_idx)}",
+        ).with_suffix(".pth")
         path_mat = path_torch.with_suffix(".mat")
         spy_mat = mocker.spy(sio, "savemat")
         spy_torch = mocker.spy(torch, "save")
         call_torch = (attr, path_torch)
-        call_mat = (path_mat, {"tensor": attr})
+        call_mat = (path_mat, {"tensor": attr.cpu().numpy()})
         callback.trigger()
         spy_mat.assert_called_once()
         spy_torch.assert_called_once()

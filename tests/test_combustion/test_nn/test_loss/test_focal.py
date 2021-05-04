@@ -341,3 +341,11 @@ class TestCategoricalFocalLoss:
         loss.backward()
 
         assert not x.grad.isnan().any()
+
+    @pytest.mark.parametrize("gamma", [0, 0.5, 1.0])
+    @pytest.mark.parametrize("num_classes", [2, 4])
+    def test_flat_tensor(self, cls, true_cls, gamma, num_classes):
+        x = torch.rand(1, num_classes, 10, 10).view(-1, num_classes)
+        y = torch.randint(0, num_classes, (1, 10, 10)).view(-1)
+        criterion = cls(gamma=gamma, reduction="none")
+        criterion(x, y)

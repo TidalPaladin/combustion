@@ -6,8 +6,8 @@ import inspect
 import pytest
 import pytorch_lightning as pl
 import torch
-from torch import Tensor
 
+from combustion.testing import assert_equal
 from combustion.vision import to_8bit
 
 
@@ -24,11 +24,7 @@ def assert_calls_equal(call1, call2, **kwargs):
     call1 = tuple(call1.args) if type(call1) != tuple else call1
     call2 = tuple(call2.args) if type(call2) != tuple else call2
     for arg1, arg2 in zip(call1, call2):
-        assert type(arg1) == type(arg2)
-        if isinstance(arg1, Tensor):
-            assert torch.allclose(arg1, arg2, **kwargs)
-        else:
-            assert arg1 == arg2
+        assert_equal(arg1, arg2)
 
 
 class BaseAttributeCallbackTest:
@@ -39,8 +35,8 @@ class BaseAttributeCallbackTest:
         raise NotImplementedError(f"attr fixture")
 
     @pytest.fixture
-    def trainer(self, mocker):
-        trainer = mocker.MagicMock(spec=pl.Trainer)
+    def trainer(self, mocker, tmp_path):
+        trainer = pl.Trainer(default_root_dir=tmp_path)
         return trainer
 
     # training, validation, or testing mode
@@ -54,7 +50,7 @@ class BaseAttributeCallbackTest:
         return request.param
 
     @pytest.fixture
-    def callback(self, mocker, request, trainer):
+    def callback(self, mocker, request, trainer, hook):
         cls = self.callback_cls
         init_signature = inspect.signature(cls)
         defaults = {
@@ -63,6 +59,8 @@ class BaseAttributeCallbackTest:
 
         if hasattr(request, "param"):
             defaults.update(request.param)
+        defaults["hook"] = hook
+
         callback = cls(**defaults)
 
         # spy the callback function so we can inspect calls
@@ -74,28 +72,35 @@ class BaseAttributeCallbackTest:
         if hasattr(request, "param"):
             step = request.param.pop("step", 10)
             epoch = request.param.pop("epoch", 1)
+            batch_idx = request.param.pop("epoch", 0)
         else:
             step = 10
             epoch = 1
+            batch_idx = 0
 
         model = mocker.MagicMock(name="module")
         model.current_epoch = epoch
         model.global_step = step
-        model.global_step = step
         if callback.attr_name is not None:
             setattr(model, callback.attr_name, attr)
 
-        _hook = "epoch" if hook == epoch else "batch"
+        _hook = "batch" if hook == "step" else "epoch"
         _mode = "validation" if "val" in mode else mode
         func_name = f"on_{_mode}_{_hook}_end"
-        callback.trigger = lambda: getattr(callback, func_name)(trainer, model)
+        if _hook == "batch":
+            model.batch_idx = batch_idx
+            callback.trigger = lambda: getattr(callback, func_name)(trainer, model, None, None, batch_idx)
+        else:
+            model.batch_idx = None
+            callback.trigger = lambda: getattr(callback, func_name)(trainer, model, None)
+        callback.on_pretrain_routine_start(trainer, model)
 
         return model
 
     def test_repr(self, callback):
         print(callback)
 
-    def test_callback_fn_call(self, model, mode, callback):
+    def test_callback_fn_call(self, model, mode, hook, callback):
         callback.trigger()
         func = callback.callback_fn
         func.assert_called_once()
@@ -128,6 +133,7 @@ class BaseAttributeCallbackTest:
             pytest.param(dict(epoch=10, step=1), id="epoch=10,step=1"),
             pytest.param(dict(epoch=20, step=20), id="epoch=20,step=20"),
             pytest.param(dict(epoch=32, step=32), id="epoch=32,step=32"),
+            pytest.param(dict(epoch=1, step=100, batch_idx=2), id="epoch=32,step=32,batch_idx=2"),
         ],
         indirect=True,
     )

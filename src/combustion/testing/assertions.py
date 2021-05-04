@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from typing import Iterable
+
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -128,7 +130,30 @@ def assert_is_int_tensor(x: Tensor):
             raise AssertionError(str(e))
 
 
+def assert_equal(arg1, arg2, **kwargs):
+    __tracebackhide__ = True
+    assert type(arg1) == type(arg2)
+
+    if isinstance(arg1, Tensor):
+        assert torch.allclose(arg1, arg2, **kwargs)
+
+    elif isinstance(arg1, dict) and isinstance(arg2, dict):
+        for (k1, v1), (k2, v2) in zip(arg1.items(), arg2.items()):
+            assert_equal(k1, k2, **kwargs)
+            assert_equal(v1, v2, **kwargs)
+
+    elif isinstance(arg1, str) and isinstance(arg2, str):
+        assert arg1 == arg2
+
+    elif isinstance(arg1, Iterable) and isinstance(arg2, Iterable):
+        for a1, a2 in zip(arg1, arg2):
+            assert_equal(a1, a2, **kwargs)
+    else:
+        assert arg1 == arg2
+
+
 __all__ = [
+    "assert_equal",
     "assert_has_gradient",
     "assert_zero_grad",
     "assert_is_int_tensor",

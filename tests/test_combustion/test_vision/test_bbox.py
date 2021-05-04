@@ -191,7 +191,12 @@ class TestVisualizeBbox:
         scores = scores.cuda() if scores is not None else None
         result = visualize_bbox(img, bbox, label, scores, class_names)
         assert isinstance(result, torch.Tensor)
-        assert result.dtype == torch.uint8
+        if not img.is_floating_point():
+            assert result.dtype == torch.uint8
+        else:
+            assert result.is_floating_point()
+            assert result.max() <= 1
+            assert result.min() >= 0
         assert result.shape[-2:] == img.shape[-2:]
         assert result.shape[-3] == 3
         if img.ndim != 2:

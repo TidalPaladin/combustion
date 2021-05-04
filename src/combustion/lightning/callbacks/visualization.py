@@ -16,17 +16,22 @@ from torchvision.utils import make_grid
 from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import to_8bit, visualize_bbox
 
-from .base import AttributeCallback
+from .base import AttributeCallback, mkdir, resolve_dir
 
 
 Colormap = Union[str, List[Optional[str]]]
-LogFunction = Callable[[Dict[str, Tensor], pl.Trainer, pl.LightningModule, int, Callback], None]
+LogFunction = Callable[[Dict[str, Tensor], pl.Trainer, pl.LightningModule, int, Optional[int], AttributeCallback], None]
 ChannelSplits = Union[int, List[int]]
 KeypointFunction = Callable[[Tensor, Tensor], Tensor]
 
 
 def tensorboard_log(
-    targets: Dict[str, Tensor], trainer: pl.Trainer, pl_module: pl.LightningModule, step: int, caller: Callback
+    targets: Dict[str, Tensor],
+    trainer: pl.Trainer,
+    pl_module: pl.LightningModule,
+    step: int,
+    batch_idx: Optional[int],
+    caller: Callback,
 ) -> None:
     experiment = pl_module.logger.experiment
     for name, img in targets.items():
@@ -59,7 +64,8 @@ class ImageSave:
     """
 
     def __init__(self, path: Optional[Path] = None, quality: int = 95):
-        self.path = Path(path) if path is not None else None
+        self._path = Path(path) if path is not None else None
+        self.path = None
         self.quality = int(quality)
 
     @staticmethod
@@ -86,11 +92,16 @@ class ImageSave:
         trainer: pl.Trainer,
         pl_module: pl.LightningModule,
         step: int,
+        batch_idx: Optional[int],
         caller: Callback,
     ) -> None:
-        root = Path(self.path) if self.path is not None else Path(trainer.default_root_dir)
+        if self.path is None:
+            self.path = Path(resolve_dir(trainer, self._path, "saved_images"))
+
+        root = Path(self.path)
         for name, img in targets.items():
-            dest = Path(root, name, caller.read_step_as_str(pl_module)).with_suffix(".png")
+            dest = Path(root, name, caller.read_step_as_str(pl_module, batch_idx)).with_suffix(".png")
+            mkdir(dest.parent, trainer)
             if img.ndim == 4:
                 self.save_batch(img, dest, self.quality)
             else:
@@ -237,7 +248,13 @@ class VisualizeCallback(AttributeCallback):
                 )
 
     def callback_fn(
-        self, hook: Tuple[str, str], attr: Any, trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+        self,
+        hook: Tuple[str, str],
+        attr: Any,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        step: int,
+        batch_idx: Optional[int],
     ) -> None:
         # single tensor
         _hook, _mode = hook
@@ -245,7 +262,7 @@ class VisualizeCallback(AttributeCallback):
             images = self._process_image(
                 attr, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8
             )
-            self._log(_mode, images, trainer, pl_module, step)
+            self._log(_mode, images, trainer, pl_module, step, batch_idx)
         elif not self.ignore_errors:
             raise TypeError(f"Expected {self.attr_name} to be a tensor or tuple of tensors, " f"but found {type(attr)}")
 
@@ -288,7 +305,13 @@ class VisualizeCallback(AttributeCallback):
         return images
 
     def _log(
-        self, mode: str, targets: Dict[str, Tensor], trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+        self,
+        mode: str,
+        targets: Dict[str, Tensor],
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        step: int,
+        batch_idx: Optional[int],
     ) -> None:
         # split batches if requested
         if self.split_batches:
@@ -305,9 +328,9 @@ class VisualizeCallback(AttributeCallback):
 
         if isinstance(self.log_fn, Iterable):
             for f in self.log_fn:
-                f(targets, trainer, pl_module, step, self)
+                f(targets, trainer, pl_module, step, batch_idx, self)
         else:
-            self.log_fn(targets, trainer, pl_module, step, self)
+            self.log_fn(targets, trainer, pl_module, step, batch_idx, self)
 
     def _apply_log_resolution(self, img: Tensor, limit: Tuple[int, int], mode: str) -> Tensor:
         H, W = img.shape[-2:]
@@ -486,7 +509,13 @@ class KeypointVisualizeCallback(VisualizeCallback):
             self.overlay_keypoints = KeypointVisualizeCallback.bbox_overlay
 
     def callback_fn(
-        self, hook: Tuple[str, str], attr: Any, trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+        self,
+        hook: Tuple[str, str],
+        attr: Any,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        step: int,
+        batch_idx: Optional[int],
     ) -> None:
         _hook, _mode = hook
         if not hasattr(attr, "__len__") or len(attr) != 2:
@@ -507,7 +536,7 @@ class KeypointVisualizeCallback(VisualizeCallback):
             images = self._process_image(
                 img, keypoint_dict, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8
             )
-            self._log(_mode, images, trainer, pl_module, step)
+            self._log(_mode, images, trainer, pl_module, step, batch_idx)
         elif not self.ignore_errors:
             raise TypeError(
                 f"Expected {self.attr_name}[0] to be a tensor or tuple of tensors, " f"but found {type(img)}"
@@ -678,7 +707,13 @@ class BlendVisualizeCallback(VisualizeCallback):
         self.alpha = alpha
 
     def callback_fn(
-        self, hook: Tuple[str, str], attr: Any, trainer: pl.Trainer, pl_module: pl.LightningModule, step: int
+        self,
+        hook: Tuple[str, str],
+        attr: Any,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        step: int,
+        batch_idx: Optional[int],
     ) -> None:
         _hook, _mode = hook
         if not hasattr(attr, "__len__") or len(attr) != 2:
@@ -692,7 +727,7 @@ class BlendVisualizeCallback(VisualizeCallback):
             images = self._process_image(
                 dest, src, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8
             )
-            self._log(_mode, images, trainer, pl_module, step)
+            self._log(_mode, images, trainer, pl_module, step, batch_idx)
         elif not self.ignore_errors:
             raise TypeError(
                 f"Expected {self.attr_name} to be a tuple of tensors, " f"but found {type(dest)}, {type(src)}"

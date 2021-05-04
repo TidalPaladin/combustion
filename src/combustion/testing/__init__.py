@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from .assertions import (
+    assert_equal,
     assert_has_gradient,
     assert_in_eval_mode,
     assert_in_training_mode,
@@ -15,6 +16,7 @@ from .mixins import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
 __all__ = [
+    "assert_equal",
     "assert_has_gradient",
     "assert_zero_grad",
     "assert_is_int_tensor",
