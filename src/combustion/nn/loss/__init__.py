@@ -3,6 +3,7 @@
 
 from .centernet import CenterNetLoss
 from .ciou import CompleteIoULoss
+from .fcos import FCOSLoss
 from .focal import (
     CategoricalFocalLoss,
     FocalLoss,
@@ -22,4 +23,5 @@ __all__ = [
     "focal_loss",
     "FocalLoss",
     "FocalLossWithLogits",
+    "FCOSLoss",
 ]

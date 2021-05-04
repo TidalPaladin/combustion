@@ -21,18 +21,16 @@ class _EfficientDetMeta(type):
             x.BatchNorm = nn.BatchNorm3d
             x.BiFPN = BiFPN3d
             x._get_blocks = MobileNetBlockConfig.get_3d_blocks
-        elif "2d" in name:
-            x.Conv = nn.Conv2d
-            x.BatchNorm = nn.BatchNorm2d
-            x.BiFPN = BiFPN2d
-            x._get_blocks = MobileNetBlockConfig.get_2d_blocks
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x.BiFPN = BiFPN1d
             x._get_blocks = MobileNetBlockConfig.get_1d_blocks
         else:
-            raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
+            x.Conv = nn.Conv2d
+            x.BatchNorm = nn.BatchNorm2d
+            x.BiFPN = BiFPN2d
+            x._get_blocks = MobileNetBlockConfig.get_2d_blocks
         return x
 
 
@@ -158,11 +156,6 @@ class _EfficientDet(_EfficientNet):
         output = self.extract_features(inputs)
         if self.head is not None:
             output = self.head(output)
-            if not isinstance(output, list):
-                output = [
-                    output,
-                ]
-
         return output
 
     @classmethod

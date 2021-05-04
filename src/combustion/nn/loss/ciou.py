@@ -10,19 +10,35 @@ from torch import Tensor
 from combustion.util import check_dimension, check_is_tensor, check_shapes_match
 
 
-def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean") -> Tensor:
+def absolute_to_center_delta(bbox: Tensor) -> Tensor:
+    _ = bbox.view(-1, 2, 2)
+    _ = _ - _[..., 0:1, :]
+    return _.view_as(bbox)
+
+
+def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean", absolute: bool = False) -> Tensor:
     # validation
     check_is_tensor(inputs, "inputs")
     check_is_tensor(targets, "targets")
     check_dimension(inputs, -1, 4, "inputs")
     check_dimension(targets, -1, 4, "targets")
     check_shapes_match(inputs, targets, "inputs", "targets")
-    inputs = inputs.float()
-    targets = targets.float()
+
+    inputs = inputs.float().clone()
+    targets = targets.float().clone()
+
+    # convert absolute coordinates to distance from box center if needed
+    if absolute:
+        inputs = absolute_to_center_delta(inputs)
+        targets = absolute_to_center_delta(targets)
+    else:
+        # x1, y1 are negative deltas relative to center
+        inputs[..., :2] = inputs[..., :2].neg()
+        targets[..., :2] = targets[..., :2].neg()
 
     # compute euclidean distance between pred and true box centers
-    pred_size = inputs[..., 2:] - inputs[..., :2]
-    target_size = targets[..., 2:] - targets[..., :2]
+    pred_size = (inputs[..., 2:] - inputs[..., :2]).clamp_min(1)
+    target_size = (targets[..., 2:] - targets[..., :2]).clamp_min(1)
     pred_center = pred_size.div(2).add(inputs[..., :2])
     target_center = target_size.div(2).add(targets[..., :2])
     euclidean_dist_squared = (pred_center - target_center).pow(2).sum(dim=-1)
@@ -45,8 +61,8 @@ def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean") 
     iou = inter / (pred_area + target_area - inter).clamp_min(1e-9)
 
     # compute v, which measure aspect ratio consistency
-    pred_w, pred_h = pred_size[..., 0], pred_size[..., 1]
-    target_w, target_h = target_size[..., 0], target_size[..., 1]
+    pred_w, pred_h = pred_size[..., 0], pred_size[..., 1].clamp_min(1e-4)
+    target_w, target_h = target_size[..., 0], target_size[..., 1].clamp_min(1e-5)
     _ = torch.atan(target_w / target_h) - torch.atan(pred_w / pred_h)
     v = 4 / pi ** 2 * _.pow(2)
 
@@ -93,5 +109,9 @@ class CompleteIoULoss(nn.Module):
         https://arxiv.org/abs/1911.08287
     """
 
-    def forward(self, inputs: Tensor, targets: Tensor, reduction: str = "mean") -> Tensor:
-        return complete_iou_loss(inputs, targets, reduction)
+    def __init__(self, reduction: str = "mean"):
+        super().__init__()
+        self.reduction = reduction
+
+    def forward(self, inputs: Tensor, targets: Tensor) -> Tensor:
+        return complete_iou_loss(inputs, targets, self.reduction)

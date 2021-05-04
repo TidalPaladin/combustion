@@ -186,7 +186,7 @@ def visualize_bbox(
                 cls = int(classes_i[box_idx].item())
                 # use class integer -> str name if mapping is given, otherwise use class integer
                 if class_names is not None:
-                    text += class_names[cls]
+                    text += class_names.get(cls, f"Class {cls}")
                 else:
                     text += f"Class {cls}"
 
