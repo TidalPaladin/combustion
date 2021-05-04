@@ -37,7 +37,8 @@ def apply_colormap(inputs: Tensor, cmap: str = "gnuplot") -> Tensor:
     for batch_elem in _:
         max, min = batch_elem.amax(), batch_elem.amin()
         if max > 1 or min < 0:
-            batch_elem = batch_elem.sub(min).div_(max - min)
+            batch_elem = batch_elem.sub(min).float().div_(max - min)
+
         mapped = torch.as_tensor(cmap(batch_elem.cpu().numpy()), device=inputs.device, dtype=torch.float).transpose_(
             0, 1
         )
