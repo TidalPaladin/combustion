@@ -488,5 +488,5 @@ class TestFCOSLoss:
 
         output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, strides, from_logits=True)
 
-        loss = criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
+        criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
         assert False

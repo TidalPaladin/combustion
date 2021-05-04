@@ -9,6 +9,7 @@ from combustion.util import alpha_blend, apply_colormap
 
 
 class TestApplyColormap:
+    @pytest.mark.parametrize("dtype", ["float", "long", "byte"])
     @pytest.mark.parametrize(
         "inputs",
         [
@@ -17,7 +18,12 @@ class TestApplyColormap:
             pytest.param(torch.rand(1, 1, 10), id="1D"),
         ],
     )
-    def test_input_output_shape(self, inputs):
+    def test_input_output_shape(self, inputs, dtype):
+        if dtype == "long":
+            inputs = inputs.mul(1024).long()
+        elif dtype == "byte":
+            inputs = inputs.mul(255).byte()
+
         out = apply_colormap(inputs)
         assert isinstance(out, Tensor)
         assert out.shape[2:] == inputs.shape[2:]
