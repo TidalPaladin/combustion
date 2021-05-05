@@ -65,15 +65,13 @@ def mask_to_edges(mask: Tensor) -> Tensor:
     return edge_mask.view(H, W)
 
 
-@torch.jit.script
 def mask_to_instances(mask: Tensor) -> Tensor:
     r"""Given a binary mask, extract a new mask indicating contiguous
     instances. The resultant mask will use ``0`` to indicate background
     classes, and will begin numbering instance regions with ``1``.
 
-    .. note::
-        This method relies on an iterative loop of max pooling operations,
-        and thus may be slow for some inputs
+    This method identifies connected components via nearest-neighbor message passing.
+    The runtime is a function of the diameter of the largest connected component.
 
     Args:
         mask (:class:`torch.Tensor`):
@@ -84,20 +82,72 @@ def mask_to_instances(mask: Tensor) -> Tensor:
         * Output - :math:`(H, W)`
     """
     H, W = mask.shape[-2:]
-
-    # naive way
     mask = mask > 0
-    grid = torch.meshgrid(torch.arange(H), torch.arange(W))
-    instances = (grid[0] * H + grid[1] + 1).float().to(mask.device)
 
-    instances[~mask] = 0
+    if not mask.any():
+        return mask
+
+    # assign each positive location a unique instance label
+    _ = torch.arange(0, H * W, device=mask.device)
+    with torch.random.fork_rng(devices=(mask.device,)):
+        torch.random.manual_seed(42)
+        instances = (
+            torch.multinomial(torch.ones(H * W, dtype=torch.float, device=mask.device), H * W, replacement=False)
+            .view(H, W)
+            .long()
+        )
+        instances[~mask] = 0
+
+    # get locations of each positive label
+    nodes = mask.nonzero()
+    N = nodes.shape[0]
+    node_idx = torch.split(nodes, [1, 1], dim=-1)
+
+    # build adjacency tensor
+    delta = torch.tensor(
+        [
+            [-1, -1],
+            [-1, 0],
+            [-1, 1],
+            [0, -1],
+            [0, 0],
+            [0, 1],
+            [1, -1],
+            [1, 0],
+            [1, 1],
+        ],
+        device=mask.device,
+    )
+    A = delta.shape[-2]
+    adjacency = (nodes.view(-1, 1, 2) + delta.view(1, -1, 2)).reshape(-1, 2)
+    adjacency[..., 0].clamp_(min=0, max=H - 1)
+    adjacency[..., 1].clamp_(min=0, max=W - 1)
+    adjacency_idx = torch.split(adjacency, [1, 1], dim=-1)
+    passed_messages = instances[adjacency_idx].view(N, A)
+
+    # iteratively pass instance label to neighbors
+    # adopt instance label of max(self, neighbors)
+    # NOTE: try to buffer things and operate in place where possible for speed
+    # NOTE: something below fails to script
+    old_instances = instances
+    new_instances = instances.clone()
+    adjacency_buffer = adjacency.new_empty(N)
+    adjacency.new_empty(N)
     while True:
-        _ = F.max_pool2d(instances.view(1, 1, H, W), 3, stride=1, padding=1).view(H, W)
-        _[~mask] = 0
-        if (_ == instances).all():
-            break
-        instances = _
+        passed_messages = old_instances[adjacency_idx].view(N, A)
+        torch.amax(passed_messages, dim=-1, out=adjacency_buffer)
+        new_instances[node_idx] = adjacency_buffer.view(-1, 1)
 
+        # if nothing was updated, we're done
+        diff = new_instances[mask] != old_instances[mask]
+        if not diff.any():
+            break
+
+        _ = new_instances
+        new_instances = old_instances
+        old_instances = _
+
+    # convert unique instance labels into a 1-indexed set of consecutive labels
     unique_instances = torch.unique(instances)
     for new_ins, old_ins in enumerate(unique_instances):
         if old_ins == 0:
@@ -107,7 +157,6 @@ def mask_to_instances(mask: Tensor) -> Tensor:
     return instances.long()
 
 
-@torch.jit.script
 def mask_to_box(mask: Tensor) -> Tensor:
     r"""Given a binary mask, extract bounding boxes for each contiguous
     region.
@@ -143,7 +192,6 @@ def mask_to_box(mask: Tensor) -> Tensor:
     return torch.stack(result, dim=0)
 
 
-@torch.jit.script
 def mask_to_polygon(mask: Tensor) -> List[Tensor]:
     r"""Given a binary mask, extract bounding polygons for each contiguous
     region.
