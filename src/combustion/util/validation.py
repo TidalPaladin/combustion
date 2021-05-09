@@ -278,3 +278,12 @@ def check_names_match(x: Array, y: Array, x_name: str, y_name: str):
     y_names = sorted(y.names)
     if not x_names == y_names:
         raise ValueError(f"expected {x_name}.names == {y_name}.names:\n" f"{x_names} vs {y_names}")
+
+
+@torch.jit.ignore
+def check_numel(x: Array, val: int, name: str):
+    assert isinstance(x, Tensor)
+    assert isinstance(name, str)
+
+
+

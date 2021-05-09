@@ -3,6 +3,7 @@
 
 import os
 from typing import Optional
+from timeit import timeit
 
 import pytest
 import torch
@@ -33,6 +34,7 @@ class TestFCOSLoss:
         if indexing == "hw":
             expected = expected.roll(1)
         assert torch.allclose(grid[:, -1, -1], expected)
+
 
     @pytest.mark.parametrize("inclusive", ["lower", "upper", "both"])
     def test_assign_boxes_to_level(self, inclusive):
@@ -490,3 +492,55 @@ class TestFCOSLoss:
 
         criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
         assert False
+
+    def test_create_targets_runtime(self, cuda):
+        target_bbox = torch.tensor(
+            [
+                [
+                    [0, 0, 9, 9],
+                    [10, 10, 490, 490],
+                    [-1, -1, -1, -1],
+                ],
+                [
+                    [32, 32, 88, 88],
+                    [42, 32, 84, 96],
+                    [-1, -1, -1, -1],
+                ],
+                [
+                    [10, 20, 50, 60],
+                    [10, 20, 500, 600],
+                    [20, 20, 84, 84],
+                ],
+                [
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                ],
+            ]
+        ).repeat(4, 1, 1)
+
+        target_cls = torch.tensor(
+            [
+                [0, 1, -1],
+                [0, 0, -1],
+                [0, 0, 1],
+                [-1, -1, -1],
+            ]
+        ).unsqueeze_(-1).repeat(4, 1, 1)
+
+        if cuda:
+            target_bbox = target_bbox.cuda()
+            target_cls = target_cls.cuda()
+
+        target_bbox.shape[0]
+        num_classes = 2
+        strides = [8, 16, 32, 64, 128]
+        base_size = 512
+        sizes = [(base_size // stride,) * 2 for stride in strides]
+
+        criterion = FCOSLoss(strides, num_classes, radius=1.5)
+        def func():
+            pred_cls, pred_reg, pred_centerness = criterion.create_targets(target_bbox, target_cls, sizes)
+
+        t = timeit(func, number=10) / 10
+        print(f"create_targets runtime: {t}s")

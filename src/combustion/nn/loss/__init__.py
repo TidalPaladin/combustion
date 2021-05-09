@@ -3,7 +3,7 @@
 
 from .centernet import CenterNetLoss
 from .ciou import CompleteIoULoss
-from .fcos import FCOSLoss
+from .fcos import FCOSLoss, PolygonLoss
 from .focal import (
     CategoricalFocalLoss,
     FocalLoss,

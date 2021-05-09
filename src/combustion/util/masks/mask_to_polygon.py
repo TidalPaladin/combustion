@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import List
+from typing import List, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -9,7 +9,7 @@ from torch import Tensor
 
 
 @torch.jit.script
-def _get_edge_kernel() -> Tensor:
+def _get_edge_kernel(diagonal: bool) -> Tensor:
     d_kernel = torch.tensor(
         [
             [1, 0],
@@ -35,17 +35,22 @@ def _get_edge_kernel() -> Tensor:
             [-1, 0],
         ]
     ).view(1, 1, 2, 2)
+    
+    if diagonal:
+        return torch.cat([d_kernel, w_kernel, h_kernel], dim=0)
+    else:
+        return torch.cat([w_kernel, h_kernel], dim=0)
 
-    return torch.cat([d_kernel, w_kernel, h_kernel], dim=0)
 
-
-@torch.jit.script
-def mask_to_edges(mask: Tensor) -> Tensor:
+def mask_to_edges(mask: Tensor, diagonal: bool = True) -> Tensor:
     r"""Given a binary mask, extract a binary mask indicating edges.
 
     Args:
         mask (:class:`torch.Tensor`):
             Binary mask to extract edges from
+
+        diagonal (bool):
+            Whether or not diagonals should be included in edge detection
 
     Shapes:
         * ``mask`` - :math:`(H, W)`
@@ -56,7 +61,7 @@ def mask_to_edges(mask: Tensor) -> Tensor:
     mask = (mask > 0).float().view(1, 1, H, W)
     pad_mask = F.pad(mask, (1, 1, 1, 1), mode="constant", value=0.0)
     with torch.no_grad():
-        kernel = _get_edge_kernel().type_as(pad_mask)
+        kernel = _get_edge_kernel(diagonal).type_as(pad_mask)
         diff = F.conv2d(pad_mask, kernel).abs_().sum(dim=1)
         diff_lt = diff[..., 1:, 1:] * mask
         diff_rb = diff[..., :-1, :-1] * mask
@@ -224,3 +229,32 @@ def mask_to_polygon(mask: Tensor) -> List[Tensor]:
         result.append(coords)
 
     return result
+
+
+def get_adjacency(
+    mask: Tensor, 
+    dims: List[int], 
+    diagonal: bool = True,
+    self_loops: bool = False
+) -> Tuple[Tensor, Tensor]:
+    # get locations of each positive label
+    nodes = mask.nonzero()
+    node_idx = torch.split(nodes, [1, 1], dim=-1)
+
+    # get all possible deltas
+    diff = nodes.new_tensor([-1, 0, 1])
+    delta = torch.cartesian_prod(*((diff,)*len(dims)))
+
+    # filter deltas based on diagonal / self_loops
+    is_self_loop = (delta == 0).all(dim=-1)
+    is_diagonal = delta.abs().sum(dim=-1) == 1 
+    keep = (~is_diagonal | diagonal) & (~is_self_loop | self_loops)
+    delta = delta[keep]
+
+    # for each of N coordinates, apply A unique delta values to get the N x A adjacency list
+    N = nodes.shape[0]
+    C = nodes.shape[-1] # number of values in a coordinate
+    A = delta.shape[-2]
+    adjacency = (nodes.view(-1, 1, C) + delta.view(1, -1, C)).view(N, A, C)
+
+    return nodes, adjacency

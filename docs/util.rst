@@ -6,12 +6,21 @@ combustion.util
 
 Misc utils
 
-Tensor Ops
+Mask Ops
 ----------------------------------
-.. autofunction:: combustion.util.mask_to_box
-.. autofunction:: combustion.util.mask_to_edges
-.. autofunction:: combustion.util.mask_to_instances
-.. autofunction:: combustion.util.mask_to_polygon
+.. autofunction:: combustion.util.masks.connect_masks
+.. autofunction:: combustion.util.masks.contract_mask
+.. autofunction:: combustion.util.masks.edge_dist
+.. autofunction:: combustion.util.masks.expand_mask
+.. autofunction:: combustion.util.masks.get_edges
+.. autofunction:: combustion.util.masks.get_instances
+.. autofunction:: combustion.util.masks.get_adjacency
+.. autofunction:: combustion.util.masks.index_assign_mask
+.. autofunction:: combustion.util.masks.index_mask
+.. autofunction:: combustion.util.masks.mask_to_box
+.. autofunction:: combustion.util.masks.mask_to_polygon
+.. autofunction:: combustion.util.masks.min_spacing
+
 
 Others
 ----------------------------------

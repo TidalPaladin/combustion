@@ -4,7 +4,7 @@
 import pytest
 import torch
 
-from combustion.util import mask_to_box, mask_to_instances, mask_to_polygon
+from combustion.util.masks import mask_to_box, mask_to_polygon, get_instances
 
 
 @pytest.fixture
@@ -79,6 +79,7 @@ def case():
                 [0, 1],
                 [0, 2],
                 [1, 0],
+                [1, 1],
                 [1, 2],
                 [2, 1],
                 [2, 2],
@@ -88,22 +89,27 @@ def case():
     return {"mask": mask, "boxes": boxes, "polygons": polygons, "instances": instances}
 
 
-def test_mask_to_instances(case):
-    instances = mask_to_instances(case["mask"])
+def test_get_instances(case):
+    torch.random.manual_seed(42)
+    instances = get_instances(case["mask"])
     true_instances = case["instances"]
     assert torch.allclose(instances, true_instances)
 
 
 def test_mask_to_box(case):
+    torch.random.manual_seed(42)
     boxes = mask_to_box(case["mask"])
     true_boxes = case["boxes"]
     assert torch.allclose(boxes, true_boxes)
 
 
 def test_mask_to_polygon(case):
+    torch.random.manual_seed(42)
     polygons = mask_to_polygon(case["mask"])
     true_polygons = case["polygons"]
 
     assert len(polygons) == len(true_polygons)
     for p, p_true in zip(polygons, true_polygons):
         assert torch.allclose(p, p_true)
+
+

@@ -9,6 +9,7 @@ from .loss import (
     FCOSLoss,
     FocalLoss,
     FocalLossWithLogits,
+    PolygonLoss,
     categorical_focal_loss,
     focal_loss,
     focal_loss_with_logits,

@@ -244,16 +244,19 @@ class FCOSLoss:
         interest_range: Tuple[int, int],
         center_radius: Optional[int] = None,
     ) -> Tensor:
+        B, N, _ = bbox.shape
+
         # handle case of no boxes
         if not bbox.numel():
-            cls_target = torch.zeros(num_classes, *size_target, device=cls.device, dtype=torch.float)
-            reg_target = bbox.new_empty(4, *size_target).fill_(-1)
-            centerness_target = cls_target.new_empty(1, *size_target).fill_(-1)
+            cls_target = torch.zeros(B, num_classes, *size_target, device=cls.device, dtype=torch.float)
+            reg_target = bbox.new_empty(B, 4, *size_target).fill_(-1)
+            centerness_target = cls_target.new_empty(B, 1, *size_target).fill_(-1)
             return cls_target, reg_target, centerness_target
 
         # get mask of valid locations within each box and apply boxes_of_interest filter
         inside_box_mask = FCOSLoss.bbox_to_mask(bbox, stride, size_target)
         mask = FCOSLoss.bbox_to_mask(bbox, stride, size_target, center_radius)
+        assert False
 
         # build regression target
         reg_target = FCOSLoss.create_regression_target(bbox, stride, size_target)
@@ -326,17 +329,18 @@ class FCOSLoss:
             * ``reg_targets`` - :math:`(..., 4, H, W)`
             * Output - :math:`(..., 1, H, W)`
         """
-        check_is_tensor(bbox, "bbox")
-        check_dimension(bbox, -1, 4, "bbox")
+        #check_is_tensor(bbox, "bbox")
+        #check_dimension(bbox, -1, 4, "bbox")
 
         # create mesh grid of size `size_target`
         # locations in grid give h/w at center of that location
         #
         # we will compare bbox coords against this grid to find locations that lie within
         # the center_radius of bbox
+        H, W = size_target
         num_boxes = bbox.shape[-2]
-        h = torch.arange(size_target[0], dtype=torch.float, device=bbox.device)
-        w = torch.arange(size_target[1], dtype=torch.float, device=bbox.device)
+        h = torch.arange(H, dtype=torch.float, device=bbox.device)
+        w = torch.arange(W, dtype=torch.float, device=bbox.device)
         mask = (
             torch.stack(torch.meshgrid(h, w), 0)
             .mul_(stride)
@@ -381,8 +385,8 @@ class FCOSLoss:
             * ``bbox`` - :math:`(*, N, 4)`
             * Output - :math:`(*, N, 2)`, :math:`(*, N, 4)`
         """
-        check_is_tensor(bbox, "bbox")
-        check_dimension(bbox, -1, 4, "bbox")
+        #check_is_tensor(bbox, "bbox")
+        #check_dimension(bbox, -1, 4, "bbox")
 
         # create starting grid
 
@@ -403,15 +407,16 @@ class FCOSLoss:
         num_classes: int,
         size_target: Tuple[int, int],
     ) -> Tensor:
-        check_is_tensor(bbox, "bbox")
-        check_is_tensor(cls, "cls")
-        check_is_tensor(mask, "mask")
-        check_dimension_match(bbox, cls, -2, "bbox", "cls")
-        check_dimension_match(bbox, mask, 0, "bbox", "mask")
-        check_dimension(bbox, -1, 4, "bbox")
-        check_dimension(cls, -1, 1, "cls")
+        #check_is_tensor(bbox, "bbox")
+        #check_is_tensor(cls, "cls")
+        #check_is_tensor(mask, "mask")
+        #check_dimension_match(bbox, cls, -2, "bbox", "cls")
+        #check_dimension_match(bbox, mask, 0, "bbox", "mask")
+        #check_dimension(bbox, -1, 4, "bbox")
+        #check_dimension(cls, -1, 1, "cls")
+        B, N, _ = bbox.shape
 
-        target = torch.zeros(num_classes, *mask.shape[-2:], device=mask.device, dtype=torch.float)
+        target = torch.zeros(B, num_classes, *mask.shape[-2:], device=mask.device, dtype=torch.float)
 
         box_id, h, w = mask.nonzero(as_tuple=True)
         class_id = cls[box_id, 0]
@@ -447,8 +452,8 @@ class FCOSLoss:
             * ``reg_targets`` - :math:`(..., 4)`
             * Output - :math:`(..., 1)`
         """
-        check_is_tensor(reg_targets, "reg_targets")
-        check_dimension(reg_targets, -1, 4, "reg_targets")
+        #check_is_tensor(reg_targets, "reg_targets")
+        #check_dimension(reg_targets, -1, 4, "reg_targets")
 
         left_right = reg_targets[..., (0, 2)].float()
         top_bottom = reg_targets[..., (1, 3)].float()
@@ -578,3 +583,136 @@ class FCOSLoss:
         assert mask.shape[:-1] == bbox.shape[:-1]
         assert mask.shape[-1] == bounds.shape[-2]
         return mask
+
+    @staticmethod
+    def bbox_to_indices(
+        bbox: Tensor, stride: int, center_radius: Optional[float] = None
+    ) -> Tensor:
+        r"""Creates a mask for each input anchor box indicating which heatmap locations for that
+        box should be positive examples. Under FCOS, a target maps are created for each FPN level.
+        Any map location that lies within ``center_radius * stride`` units from the center of the
+        ground truth bounding box is considered a positive example for regression and classification.
+
+        This method creates a mask for FPN level with stride ``stride``. The mask will have shape
+        :math:`(N, H, W)` where :math:`(H, W)` are given in ``size_target``. Mask locations that
+        lie within ``center_radius * stride`` units of the box center will be ``True``. If
+        ``center_radius=None``, all locations within a box will be considered positive.
+
+        Args:
+            bbox (:class:`torch.Tensor`):
+                Ground truth anchor boxes in form :math:`x_1, y_1, x_2, y_2`.
+
+            stride (int):
+                Stride at the FPN level for which the target is being created
+
+            center_radius (float, optional):
+                Radius (in units of ``stride``) about the center of each box for which examples
+                should be considered positive. If ``center_radius=None``, all locations within
+                a box will be considered positive.
+
+        Shapes:
+            * ``reg_targets`` - :math:`(..., 4, H, W)`
+            * Output - :math:`(..., 1, H, W)`
+        """
+        #check_is_tensor(bbox, "bbox")
+        #check_dimension(bbox, -1, 4, "bbox")
+
+        # create mesh grid of size `size_target`
+        # locations in grid give h/w at center of that location
+        #
+        # we will compare bbox coords against this grid to find locations that lie within
+        # the center_radius of bbox
+
+        # get edge coordinates of each box based on whole box or center sampled
+        lower_bound = bbox[..., :2]
+        upper_bound = bbox[..., 2:]
+        if center_radius is not None:
+            assert center_radius >= 1
+            # update bounds according to radius from center
+            center = FCOSLoss.get_box_center(bbox)
+            offset = center.new_tensor([stride, stride]).mul_(center_radius)
+            lower_bound = torch.max(lower_bound, center - offset[None])
+            upper_bound = torch.min(upper_bound, center + offset[None])
+
+        # x1y1 to h1w1, add h/w dimensions, convert to strided coords
+        lower_bound = lower_bound[..., (1, 0), None, None]
+        upper_bound = upper_bound[..., (1, 0), None, None]
+
+        # use edge coordinates to create a binary mask
+        mask = (mask >= lower_bound).logical_and_(mask <= upper_bound).all(dim=-3)
+        return mask
+
+class PolygonLoss:
+
+    def __init__(
+        self,
+        pad_value: float = -1,
+    ):
+        self.pad_value = pad_value
+
+    @staticmethod
+    def create_targets(mask: Tensor) -> Tuple[Tensor, Tensor]:
+        H, W = mask.shape[-2:]
+        mask = mask.bool()
+
+        # build array of distances relative to L, T, R, B
+        pos = torch.stack([
+            torch.arange(W, device=mask.device).view(1, W).expand(H, W),
+            torch.arange(H, device=mask.device).view(H, 1).expand(H, W),
+            torch.arange(W-1, -1, -1, device=mask.device).view(1, W).expand(H, W),
+            torch.arange(H-1, -1, -1, device=mask.device).view(H, 1).expand(H, W),
+        ])
+
+        # build array of reset values
+        resets = pos + 1
+        resets[..., mask] = 0
+
+        reset_val = torch.stack([
+            torch.cummax(resets[..., 0, :, :], dim=-1).values,
+            torch.cummax(resets[..., 1, :, :], dim=-2).values,
+            torch.cummax(resets[..., 2, :, :].fliplr(), dim=-1).values.fliplr(),
+            torch.cummax(resets[..., 3, :, :].flipud(), dim=-2).values.flipud(),
+        ], dim=-3)
+
+        result = pos - reset_val
+        result[..., ~mask] = -1
+        return result
+
+    @staticmethod
+    def postprocess(reg: Tensor, mask: Tensor) -> Tensor:
+        B, _, H, W = reg.shape 
+        h, w = torch.arange(H, device=reg.device), torch.arange(W, device=reg.device)
+        base = torch.stack(torch.meshgrid(h, w))
+        reg = reg.clone()
+        reg.clamp_min_(0)
+        reg[..., :2, :, :].neg_()
+
+        # shape matching
+        base = base.view(1, 2, 1, H, W)
+        reg = reg.view(B, 1, 4, H, W)
+        base, reg = torch.broadcast_tensors(base, reg)
+        reg = reg.clone()
+        reg[..., 0, (0, 2), :, :] = 0
+        reg[..., 1, (1, 3), :, :] = 0
+
+        points = (base + reg)
+        points[:, 0, ...].clamp_(min=0, max=H-1)
+        points[:, 1, ...].clamp_(min=0, max=W-1)
+
+        nonmask_idx = (~mask).nonzero(as_tuple=True)
+        points[nonmask_idx[0], ..., nonmask_idx[1], nonmask_idx[2]] = -1
+        points = points.view(B, 2, -1).swapdims(-2, -1)
+        N = points.shape[-2]
+
+        heatmap = reg.new_zeros(B, H, W)
+        batch_idx = torch.arange(B, device=reg.device).expand(B, N, 1)
+        indices = torch.cat((batch_idx, points), dim=-1).view(N, 3)
+        unique_idx, counts = indices.unique(sorted=False, return_counts=True, dim=-2)
+        counts = counts.view(-1, 1)
+
+        is_valid = (unique_idx != -1).all(dim=-1)
+        unique_idx = unique_idx[is_valid]
+        counts = counts[is_valid]
+        heatmap[unique_idx.split((1, 1, 1), dim=-1)] = counts
+
+        return heatmap
