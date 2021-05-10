@@ -10,3 +10,12 @@ cuda_or_skip = pytest.mark.skipif(not cuda_available(), reason="cuda not availab
 cuda_or_skip.__doc__ = r"""
     Run test only if :func:`torch.cuda.is_available()` is true.
 """
+
+
+scriptable = set()
+
+
+def is_scriptable(func):
+    global scriptable
+    scriptable.add(func)
+    return func

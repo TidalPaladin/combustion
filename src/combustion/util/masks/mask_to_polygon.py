@@ -35,7 +35,7 @@ def _get_edge_kernel(diagonal: bool) -> Tensor:
             [-1, 0],
         ]
     ).view(1, 1, 2, 2)
-    
+
     if diagonal:
         return torch.cat([d_kernel, w_kernel, h_kernel], dim=0)
     else:
@@ -232,10 +232,7 @@ def mask_to_polygon(mask: Tensor) -> List[Tensor]:
 
 
 def get_adjacency(
-    mask: Tensor, 
-    dims: List[int], 
-    diagonal: bool = True,
-    self_loops: bool = False
+    mask: Tensor, dims: List[int], diagonal: bool = True, self_loops: bool = False
 ) -> Tuple[Tensor, Tensor]:
     # get locations of each positive label
     nodes = mask.nonzero()
@@ -243,17 +240,17 @@ def get_adjacency(
 
     # get all possible deltas
     diff = nodes.new_tensor([-1, 0, 1])
-    delta = torch.cartesian_prod(*((diff,)*len(dims)))
+    delta = torch.cartesian_prod(*((diff,) * len(dims)))
 
     # filter deltas based on diagonal / self_loops
     is_self_loop = (delta == 0).all(dim=-1)
-    is_diagonal = delta.abs().sum(dim=-1) == 1 
+    is_diagonal = delta.abs().sum(dim=-1) == 1
     keep = (~is_diagonal | diagonal) & (~is_self_loop | self_loops)
     delta = delta[keep]
 
     # for each of N coordinates, apply A unique delta values to get the N x A adjacency list
     N = nodes.shape[0]
-    C = nodes.shape[-1] # number of values in a coordinate
+    C = nodes.shape[-1]  # number of values in a coordinate
     A = delta.shape[-2]
     adjacency = (nodes.view(-1, 1, C) + delta.view(1, -1, C)).view(N, A, C)
 

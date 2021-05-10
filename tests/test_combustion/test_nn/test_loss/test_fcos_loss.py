@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import os
-from typing import Optional
 from timeit import timeit
+from typing import Optional
 
 import pytest
 import torch
@@ -34,7 +34,6 @@ class TestFCOSLoss:
         if indexing == "hw":
             expected = expected.roll(1)
         assert torch.allclose(grid[:, -1, -1], expected)
-
 
     @pytest.mark.parametrize("inclusive", ["lower", "upper", "both"])
     def test_assign_boxes_to_level(self, inclusive):
@@ -519,14 +518,18 @@ class TestFCOSLoss:
             ]
         ).repeat(4, 1, 1)
 
-        target_cls = torch.tensor(
-            [
-                [0, 1, -1],
-                [0, 0, -1],
-                [0, 0, 1],
-                [-1, -1, -1],
-            ]
-        ).unsqueeze_(-1).repeat(4, 1, 1)
+        target_cls = (
+            torch.tensor(
+                [
+                    [0, 1, -1],
+                    [0, 0, -1],
+                    [0, 0, 1],
+                    [-1, -1, -1],
+                ]
+            )
+            .unsqueeze_(-1)
+            .repeat(4, 1, 1)
+        )
 
         if cuda:
             target_bbox = target_bbox.cuda()
@@ -539,6 +542,7 @@ class TestFCOSLoss:
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
         criterion = FCOSLoss(strides, num_classes, radius=1.5)
+
         def func():
             pred_cls, pred_reg, pred_centerness = criterion.create_targets(target_bbox, target_cls, sizes)
 

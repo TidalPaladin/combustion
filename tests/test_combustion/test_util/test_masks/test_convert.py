@@ -4,7 +4,7 @@
 import pytest
 import torch
 
-from combustion.util.masks import mask_to_box, mask_to_polygon, get_instances
+from combustion.util.masks import get_instances, mask_to_box, mask_to_polygon
 
 
 @pytest.fixture
@@ -111,5 +111,3 @@ def test_mask_to_polygon(case):
     assert len(polygons) == len(true_polygons)
     for p, p_true in zip(polygons, true_polygons):
         assert torch.allclose(p, p_true)
-
-

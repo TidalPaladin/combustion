@@ -9,8 +9,6 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 
-from combustion.util import check_dimension, check_dimension_match, check_is_tensor
-
 from .ciou import CompleteIoULoss
 from .focal import FocalLossWithLogits
 
@@ -329,8 +327,8 @@ class FCOSLoss:
             * ``reg_targets`` - :math:`(..., 4, H, W)`
             * Output - :math:`(..., 1, H, W)`
         """
-        #check_is_tensor(bbox, "bbox")
-        #check_dimension(bbox, -1, 4, "bbox")
+        # check_is_tensor(bbox, "bbox")
+        # check_dimension(bbox, -1, 4, "bbox")
 
         # create mesh grid of size `size_target`
         # locations in grid give h/w at center of that location
@@ -385,8 +383,8 @@ class FCOSLoss:
             * ``bbox`` - :math:`(*, N, 4)`
             * Output - :math:`(*, N, 2)`, :math:`(*, N, 4)`
         """
-        #check_is_tensor(bbox, "bbox")
-        #check_dimension(bbox, -1, 4, "bbox")
+        # check_is_tensor(bbox, "bbox")
+        # check_dimension(bbox, -1, 4, "bbox")
 
         # create starting grid
 
@@ -407,13 +405,13 @@ class FCOSLoss:
         num_classes: int,
         size_target: Tuple[int, int],
     ) -> Tensor:
-        #check_is_tensor(bbox, "bbox")
-        #check_is_tensor(cls, "cls")
-        #check_is_tensor(mask, "mask")
-        #check_dimension_match(bbox, cls, -2, "bbox", "cls")
-        #check_dimension_match(bbox, mask, 0, "bbox", "mask")
-        #check_dimension(bbox, -1, 4, "bbox")
-        #check_dimension(cls, -1, 1, "cls")
+        # check_is_tensor(bbox, "bbox")
+        # check_is_tensor(cls, "cls")
+        # check_is_tensor(mask, "mask")
+        # check_dimension_match(bbox, cls, -2, "bbox", "cls")
+        # check_dimension_match(bbox, mask, 0, "bbox", "mask")
+        # check_dimension(bbox, -1, 4, "bbox")
+        # check_dimension(cls, -1, 1, "cls")
         B, N, _ = bbox.shape
 
         target = torch.zeros(B, num_classes, *mask.shape[-2:], device=mask.device, dtype=torch.float)
@@ -452,8 +450,8 @@ class FCOSLoss:
             * ``reg_targets`` - :math:`(..., 4)`
             * Output - :math:`(..., 1)`
         """
-        #check_is_tensor(reg_targets, "reg_targets")
-        #check_dimension(reg_targets, -1, 4, "reg_targets")
+        # check_is_tensor(reg_targets, "reg_targets")
+        # check_dimension(reg_targets, -1, 4, "reg_targets")
 
         left_right = reg_targets[..., (0, 2)].float()
         top_bottom = reg_targets[..., (1, 3)].float()
@@ -585,9 +583,7 @@ class FCOSLoss:
         return mask
 
     @staticmethod
-    def bbox_to_indices(
-        bbox: Tensor, stride: int, center_radius: Optional[float] = None
-    ) -> Tensor:
+    def bbox_to_indices(bbox: Tensor, stride: int, center_radius: Optional[float] = None) -> Tensor:
         r"""Creates a mask for each input anchor box indicating which heatmap locations for that
         box should be positive examples. Under FCOS, a target maps are created for each FPN level.
         Any map location that lies within ``center_radius * stride`` units from the center of the
@@ -614,8 +610,8 @@ class FCOSLoss:
             * ``reg_targets`` - :math:`(..., 4, H, W)`
             * Output - :math:`(..., 1, H, W)`
         """
-        #check_is_tensor(bbox, "bbox")
-        #check_dimension(bbox, -1, 4, "bbox")
+        # check_is_tensor(bbox, "bbox")
+        # check_dimension(bbox, -1, 4, "bbox")
 
         # create mesh grid of size `size_target`
         # locations in grid give h/w at center of that location
@@ -641,78 +637,3 @@ class FCOSLoss:
         # use edge coordinates to create a binary mask
         mask = (mask >= lower_bound).logical_and_(mask <= upper_bound).all(dim=-3)
         return mask
-
-class PolygonLoss:
-
-    def __init__(
-        self,
-        pad_value: float = -1,
-    ):
-        self.pad_value = pad_value
-
-    @staticmethod
-    def create_targets(mask: Tensor) -> Tuple[Tensor, Tensor]:
-        H, W = mask.shape[-2:]
-        mask = mask.bool()
-
-        # build array of distances relative to L, T, R, B
-        pos = torch.stack([
-            torch.arange(W, device=mask.device).view(1, W).expand(H, W),
-            torch.arange(H, device=mask.device).view(H, 1).expand(H, W),
-            torch.arange(W-1, -1, -1, device=mask.device).view(1, W).expand(H, W),
-            torch.arange(H-1, -1, -1, device=mask.device).view(H, 1).expand(H, W),
-        ])
-
-        # build array of reset values
-        resets = pos + 1
-        resets[..., mask] = 0
-
-        reset_val = torch.stack([
-            torch.cummax(resets[..., 0, :, :], dim=-1).values,
-            torch.cummax(resets[..., 1, :, :], dim=-2).values,
-            torch.cummax(resets[..., 2, :, :].fliplr(), dim=-1).values.fliplr(),
-            torch.cummax(resets[..., 3, :, :].flipud(), dim=-2).values.flipud(),
-        ], dim=-3)
-
-        result = pos - reset_val
-        result[..., ~mask] = -1
-        return result
-
-    @staticmethod
-    def postprocess(reg: Tensor, mask: Tensor) -> Tensor:
-        B, _, H, W = reg.shape 
-        h, w = torch.arange(H, device=reg.device), torch.arange(W, device=reg.device)
-        base = torch.stack(torch.meshgrid(h, w))
-        reg = reg.clone()
-        reg.clamp_min_(0)
-        reg[..., :2, :, :].neg_()
-
-        # shape matching
-        base = base.view(1, 2, 1, H, W)
-        reg = reg.view(B, 1, 4, H, W)
-        base, reg = torch.broadcast_tensors(base, reg)
-        reg = reg.clone()
-        reg[..., 0, (0, 2), :, :] = 0
-        reg[..., 1, (1, 3), :, :] = 0
-
-        points = (base + reg)
-        points[:, 0, ...].clamp_(min=0, max=H-1)
-        points[:, 1, ...].clamp_(min=0, max=W-1)
-
-        nonmask_idx = (~mask).nonzero(as_tuple=True)
-        points[nonmask_idx[0], ..., nonmask_idx[1], nonmask_idx[2]] = -1
-        points = points.view(B, 2, -1).swapdims(-2, -1)
-        N = points.shape[-2]
-
-        heatmap = reg.new_zeros(B, H, W)
-        batch_idx = torch.arange(B, device=reg.device).expand(B, N, 1)
-        indices = torch.cat((batch_idx, points), dim=-1).view(N, 3)
-        unique_idx, counts = indices.unique(sorted=False, return_counts=True, dim=-2)
-        counts = counts.view(-1, 1)
-
-        is_valid = (unique_idx != -1).all(dim=-1)
-        unique_idx = unique_idx[is_valid]
-        counts = counts[is_valid]
-        heatmap[unique_idx.split((1, 1, 1), dim=-1)] = counts
-
-        return heatmap

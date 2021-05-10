@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 
 
-from typing import List, Tuple
+from typing import List
 
 import torch
 from torch import Tensor
 
 from .mask import get_edges, get_instances, index_assign_mask
+
 
 @torch.jit.script
 def mask_to_box(mask: Tensor) -> Tensor:
@@ -30,7 +31,7 @@ def mask_to_box(mask: Tensor) -> Tensor:
         * ``mask`` - :math:`(H, W)`
         * Output - :math:`(N, 4)`
     """
-    mask = (mask > 0)
+    mask = mask > 0
     instances = get_instances(mask)
     unique_instances = torch.unique(instances)
     result = []

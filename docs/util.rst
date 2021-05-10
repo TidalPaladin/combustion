@@ -17,6 +17,7 @@ Mask Ops
 .. autofunction:: combustion.util.masks.get_adjacency
 .. autofunction:: combustion.util.masks.index_assign_mask
 .. autofunction:: combustion.util.masks.index_mask
+.. autofunction:: combustion.util.masks.inverse_edge_dist
 .. autofunction:: combustion.util.masks.mask_to_box
 .. autofunction:: combustion.util.masks.mask_to_polygon
 .. autofunction:: combustion.util.masks.min_spacing

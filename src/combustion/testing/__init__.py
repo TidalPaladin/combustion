@@ -10,7 +10,7 @@ from .assertions import (
     assert_tensors_close,
     assert_zero_grad,
 )
-from .decorators import cuda_or_skip
+from .decorators import cuda_or_skip, is_scriptable
 from .lightning import LightningModuleTest
 from .mixins import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
@@ -24,6 +24,7 @@ __all__ = [
     "assert_in_eval_mode",
     "assert_tensors_close",
     "cuda_or_skip",
+    "is_scriptable",
     "LightningModuleTest",
     "TorchScriptTestMixin",
     "TorchScriptTraceTestMixin",

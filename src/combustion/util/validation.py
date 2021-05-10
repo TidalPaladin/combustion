@@ -284,6 +284,3 @@ def check_names_match(x: Array, y: Array, x_name: str, y_name: str):
 def check_numel(x: Array, val: int, name: str):
     assert isinstance(x, Tensor)
     assert isinstance(name, str)
-
-
-
