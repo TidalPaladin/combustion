@@ -372,6 +372,9 @@ def inverse_edge_dist(dist: Tensor, mask: Optional[Tensor] = None, weights: Opti
     dims = dist.shape[2:]
     ndim = dist.ndim - 2
 
+    if not dist.is_floating_point():
+        dist = dist.float()
+
     # validate weight input if given
     if weights is None:
         _weights = torch.ones_like(dist).float()
@@ -381,7 +384,7 @@ def inverse_edge_dist(dist: Tensor, mask: Optional[Tensor] = None, weights: Opti
         _weights = weights.float()
 
     # base values are the coordinates at each location in the tensor
-    ranges = [torch.arange(x, device=dist.device) for x in dims]
+    ranges = [torch.arange(x, device=dist.device, dtype=dist.dtype) for x in dims]
     base = torch.stack(_meshgrid(ranges))
 
     # shape matching
@@ -407,7 +410,7 @@ def inverse_edge_dist(dist: Tensor, mask: Optional[Tensor] = None, weights: Opti
         offset[:, i, idx, :, :] = 0
 
     # apply offset to base coordinates and clamp to lie within grid
-    points = base + offset
+    points = (base + offset).round_().long()
     for i in range(ndim):
         points[:, i, ...].clamp_(min=0, max=dims[i] - 1)
     points = points.view(B, 2, -1).swapdims(-2, -1)
@@ -428,11 +431,13 @@ def inverse_edge_dist(dist: Tensor, mask: Optional[Tensor] = None, weights: Opti
 
     # get list of unique coordinates and their counts
     unique_idx, inverse, counts = torch.unique(points, sorted=False, return_counts=True, return_inverse=True, dim=-2)
-    total_weight = torch.zeros_like(counts, dtype=torch.float).scatter_add(-1, inverse, _weights)
+    total_weight = torch.zeros_like(counts, device=_weights.device, dtype=_weights.dtype).scatter_add(
+        -1, inverse, _weights
+    )
     total_weight = total_weight.view(-1, 1)
 
     # fill heatmap at coordinate locations with associated count
-    heatmap = torch.zeros_like(dist[:, 0, ...], dtype=torch.float)
+    heatmap = torch.zeros_like(dist[:, 0, ...])
     index_assign_mask(heatmap, unique_idx, total_weight)
 
     return heatmap
@@ -534,6 +539,17 @@ def contract_mask(mask: Tensor, amount: int = 1, diagonal: bool = False) -> Tens
 
 @is_scriptable
 def min_spacing(mask: Tensor) -> Tensor:
+    r"""Given a mask comprised of two or more contiguous positive regions, computes the minimum
+    spacing between any of these regions.
+
+    Args:
+        mask (:class:`torch.Tensor`):
+            Binary mask input
+
+    Shapes:
+        * ``mask`` - :math:`(B, *)`
+        * Output - :math:`(B)`
+    """
     mask = mask > 0
     B = mask.shape[0]
     ndim = mask.ndim
