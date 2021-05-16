@@ -1,7 +1,15 @@
 defaults:
-  - dataset: fakedata
-  - model: resnet
-  - optimizer: adam
+  - combustion
+    #- data: fakedata
+    #- model: fakemodel
+    #- optimizer: adam
+    #- trainer: local
+    #- schedule: one_cycle
+    #- sweeper: no_sweep
+
+  - data: fakedata
+  - model: base_fakemodel
   - trainer: local
-  - schedule: one_cycle
-  - sweeper: no_sweep
+
+
+    #datamodule: 0

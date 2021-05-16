@@ -1,6 +1,0 @@
-# @package _global_
-optimizer:
-  name: adam
-  _target_: torch.optim.Adam
-  params:
-    lr: 0.002

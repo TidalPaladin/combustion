@@ -1,7 +1,0 @@
-# @package _global_
-model:
-  _target_: __main__.FakeModel
-  params:
-    in_features: 1
-    out_features: 10
-    kernel: 3

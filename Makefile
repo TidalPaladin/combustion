@@ -117,7 +117,7 @@ venv: $(VENV)/bin/activate
 $(VENV)/bin/activate: setup.py requirements.txt
 	test -d $(VENV) || $(PY_VER) -m venv $(VENV)
 	$(PYTHON) -m pip install -U pip 
-	$(PYTHON) -m pip install -e .
+	$(PYTHON) -m pip install -r requirements.txt
 	touch $(VENV)/bin/activate
 
 $(VENV)/bin/activate-%: requirements.%.txt

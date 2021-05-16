@@ -1,10 +1,2 @@
-# @package _global_
-# https://pytorch-lightning.readthedocs.io/en/stable/trainer.html#trainer-flags
-trainer:
-  _target_: pytorch_lightning.Trainer
-  params:
-    max_epochs: 2
-    gpus: 1
-    #amp_level: O1
-    #precision: 16
-    #default_save_path: /path/to/outputs
+_target_: "pytorch_lightning.Trainer"
+fast_dev_run: true

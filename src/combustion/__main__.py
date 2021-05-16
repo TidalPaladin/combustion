@@ -2,24 +2,22 @@
 # -*- coding: utf-8 -*-
 
 import logging
-import os
 import re
 import sys
-from glob import glob
 from typing import Any, Callable, Optional, Tuple
 
 import hydra
 import hydra.experimental
-import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 from hydra.core.global_hydra import GlobalHydra
 from hydra.types import RunMode
+from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from packaging import version
 
 import combustion
-from combustion.data import save_torch
-from combustion.lightning import HydraMixin
+
+from .hydra_conf import CombustionConf
 
 
 log = logging.getLogger("combustion")
@@ -81,61 +79,6 @@ def check_exceptions():
 def clear_exceptions():
     global _exceptions
     _exceptions = []
-
-
-def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
-    r"""Performs automatic learning rate selection using PyTorch Lightning.
-    This is essentially a wrapper function that invokes PyTorch Lightning's
-    auto LR selection using Hydra inputs. The model's learning rate is
-    automatically set to the selected learning rate, and the selected
-    learning rate is logged. If possible, a plot of the learning rate
-    selection curve will also be produced.
-
-    Args:
-
-        cfg (DictConfig):
-            The Hydra config
-
-        model (LightningModule):
-            The model to select a learning rate for.
-
-    Returns:
-        The learning rate if one was found, otherwise ``None``.
-    """
-    lr = None
-    try:
-        model.prepare_data()
-        lr_trainer: pl.Trainer = HydraMixin.instantiate(cfg.trainer)
-        if hasattr(lr_trainer, "tuner"):
-            # pl >= 1.0.0
-            lr_finder = lr_trainer.tuner.lr_find(model)
-        else:
-            # pl <= 1.0.0
-            lr_finder = lr_trainer.lr_find(model)
-        lr = lr_finder.suggestion()
-        log.info("Found learning rate %f", lr)
-        cfg.optimizer["params"]["lr"] = lr
-
-        # save lr curve figure
-        try:
-            cwd = os.getcwd()
-            path = os.path.join(cwd, "lr_curve.png")
-            fig = lr_finder.plot(suggest=True)
-            log.info("Saving LR curve to %s", path)
-            fig.savefig(path)
-            plt.close()
-        except Exception as err:
-            log.exception(err)
-            log.info("No learning rate curve was saved")
-
-    except Exception as err:
-        log.exception(err)
-        log.info("Learning rate auto-find failed, using learning rate specified in config")
-        _exceptions.append(err)
-    finally:
-        cfg.trainer["params"]["auto_lr_find"] = False
-
-    return lr
 
 
 def initialize(config_path: str, config_name: str, caller_stack_depth: int = 1) -> None:
@@ -221,7 +164,7 @@ def initialize(config_path: str, config_name: str, caller_stack_depth: int = 1) 
 
 # accepts options from the yaml config file
 # see hydra docs: https://hydra.cc/docs/intro
-def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]], Any]] = None) -> None:
+def main(cfg: CombustionConf, process_results_fn: Optional[Callable[[Tuple[Any, Any]], Any]] = None) -> None:
     r"""Main method for training/testing of a model using PyTorch Lightning and Hydra.
 
     This method is robust to exceptions (other than :class:`SystemExit` or :class:`KeyboardInterrupt`),
@@ -272,105 +215,44 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
     Example (inference-time command)::
         ``python -m my_module trainer.load_from_checkpoint=foo.ckpt trainer.test_only=True``
     """
-    train_results, test_results = None, None
-    model: Optional[pl.LightningModule] = None
     trainer: Optional[pl.Trainer] = None
-
     try:
         _log_versions()
         log.info("Configuration: \n%s", OmegaConf.to_yaml(cfg))
+        pl.seed_everything(cfg.seed)
 
-        deterministic = cfg.trainer.params.get("deterministic", False)
-        if deterministic:
-            seed_val = 42
-            log.info("Determinstic training requested, seeding everything with %d", seed_val)
-            pl.seed_everything(seed_val)
+        trainer: pl.Trainer = instantiate(cfg.trainer)
+        data: pl.LightningDataModule = instantiate(cfg.data, _recursive_=False)
+        assert isinstance(trainer, pl.Trainer)
+        assert isinstance(data, pl.LightningDataModule)
 
-        # instantiate model (and optimizer) selected in yaml
-        # see pytorch lightning docs: https://pytorch-lightning.rtfd.io/en/latest
-        try:
-            model: pl.LightningModule = HydraMixin.create_model(cfg)
-        except RuntimeError:
-            log.error("Failed to instantiate model")
-            log.error("Model Config:\n%s", cfg.model.to_yaml())
+        model: pl.LightningModule = instantiate(cfg.model, _recursive_=False)
+        assert isinstance(model, pl.LightningModule)
+        if cfg.load_checkpoint:
+            model = model.__class__.load_from_checkpoint(cfg.checkpoint)
 
-        # preprocess data
-        preprocess_training_path = cfg.trainer.get("preprocess_train_path", None)
-        preprocess_training_epochs = cfg.trainer.get("preprocess_train_epochs", 1)
-        if preprocess_training_path is not None:
-            if not os.path.isdir(preprocess_training_path):
-                raise NotADirectoryError(preprocess_training_path)
+        results: Dict[str, Any] = {}
+        if cfg.fit:
+            log.info("Starting training")
+            trainer.tune(model, datamodule=data)
+            results["train"] = trainer.fit(model, datamodule=data)
+            log.info("Train results: %s", results["train"])
 
-            # clean non-empty directory
-            if os.listdir(preprocess_training_path):
-                pattern = preprocess_training_path + "*example*.pth"
-                files = glob(pattern)
-                log.info("Cleaning destination directory")
-                [os.remove(f) for f in files]
-
-            log.info("Writing preprocessed training set to %s", preprocess_training_path)
-            model.prepare_data()
-            train_ds = model.train_dataloader().dataset
-            for i in range(preprocess_training_epochs):
-                save_torch(train_ds, preprocess_training_path, f"epoch_{i}_example_")
-            log.info("Finished writing preprocessed training set. Update Hydra config and rerun training.")
-            return
-
-        # load model checkpoint if requested and not resume_from_checkpoint
-        load_from_checkpoint = cfg.trainer.get("load_from_checkpoint", None)
-        resume_from_checkpoint = cfg.trainer.params.get("resume_from_checkpoint", None)
-        if load_from_checkpoint is not None:
-            if resume_from_checkpoint is not None:
-                log.info("Skipping checkpoint loading because resume_from_checkpoint was given")
-            else:
-                log.info("Loading checkpoint %s", load_from_checkpoint)
-                # TODO this still needs some work
-                model = model.__class__.load_from_checkpoint(load_from_checkpoint)
-                model.hparams
-                model.hparams = cfg
-
-        # run auto learning rate find if requested
-        lr_find = cfg.trainer.params.get("auto_lr_find", False)
-        fast_dev_run = cfg.trainer.params.get("fast_dev_run", False)
-        test_only = cfg.trainer.get("test_only", False)
-        if lr_find:
-            if fast_dev_run:
-                log.info("Skipping auto learning rate find when fast_dev_run is true")
-            elif test_only:
-                log.info("Skipping auto learning rate find when test_only is true")
-            else:
-                auto_lr_find(cfg, model)
-
-        # instantiate trainer with params as selected in yaml
-        # handles tensorboard, checkpointing, etc
-        trainer: pl.Trainer = HydraMixin.instantiate(cfg.trainer)
-
-        # train
-        if "train" in cfg.dataset:
-            if test_only:
-                log.info("test_only flag was set, skipping training")
-            else:
-                log.info("Starting training")
-                train_results = trainer.fit(model)
-                log.info("Train results: %s", train_results)
-        else:
-            log.info("No training dataset given")
-
-        # test
-        if "test" in cfg.dataset:
+        if cfg.test:
             log.info("Starting testing")
-            test_results = trainer.test(model)
-            log.info("Test results: %s", test_results)
-        else:
-            log.info("No test dataset given")
+            results["test"] = trainer.test(model, datamodule=data)
+            log.info("Test results: %s", results["test"])
+
+        if cfg.predict:
+            log.info("Making predictions")
+            results["predict"] = trainer.predict(model, datamodule=data)
 
         log.info("Finished!")
 
     # guard to continue when using Hydra multiruns
     # SystemExit/KeyboardInterrupt are not caught and will trigger shutdown
     except Exception as err:
-        catch_exceptions = cfg.trainer.get("catch_exceptions", True)
-        if catch_exceptions:
+        if cfg.catch_exceptions:
             log.exception(err)
             _exceptions.append(err)
         else:
@@ -390,11 +272,9 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
     # postprocess results if desired (e.g. to scalars for bayesian optimization)
     if process_results_fn is not None:
         log.debug("Running results postprocessing")
-        output = process_results_fn(train_results, test_results)
-    else:
-        output = train_results, test_results
+        results = process_results_fn(results)
 
-    return output
+    return results
 
 
 if __name__ == "__main__":
