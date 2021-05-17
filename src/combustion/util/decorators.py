@@ -1,10 +1,70 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from dataclasses import dataclass, is_dataclass
 from typing import Optional, Tuple
 
 import torch
 from decorator import decorator, getfullargspec
+from omegaconf import DictConfig
+
+
+def dataclass_init(spec: type) -> type:
+    r"""Decorator used for classes that accept their parameters via a
+    dataclass.
+
+    The decoarated class' ``__init__`` method should accept a single
+    dataclass parameter as input. A function ``from_args`` will be added
+    that can be used to instantiate the class from raw args by first creating
+    a corresponding dataclass instance, then passing this instance on to ``__init__``.
+
+    Args:
+        spec:
+            Type spec for the dataclass parameter
+    """
+    if not is_dataclass(spec):
+        raise TypeError(f"`spec` must be dataclass, found {spec}")
+
+    def caller(clazz):
+        def from_args(cls, *args, **kwargs):
+            conf = spec(*args, **kwargs)
+            return cls(conf)
+
+        setattr(clazz, "from_args", classmethod(from_args))
+        return clazz
+
+    return caller
+
+
+def hydra_dataclass(target: str) -> type:
+    r"""Decorator for dataclasses that will be used with Hydra instantiation.
+
+    The decorated dataclass will have a ``_target_`` attribute set with the full
+    path of target class ``target``. A method ``to_omegaconf`` will be added to
+    facilitate saving with Pytorch Lightning's ``save_hyperparameters``.
+
+    Args:
+        target:
+            Name of the target class for instantiation. A module path will be
+            prepended using the module of the decorated dataclass.
+    """
+    if not isinstance(target, str):
+        raise TypeError(f"`target` must be str, found {type(target)}")
+
+    def caller(clazz):
+        # set _target_ from decorator w/ full module path
+        full_target = f"{clazz.__module__}.{target}"
+        clazz._target_ = full_target
+        clazz.__annotations__["_target_"] = str
+
+        def f(self):
+            return DictConfig(self)
+
+        clazz.to_omegaconf = f
+
+        return dataclass(clazz)
+
+    return caller
 
 
 def input(
