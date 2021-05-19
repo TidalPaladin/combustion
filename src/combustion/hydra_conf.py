@@ -9,10 +9,12 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
 from pytorch_lightning import Trainer
 
-from combustion.util import make_dataclass
+from combustion.util import hydra_dataclass
+from abc import ABC
 
 
-@make_dataclass(proto=Trainer)
+
+@hydra_dataclass(spec=Trainer, name="base_trainer", group="trainer")
 class TrainerConf:
     ...
 
@@ -20,7 +22,7 @@ class TrainerConf:
 @dataclass
 class CombustionConf:
     data: Any = MISSING
-    trainer: Any = MISSING
+    trainer: TrainerConf = MISSING
     model: Any = MISSING
     seed: int = 42
     fit: bool = False

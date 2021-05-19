@@ -7,7 +7,7 @@ import torch.nn as nn
 from hydra.utils import instantiate
 from torch import Tensor
 
-from combustion.util import dataclass_init, hydra_dataclass, make_dataclass
+from combustion.util import dataclass_init, hydra_dataclass
 
 
 @hydra_dataclass(target="MyModel.from_args")
@@ -18,7 +18,7 @@ class MyModelConf:
     num_repeats: int = 3
 
 
-@dataclass_init(spec=MyModelConf)
+@dataclass_init(MyModelConf)
 class MyModel(pl.LightningModule):
     def __init__(self, conf: MyModelConf):
         super().__init__()
@@ -65,7 +65,7 @@ class TestDataclasses:
             num_repeats: int = 3
 
     def test_make_dataclass(self):
-        @make_dataclass(pl.Trainer)
+        @hydra_dataclass(spec=pl.Trainer)
         class TrainerConf:
             ...
 
@@ -74,7 +74,7 @@ class TestDataclasses:
         assert isinstance(trainer, pl.Trainer)
 
     def test_make_dataclass_no_default(self):
-        @make_dataclass(torch.optim.Adam)
+        @hydra_dataclass(spec=torch.optim.Adam)
         class AdamConf:
             ...
 
@@ -93,8 +93,8 @@ class TestDataclasses:
                 self.x = x
                 self.y = y
 
-        @make_dataclass(ProtoClass, recursive=True)
+        @hydra_dataclass(spec=ProtoClass, recursive=True)
         class ProtoClassConf:
             ...
 
-        ProtoClassConf()
+        conf = ProtoClassConf()

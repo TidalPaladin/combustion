@@ -20,16 +20,17 @@ from torch.optim import Optimizer
 import combustion
 from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
+from combustion.util import dataclass_init, hydra_dataclass
 
 log = logging.getLogger(__name__)
 
 
-@dataclass
+@hydra_dataclass(spec=torch.nn.CrossEntropyLoss)
 class CrossEntropyLossConf:
-    _target_: str = 'torch.nn.CrossEntropyLoss'
+    ...
 
 
-@dataclass
+@hydra_dataclass(target='FakeModel', name="base_fakemodel", group="model")
 class FakeModelConf:
     _target_: str = 'examples.basic.model.FakeModel'
     in_features: int = 1
@@ -54,9 +55,6 @@ class FakeModel(pl.LightningModule, OptimizerMixin):
         self.l1 = torch.nn.Conv2d(in_features, out_features, kernel)
         self.l2 = torch.nn.AdaptiveAvgPool2d(1)
         self.l3 = torch.nn.Linear(out_features, 10)
-
-        
-        del optimizer.params
 
         self.criterion = instantiate(criterion)
         self.save_hyperparameters()
@@ -89,6 +87,3 @@ class FakeModel(pl.LightningModule, OptimizerMixin):
         x, y = batch
         y_hat = self(x)
         return F.cross_entropy(y_hat, y)
-
-cs = ConfigStore.instance()
-cs.store(group="model", name="base_fakemodel", node=FakeModelConf)

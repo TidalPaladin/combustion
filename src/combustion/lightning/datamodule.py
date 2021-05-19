@@ -10,26 +10,30 @@ from torch.nn import functional as F
 from combustion.lightning.mixins import OptimizerMixin
 import combustion
 from dataclasses import dataclass
-from hydra_configs.torch.optim import AdamConf
-from hydra_configs.torch.optim.lr_scheduler import OneCycleLRConf
-from hydra_configs.torch.utils.data.dataloader import DataLoaderConf
 from typing import Any
 from torchvision.datasets import FakeData
 from torchvision.transforms import ToTensor
 from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
 import combustion
-from combustion.util import dataclass_init, hydra_dataclass
+from combustion.util import make_dataclass, dataclass_init, hydra_dataclass
 
 
-@hydra_dataclass(target="FakeDataModule", name="base_fakedata", group="data")
-class FakeDataModuleConf:
+# TODO remove this?
+
+@dataclass
+class CombustionDataModuleConf:
     train_dl: DataLoaderConf = DataLoaderConf(pin_memory=True, batch_size=8, shuffle=True)
     val_dl: DataLoaderConf = DataLoaderConf(batch_size=4, shuffle=False)
     test_dl: DataLoaderConf = DataLoaderConf(batch_size=4, shuffle=False)
     predict_dl: DataLoaderConf = DataLoaderConf(batch_size=4, shuffle=False)
 
-class FakeDataModule(pl.LightningDataModule):
+class DatasetConf:
+    dataset: DatasetConf = MISSING
+    dataloader: DatasetConf = MISSING
+
+
+class CombustionDataModule(pl.LightningDataModule):
     def __init__(
         self, 
         train_dl: DataLoaderConf, 

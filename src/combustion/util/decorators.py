@@ -1,58 +1,56 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from dataclasses import dataclass, is_dataclass
+from dataclasses import dataclass, is_dataclass, make_dataclass
 from enum import Enum
 from inspect import signature
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union, Iterable, Dict
+import types
 
 import torch
 from decorator import decorator, getfullargspec
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, DictConfig
 
+def hydra_dataclass(
+    spec: Optional[type] = None,
+    target: Optional[str] = None,
+    name: Optional[str] = None,
+    group: Optional[str] = None,
+    recursive: bool = True,
+) -> type:
+    r"""Decorator for dataclasses that will be used with Hydra instantiation.
 
-def is_primitive(x):
-    valids = (int, float, bool, str, Enum)
-    if isinstance(x, type):
-        return x in valids
-    return isinstance(x, valids)
-
-
-class SubProtoMeta(type):
-    def __new__(cls, clsname, superclasses, attributedict):
-        sc = superclasses[0]
-        clsname = f"{sc.__name__}Conf"
-        attributedict["__qualname__"] = f"{sc.__module__}.{clsname}"
-        return type.__new__(cls, clsname, tuple(), attributedict)
-
-
-def make_dataclass(proto: type, recursive: bool = False) -> type:
-    r"""Decorator used for classes that accept their parameters via a
-    dataclass.
-
-    The decoarated class' ``__init__`` method should accept a single
-    dataclass parameter as protout. A function ``from_args`` will be added
-    that can be used to instantiate the class from raw args by first creating
-    a corresponding dataclass instance, then passing this instance on to ``__init__``.
+    The decorated dataclass will have a ``_target_`` attribute set with the full
+    path of target class ``target``. A method ``to_omegaconf`` will be added to
+    facilitate saving with Pytorch Lightning's ``save_hyperparameters``.
 
     Args:
-        spec:
-            Type spec for the dataclass parameter
+        target:
+            Name of the target class for instantiation. A module path will be
+            prepended using the module of the decorated dataclass.
     """
-    if not isinstance(proto, type):
-        raise TypeError(f"`proto` must be a type, found {proto}")
+    def caller(clazz, spec=spec):
+        spec = spec or clazz
+        if spec == clazz:
+            assert target 
+            full_target = f"{clazz.__module__}.{target}"
+        else:
+            spec_str = f"{spec.__module__}.{spec.__name__}"
+            full_target = spec_str if target is None else f"{spec_str}.{target}"
 
-    def caller(clazz):
+        # set _target_ from decorator w/ full module path
         if not hasattr(clazz, "__annotations__"):
             clazz.__annotations__ = {}
 
-        spec = signature(proto)
-        for k, v in spec.parameters.items():
+        sig = signature(spec)
+        for k, v in sig.parameters.items():
             default = v.default if v.default is not v.empty else MISSING
 
             # Union types not supported by DictConfig, so replace them with Any
             if getattr(v.annotation, "__origin__", None) is Union:
+                annotation = Any
+            elif v.annotation is v.empty:
                 annotation = Any
             else:
                 annotation = v.annotation
@@ -61,9 +59,11 @@ def make_dataclass(proto: type, recursive: bool = False) -> type:
             needs_recurse = not is_primitive(default)
             if needs_recurse and recursive:
 
-                @make_dataclass(type(default), recursive)
-                class SubProto(type(default), metaclass=SubProtoMeta):
-                    ...
+                subname = f"{default.__class__.__name__}Conf"
+                SubProto = types.new_class(subname)
+                SubProto = hydra_dataclass(spec=type(default), recursive=recursive)(SubProto)
+                #class SubProto(type(default), metaclass=SubProtoMeta):
+                #    ...
 
                 # try to fill in missing values using attributes of default
                 subproto = SubProto()
@@ -76,13 +76,98 @@ def make_dataclass(proto: type, recursive: bool = False) -> type:
             setattr(clazz, k, default)
             clazz.__annotations__[k] = annotation
 
-        target = f"{proto.__module__}.{proto.__name__}"
-        clazz._target_ = target
-        clazz.__annotations__["_target_"] = str
+        def f(self):
+            return DictConfig(self)
+        clazz.to_omegaconf = f
 
-        return dataclass(clazz)
+        clazz._target_ = full_target
+        clazz.__annotations__["_target_"] = str
+        result = dataclass(clazz)
+
+        if name:
+            cs = ConfigStore.instance()
+            cs.store(group=group, name=name, node=result)
+
+        return result
 
     return caller
+
+
+def is_primitive(x):
+    valids = (int, float, bool, str, Enum)
+    if x is None: return True
+    if isinstance(x, valids): return True
+    if isinstance(x, type): return x in valids
+    if isinstance(x, Iterable): return all(is_primitive(y) for y in x)
+    if isinstance(x, Dict): return all(is_primitive(v) for v in x.values())
+
+
+class SubProtoMeta(type):
+    def __new__(cls, clsname, superclasses, attributedict):
+        sc = superclasses[0]
+        clsname = f"{sc.__name__}Conf"
+        attributedict["__qualname__"] = f"{sc.__module__}.{clsname}"
+        return type.__new__(cls, clsname, tuple(), attributedict)
+
+
+#def make_dataclass(proto: type, recursive: bool = False) -> type:
+#    r"""Decorator used for classes that accept their parameters via a
+#    dataclass.
+#
+#    The decoarated class' ``__init__`` method should accept a single
+#    dataclass parameter as protout. A function ``from_args`` will be added
+#    that can be used to instantiate the class from raw args by first creating
+#    a corresponding dataclass instance, then passing this instance on to ``__init__``.
+#
+#    Args:
+#        spec:
+#            Type spec for the dataclass parameter
+#    """
+#    if not isinstance(proto, type):
+#        raise TypeError(f"`proto` must be a type, found {proto}")
+#
+#    def caller(clazz):
+#        if not hasattr(clazz, "__annotations__"):
+#            clazz.__annotations__ = {}
+#
+#        spec = signature(proto)
+#        for k, v in spec.parameters.items():
+#            default = v.default if v.default is not v.empty else MISSING
+#
+#            # Union types not supported by DictConfig, so replace them with Any
+#            if getattr(v.annotation, "__origin__", None) is Union:
+#                annotation = Any
+#            elif v.annotation is v.empty:
+#                annotation = Any
+#            else:
+#                annotation = v.annotation
+#
+#            # maybe recurse on default
+#            needs_recurse = not is_primitive(default)
+#            if needs_recurse and recursive:
+#
+#                @make_dataclass(type(default), recursive)
+#                class SubProto(type(default), metaclass=SubProtoMeta):
+#                    ...
+#
+#                # try to fill in missing values using attributes of default
+#                subproto = SubProto()
+#                for f in subproto.__dataclass_fields__.values():
+#                    if f.default == MISSING and is_primitive(f.type):
+#                        setattr(subproto, f.name, getattr(default, f.name, MISSING))
+#
+#                default = subproto
+#
+#            setattr(clazz, k, default)
+#            clazz.__annotations__[k] = annotation
+#
+#        target = f"{proto.__module__}.{proto.__name__}"
+#        clazz._target_ = target
+#        clazz.__annotations__["_target_"] = str
+#
+#        return dataclass(clazz)
+#
+#    return caller
 
 
 def dataclass_init(spec: type) -> type:
@@ -112,41 +197,42 @@ def dataclass_init(spec: type) -> type:
     return caller
 
 
-def hydra_dataclass(target: str, name: Optional[str] = None, group: Optional[str] = None) -> type:
-    r"""Decorator for dataclasses that will be used with Hydra instantiation.
-
-    The decorated dataclass will have a ``_target_`` attribute set with the full
-    path of target class ``target``. A method ``to_omegaconf`` will be added to
-    facilitate saving with Pytorch Lightning's ``save_hyperparameters``.
-
-    Args:
-        target:
-            Name of the target class for instantiation. A module path will be
-            prepended using the module of the decorated dataclass.
-    """
-    if not isinstance(target, str):
-        raise TypeError(f"`target` must be str, found {type(target)}")
-
-    def caller(clazz):
-        # set _target_ from decorator w/ full module path
-        full_target = f"{clazz.__module__}.{target}"
-        clazz._target_ = full_target
-        clazz.__annotations__["_target_"] = str
-
-        def f(self):
-            return DictConfig(self)
-
-        clazz.to_omegaconf = f
-
-        result = dataclass(clazz)
-
-        if name:
-            cs = ConfigStore.instance()
-            cs.store(group=group, name=name, node=result)
-
-        return result
-
-    return caller
+#def hydra_dataclass(target: str, name: Optional[str] = None, group: Optional[str] = None) -> type:
+#    r"""Decorator for dataclasses that will be used with Hydra instantiation.
+#
+#    The decorated dataclass will have a ``_target_`` attribute set with the full
+#    path of target class ``target``. A method ``to_omegaconf`` will be added to
+#    facilitate saving with Pytorch Lightning's ``save_hyperparameters``.
+#
+#    Args:
+#        target:
+#            Name of the target class for instantiation. A module path will be
+#            prepended using the module of the decorated dataclass.
+#    """
+#    if not isinstance(target, str):
+#        raise TypeError(f"`target` must be str, found {type(target)}")
+#
+#    def caller(clazz):
+#        # set _target_ from decorator w/ full module path
+#        full_target = f"{clazz.__module__}.{target}"
+#        clazz._target_ = full_target
+#        clazz.__annotations__["_target_"] = str
+#
+#        def f(self):
+#            return DictConfig(self)
+#
+#        clazz.to_omegaconf = f
+#
+#        result = dataclass(clazz)
+#
+#        if name:
+#            cs = ConfigStore.instance()
+#            cs.store(group=group, name=name, node=result)
+#            print(f"Storing name={name}, group={group}")
+#
+#        return result
+#
+#    return caller
 
 
 def input(

@@ -12,6 +12,7 @@ from hydra import compose, initialize
 
 import combustion
 from combustion import MultiRunError
+import examples.basic.__main__ 
 
 
 pytest.importorskip("torchvision", reason="test requires torchvision")
