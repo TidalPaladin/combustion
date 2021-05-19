@@ -7,11 +7,14 @@ from typing import Any, Optional
 
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
+from pytorch_lightning import Trainer
+
+from combustion.util import make_dataclass
 
 
-# @dataclass
-# class Trainer(Dict[str, Any]):
-#    _target_: str = "pytorch_lightning.Trainer"
+@make_dataclass(proto=Trainer)
+class TrainerConf:
+    ...
 
 
 @dataclass

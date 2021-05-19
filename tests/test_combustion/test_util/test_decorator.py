@@ -2,11 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import pytorch_lightning as pl
+import torch
 import torch.nn as nn
 from hydra.utils import instantiate
 from torch import Tensor
 
-from combustion.util import dataclass_init, hydra_dataclass
+from combustion.util import dataclass_init, hydra_dataclass, make_dataclass
 
 
 @hydra_dataclass(target="MyModel.from_args")
@@ -53,3 +54,47 @@ class TestDataclasses:
         conf = MyModelConf(in_features=10, out_features=10)
         model = MyModel(conf)
         assert model.hparams == conf
+
+    def test_config_store(self):
+        # TODO all this does is run with name/group assignment
+        @hydra_dataclass(target="foo", name="base_mymodelconf", group="model")
+        class MyModelConf:
+            in_features: int
+            out_features: int
+            kernel: int = 3
+            num_repeats: int = 3
+
+    def test_make_dataclass(self):
+        @make_dataclass(pl.Trainer)
+        class TrainerConf:
+            ...
+
+        conf = TrainerConf()
+        trainer = instantiate(conf)
+        assert isinstance(trainer, pl.Trainer)
+
+    def test_make_dataclass_no_default(self):
+        @make_dataclass(torch.optim.Adam)
+        class AdamConf:
+            ...
+
+        conf = AdamConf()
+        model = nn.Linear(10, 10)
+        adam = instantiate(conf, params=model.parameters())
+        assert isinstance(adam, torch.optim.Adam)
+
+        conf.params = model.parameters()
+        adam = instantiate(conf)
+        assert isinstance(adam, torch.optim.Adam)
+
+    def test_make_dataclass_recursive(self):
+        class ProtoClass:
+            def __init__(self, x: int = 1, y: nn.Module = nn.Linear(10, 10)):
+                self.x = x
+                self.y = y
+
+        @make_dataclass(ProtoClass, recursive=True)
+        class ProtoClassConf:
+            ...
+
+        ProtoClassConf()
