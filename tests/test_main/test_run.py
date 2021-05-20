@@ -12,8 +12,8 @@ from hydra import compose, initialize
 
 import combustion
 from combustion import MultiRunError
-import examples.basic.__main__ 
 
+import examples.basic.__main__
 
 pytest.importorskip("torchvision", reason="test requires torchvision")
 
@@ -36,6 +36,7 @@ def test_fast_dev_run(mocker):
     pl.Trainer()
     fit = mocker.spy(pl.Trainer, "fit")
     test = mocker.spy(pl.Trainer, "test")
+    pytest.importorskip("examples.basic.__main__")
 
     with initialize(config_path="../../examples/basic/conf"):
         cfg = compose(

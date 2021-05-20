@@ -22,7 +22,7 @@ import combustion
 from combustion.util import dataclass_init, hydra_dataclass
 
 
-@hydra_dataclass(target="FakeDataModule", name="base_fakedata", group="data")
+@hydra_dataclass(target="FakeDataModule", name="fakedata", group="data", recursive=False)
 class FakeDataModuleConf:
     train_dl: DataLoaderConf = DataLoaderConf(pin_memory=True, batch_size=8, shuffle=True)
     val_dl: DataLoaderConf = DataLoaderConf(batch_size=4, shuffle=False)

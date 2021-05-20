@@ -4,97 +4,88 @@
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader
 from hydra.utils import instantiate
+from omegaconf import MISSING
 from torch import Tensor
+from typing import Any
+from dataclasses import dataclass
+from hydra.core.config_store import ConfigStore
 
-from combustion.util import dataclass_init, hydra_dataclass
-
-
-@hydra_dataclass(target="MyModel.from_args")
-class MyModelConf:
-    in_features: int
-    out_features: int
-    kernel: int = 3
-    num_repeats: int = 3
+from combustion.util import dataclass_init, hydra_dataclass, Instantiable
 
 
-@dataclass_init(MyModelConf)
-class MyModel(pl.LightningModule):
-    def __init__(self, conf: MyModelConf):
-        super().__init__()
+class PrimitiveConf:
+    x: int = 1
+    y: int = 3
+
+
+class PrimitiveModel:
+    def __init__(self, x: int, y: int):
         self.conf = conf
-        self.repeats = nn.Sequential()
-        self.repeats.add_module("conv_1", nn.Conv2d(conf.in_features, conf.out_features, conf.kernel))
-        for i in range(conf.num_repeats):
-            self.repeats.add_module("conv_{i+1}", nn.Conv2d(conf.out_features, conf.out_features, conf.kernel))
-        self.save_hyperparameters(conf.to_omegaconf())
-
-    def forward(self, inputs: Tensor) -> Tensor:
-        _ = self.conv(inputs)
-        return self.repeats(_)
+        pass
 
 
-class TestDataclasses:
-    def test_dataclass_init(self):
-        conf = MyModelConf(in_features=10, out_features=10)
+class ComplexConf:
+    x: int = 1
+    y: int = 3
+    obj: Any = MISSING
 
-        model = MyModel.from_args(in_features=conf.in_features, out_features=conf.out_features)
-        assert isinstance(model, MyModel)
-        assert model.conf == conf
 
-        model = MyModel(conf)
-        assert isinstance(model, MyModel)
-        assert model.conf == conf
+class ComplexModel(PrimitiveModel):
 
-        model = instantiate(conf)
-        assert isinstance(model, MyModel)
-        assert model.conf == conf
+    def __init__(self, x: int, y: int, obj: Any):
+        self.conf = conf
 
-    def test_dataclass_init_save_hparams(self):
-        conf = MyModelConf(in_features=10, out_features=10)
-        model = MyModel(conf)
-        assert model.hparams == conf
+@dataclass
+class SubConf:
+    z: int = 4
+
+
+class NestedConf:
+    x: int = 1
+    y: int = 3
+    sub: SubConf = SubConf(z=3)
+
+
+class TestHydraDataclass:
+
+    def test_primitive(self):
+        Conf = hydra_dataclass(target="PrimitiveModel")(PrimitiveConf)
+        conf = Conf()
+        assert isinstance(conf, PrimitiveConf)
+        assert conf._target_ == "test_decorator.PrimitiveModel"
+        assert conf.x == 1
+        assert conf.y == 3
+
+    def test_complex(self):
+        Conf = hydra_dataclass(target="ComplexModel")(ComplexConf)
+        conf = Conf()
+        assert isinstance(conf, ComplexConf)
+        assert conf._target_ == "test_decorator.ComplexModel"
+        assert conf.x == 1
+        assert conf.y == 3
+        assert conf.obj == MISSING
+
+    def test_nested(self):
+        Conf = hydra_dataclass(target="ComplexModel")(NestedConf)
+        conf = Conf()
+        assert isinstance(conf, NestedConf)
+        assert conf._target_ == "test_decorator.ComplexModel"
+        assert conf.x == 1
+        assert conf.y == 3
+        assert conf.sub.z == 3
 
     def test_config_store(self):
-        # TODO all this does is run with name/group assignment
-        @hydra_dataclass(target="foo", name="base_mymodelconf", group="model")
-        class MyModelConf:
-            in_features: int
-            out_features: int
-            kernel: int = 3
-            num_repeats: int = 3
-
-    def test_make_dataclass(self):
-        @hydra_dataclass(spec=pl.Trainer)
-        class TrainerConf:
-            ...
-
-        conf = TrainerConf()
-        trainer = instantiate(conf)
-        assert isinstance(trainer, pl.Trainer)
-
-    def test_make_dataclass_no_default(self):
-        @hydra_dataclass(spec=torch.optim.Adam)
-        class AdamConf:
-            ...
-
-        conf = AdamConf()
-        model = nn.Linear(10, 10)
-        adam = instantiate(conf, params=model.parameters())
-        assert isinstance(adam, torch.optim.Adam)
-
-        conf.params = model.parameters()
-        adam = instantiate(conf)
-        assert isinstance(adam, torch.optim.Adam)
-
-    def test_make_dataclass_recursive(self):
-        class ProtoClass:
-            def __init__(self, x: int = 1, y: nn.Module = nn.Linear(10, 10)):
-                self.x = x
-                self.y = y
-
-        @hydra_dataclass(spec=ProtoClass, recursive=True)
-        class ProtoClassConf:
-            ...
-
-        conf = ProtoClassConf()
+        group = "foo"
+        name = "bar"
+        cs = ConfigStore.instance()
+        assert group not in cs.repo.keys()
+        Conf = hydra_dataclass(target="ComplexModel", name=name, group=group)(PrimitiveConf)
+        assert group in cs.repo.keys()
+        key = f"{name}.yaml" 
+        assert key in cs.repo[group].keys()
+        node = cs.repo[group][key]
+        _node = node.node
+        assert _node._target_ == "test_decorator.PrimitiveModel"

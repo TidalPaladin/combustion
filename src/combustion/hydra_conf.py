@@ -10,11 +10,9 @@ from omegaconf import MISSING
 from pytorch_lightning import Trainer
 
 from combustion.util import hydra_dataclass
-from abc import ABC
 
 
-
-@hydra_dataclass(spec=Trainer, name="base_trainer", group="trainer")
+@hydra_dataclass(spec=Trainer, name="trainer", group="trainer")
 class TrainerConf:
     ...
 

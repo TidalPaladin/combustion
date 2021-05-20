@@ -1,5 +1,0 @@
-# @package _group_
-defaults:
-  - base_fakemodel
-
-in_channels: 3

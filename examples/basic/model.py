@@ -6,7 +6,7 @@ import torch.nn as nn
 import hydra
 import pytorch_lightning as pl
 import torch
-from omegaconf import DictConfig
+from omegaconf import DictConfig, MISSING
 from torch.nn import functional as F
 from combustion.lightning.mixins import OptimizerMixin
 import combustion
@@ -14,31 +14,30 @@ from dataclasses import dataclass
 from hydra_configs.torch.optim import AdamConf
 from hydra_configs.torch.optim.lr_scheduler import OneCycleLRConf
 from hydra_configs.torch.utils.data.dataloader import DataLoaderConf
-from typing import Any
+from typing import Any, Optional
 from torchvision.datasets import FakeData
 from torch.optim import Optimizer
 import combustion
 from hydra.core.config_store import ConfigStore
 from hydra.utils import instantiate
-from combustion.util import dataclass_init, hydra_dataclass
+from combustion.util import dataclass_init, hydra_dataclass, Instantiable
 
 log = logging.getLogger(__name__)
 
 
-@hydra_dataclass(spec=torch.nn.CrossEntropyLoss)
+@hydra_dataclass(spec=torch.nn.CrossEntropyLoss, name="celoss", group="model/criterion")
 class CrossEntropyLossConf:
     ...
 
 
-@hydra_dataclass(target='FakeModel', name="base_fakemodel", group="model")
+@hydra_dataclass(target='FakeModel', name="fakemodel", group="model")
 class FakeModelConf:
-    _target_: str = 'examples.basic.model.FakeModel'
     in_features: int = 1
     out_features: int = 10
     kernel: int = 3
+    criterion: Any = CrossEntropyLossConf()
     optimizer: Any = AdamConf()
     schedule: Any = None
-    criterion: Any = CrossEntropyLossConf()
 
 
 class FakeModel(pl.LightningModule, OptimizerMixin):
@@ -58,6 +57,7 @@ class FakeModel(pl.LightningModule, OptimizerMixin):
 
         self.criterion = instantiate(criterion)
         self.save_hyperparameters()
+        self._optim = optimizer
 
     def forward(self, x):
         _ = self.l1(x)
@@ -66,7 +66,7 @@ class FakeModel(pl.LightningModule, OptimizerMixin):
         return torch.relu(_)
 
     def configure_optimizers(self):
-        optim = instantiate(self.hparams.optimizer, params=self.parameters())
+        optim = instantiate(self._optim, params=self.parameters())
         return optim
 
     def training_step(self, batch, batch_nb):

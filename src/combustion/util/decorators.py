@@ -1,16 +1,23 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from dataclasses import dataclass, is_dataclass, make_dataclass
+from dataclasses import dataclass, is_dataclass, make_dataclass, field
 from enum import Enum
-from inspect import signature
-from typing import Any, Optional, Tuple, Union, Iterable, Dict
+from inspect import signature, Parameter, getmro
+from typing import Any, Optional, Tuple, Union, Iterable, Dict, List, Protocol, runtime_checkable
 import types
 
 import torch
 from decorator import decorator, getfullargspec
 from hydra.core.config_store import ConfigStore
-from omegaconf import MISSING, DictConfig
+from omegaconf import MISSING, DictConfig, ListConfig
+
+from abc import ABC
+
+
+class Instantiable(Protocol):
+    _target_: str = MISSING
+
 
 def hydra_dataclass(
     spec: Optional[type] = None,
@@ -18,6 +25,7 @@ def hydra_dataclass(
     name: Optional[str] = None,
     group: Optional[str] = None,
     recursive: bool = True,
+    overrides: Dict[str, Any] = {}
 ) -> type:
     r"""Decorator for dataclasses that will be used with Hydra instantiation.
 
@@ -31,12 +39,19 @@ def hydra_dataclass(
             prepended using the module of the decorated dataclass.
     """
     def caller(clazz, spec=spec):
+        if isinstance(clazz, Instantiable):
+            if name:
+                cs = ConfigStore.instance()
+                cs.store(group=group, name=name, node=clazz)
+            return clazz
+
         spec = spec or clazz
+
         if spec == clazz:
             assert target 
             full_target = f"{clazz.__module__}.{target}"
         else:
-            spec_str = f"{spec.__module__}.{spec.__name__}"
+            spec_str = f"{spec.__module__}.{spec.__qualname__}"
             full_target = spec_str if target is None else f"{spec_str}.{target}"
 
         # set _target_ from decorator w/ full module path
@@ -44,8 +59,25 @@ def hydra_dataclass(
             clazz.__annotations__ = {}
 
         sig = signature(spec)
+        if not sig.parameters:
+            sig = signature(dataclass(spec))
+
+        any_vkwargs = False
         for k, v in sig.parameters.items():
-            default = v.default if v.default is not v.empty else MISSING
+            # check for *args, *kwargs parameters
+            if v.kind == Parameter.VAR_POSITIONAL:
+                setattr(clazz, k, field(default_factory=list))
+                clazz.__annotations__[k] = List[Any]
+                continue
+            elif v.kind == Parameter.VAR_KEYWORD:
+                setattr(clazz, k, field(default_factory=dict))
+                clazz.__annotations__[k] = Dict[str, Any]
+                continue
+
+            if k in overrides:
+                default = overrides[k]
+            else:
+                default = v.default if v.default is not v.empty else MISSING
 
             # Union types not supported by DictConfig, so replace them with Any
             if getattr(v.annotation, "__origin__", None) is Union:
@@ -55,8 +87,10 @@ def hydra_dataclass(
             else:
                 annotation = v.annotation
 
+
             # maybe recurse on default
-            needs_recurse = not is_primitive(default)
+            needs_recurse = not (is_primitive(default) or isinstance(default, Instantiable))
+
             if needs_recurse and recursive:
 
                 subname = f"{default.__class__.__name__}Conf"
@@ -71,10 +105,13 @@ def hydra_dataclass(
                     if f.default == MISSING and is_primitive(f.type):
                         setattr(subproto, f.name, getattr(default, f.name, MISSING))
 
+                if isinstance(default, torch.utils.data.DataLoader):
+                    import pdb; pdb.set_trace()
                 default = subproto
 
             setattr(clazz, k, default)
             clazz.__annotations__[k] = annotation
+
 
         def f(self):
             return DictConfig(self)
@@ -98,8 +135,9 @@ def is_primitive(x):
     if x is None: return True
     if isinstance(x, valids): return True
     if isinstance(x, type): return x in valids
-    if isinstance(x, Iterable): return all(is_primitive(y) for y in x)
+    if isinstance(x, (tuple, list)): return all(is_primitive(y) for y in x)
     if isinstance(x, Dict): return all(is_primitive(v) for v in x.values())
+    return False
 
 
 class SubProtoMeta(type):

@@ -19,9 +19,7 @@ from torchvision.datasets import FakeData
 import combustion
 
 from hydra.core.config_store import ConfigStore
-
-from .model import FakeModelConf
-from .data import FakeDataModuleConf
+from .conf import *
 
 log = logging.getLogger(__name__)
 
@@ -32,8 +30,7 @@ log = logging.getLogger(__name__)
 @hydra.main(config_path="./conf", config_name="config")
 def main(cfg):
     print(cfg.to_yaml())
-    #import pdb; pdb.set_trace()
-    #return combustion.main(cfg)
+    return combustion.main(cfg)
 
 
 if __name__ == "__main__":

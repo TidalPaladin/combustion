@@ -18,8 +18,14 @@ from hydra.utils import instantiate
 import combustion
 from combustion.util import make_dataclass, dataclass_init, hydra_dataclass
 
+from albumentations.core.composition import Compose
+from albumentations.core.transforms import BasicTransform
 
-# TODO remove this?
+
+
+class CompositionConf:
+    ...
+
 
 @dataclass
 class CombustionDataModuleConf:

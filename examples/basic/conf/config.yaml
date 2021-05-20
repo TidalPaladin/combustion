@@ -6,10 +6,10 @@ defaults:
     #- trainer: local
     #- schedule: one_cycle
     #- sweeper: no_sweep
-
   - data: fakedata
-  - model: base_fakemodel
-  - trainer: local
+  - model: fakemodel2
+  - model/criterion: celoss
+  - trainer: trainer
 
 
     #datamodule: 0
