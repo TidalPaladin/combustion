@@ -158,8 +158,8 @@ class SaveTensors(AttributeCallback):
 
     def on_test_start(self, trainer, pl_module):
         """When pretrain routine starts we build the dest dir on the fly"""
-        self.on_pretrain_routine_start(self, trainer, pl_module)
+        self.on_pretrain_routine_start(trainer, pl_module)
 
     def on_predict_start(self, trainer, pl_module):
         """When pretrain routine starts we build the dest dir on the fly"""
-        self.on_pretrain_routine_start(self, trainer, pl_module)
+        self.on_pretrain_routine_start(trainer, pl_module)
