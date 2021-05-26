@@ -12,6 +12,7 @@ from combustion.nn import MobileNetBlockConfig
 from combustion.testing import TorchScriptTestMixin
 
 
+@pytest.mark.skip
 class MobileUnetBaseTest(TorchScriptTestMixin):
     @pytest.fixture
     def model_type(self):
@@ -40,6 +41,7 @@ class MobileUnetBaseTest(TorchScriptTestMixin):
         scalar.backward()
 
 
+@pytest.mark.skip
 class TestMobileUnet1d(MobileUnetBaseTest):
     @pytest.fixture
     def model_type(self):
@@ -51,6 +53,7 @@ class TestMobileUnet1d(MobileUnetBaseTest):
         return torch.rand(1, 1, 227, requires_grad=True)
 
 
+@pytest.mark.skip
 @pytest.mark.ci_skip
 class TestMobileUnet2d(MobileUnetBaseTest):
     @pytest.fixture
@@ -63,6 +66,7 @@ class TestMobileUnet2d(MobileUnetBaseTest):
         return torch.rand(1, 1, 227, 227, requires_grad=True)
 
 
+@pytest.mark.skip
 @pytest.mark.ci_skip
 class TestMobileUnet3d(MobileUnetBaseTest):
     @pytest.fixture

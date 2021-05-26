@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from numbers import Number
 from typing import Union
 
 from torch import Tensor
 
 
-def percent_change(old: Union[Tensor, Number], new: Union[Tensor, Number]) -> Union[Tensor, Number]:
+def percent_change(old: Union[Tensor, float], new: Union[Tensor, float]) -> Union[Tensor, float]:
     r"""Computes percent change between two tensors or numbers.
 
     Args:
@@ -24,8 +23,8 @@ def percent_change(old: Union[Tensor, Number], new: Union[Tensor, Number]) -> Un
 
 
 def percent_error_change(
-    old: Union[Tensor, Number], new: Union[Tensor, Number], max_val: Union[Tensor, Number] = 1.0
-) -> Union[Tensor, Number]:
+    old: Union[Tensor, float], new: Union[Tensor, float], max_val: Union[Tensor, float] = 1.0
+) -> Union[Tensor, float]:
     r"""Computes percent change in error two tensors or numbers.
 
     Args:

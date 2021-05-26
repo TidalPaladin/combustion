@@ -17,7 +17,7 @@ def mkdir(path, trainer):
         Path(path).mkdir(exist_ok=True, parents=True)
 
 
-def resolve_dir(trainer: pl.Trainer, dirpath: Optional[str], suffix: str):
+def resolve_dir(trainer: pl.Trainer, dirpath: Optional[Union[str, Path]], suffix: str):
     """
     Determines tensor save directory at runtime. References attributes from the
     trainer's logger to determine where to save checkpoints.
@@ -27,11 +27,17 @@ def resolve_dir(trainer: pl.Trainer, dirpath: Optional[str], suffix: str):
     The base path gets extended with logger name and version (if these are available)
     and subfolder ``suffix``.
     """
+    dirpath = Path(dirpath) if dirpath is not None else None
+
     if dirpath is not None:
         mkdir(dirpath, trainer)
         return dirpath
-    else:
+    elif trainer.log_dir is not None:
         path = Path(trainer.log_dir, suffix)
+    elif trainer.default_root_dir is not None:
+        path = Path(trainer.default_root_dir, suffix)
+    else:
+        raise RuntimeError("Could not resolve a path to save to")
 
     mkdir(path, trainer)
     return path

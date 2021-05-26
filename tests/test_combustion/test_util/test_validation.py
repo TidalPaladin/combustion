@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import types
+from typing import Any
 
 import pytest
 import torch
@@ -25,7 +26,7 @@ class CaseMeta(type):
     ``get_test_cases``.
     """
 
-    def __new__(cls, name, bases, dct):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         x.test_raises_exception = pytest.mark.parametrize(
             "inputs,exception",
@@ -58,7 +59,7 @@ class BaseValidationTest:
     def func(self):
         raise NotImplementedError("function under test")
 
-    def get_test_cases():
+    def get_test_cases(self):
         raise NotImplementedError("function inputs and expected outcome")
 
     def test_raises_exception(self, func, inputs, exception, scripted):

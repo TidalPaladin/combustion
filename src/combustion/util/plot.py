@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 import torch
 from matplotlib import cm
@@ -26,7 +26,7 @@ def apply_colormap(inputs: Tensor, cmap: str = "gnuplot") -> Tensor:
     batch_dim = 0
     if inputs.shape[channel_dim] != 1:
         raise ValueError(f"Expected channel size = 1, but found inputs.shape == {inputs.shape}")
-    cmap = cm.get_cmap(cmap)
+    _cmap = cm.get_cmap(cmap)
 
     output_shape = list(inputs.shape)
     output_channels = 4
@@ -39,7 +39,7 @@ def apply_colormap(inputs: Tensor, cmap: str = "gnuplot") -> Tensor:
         if max > 1 or min < 0:
             batch_elem = batch_elem.sub(min).float().div_(max - min)
 
-        mapped = torch.as_tensor(cmap(batch_elem.cpu().numpy()), device=inputs.device, dtype=torch.float).transpose_(
+        mapped = torch.as_tensor(_cmap(batch_elem.cpu().numpy()), device=inputs.device, dtype=torch.float).transpose_(
             0, 1
         )
         output.append(mapped)

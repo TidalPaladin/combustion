@@ -3,14 +3,18 @@
 
 import gc
 import os
+from pathlib import Path
 from typing import Optional
 
 import pytest
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 
 from combustion.nn import FCOSDecoder, FCOSLoss
 from combustion.testing import TorchScriptTestMixin
+from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import visualize_bbox
 
 
@@ -52,8 +56,7 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         del model
         gc.collect()
 
-    def test_forward(self, model, data, num_classes, strides):
-
+    def test_forward(self, model, data, num_classes):
         cls_pred, reg_pred, centering = model(data)
         for x in (cls_pred, reg_pred, centering):
             assert isinstance(x, list)
@@ -130,12 +133,11 @@ class TestFCOSDecoder(TorchScriptTestMixin):
 
     def blend_and_save(self, path, src, dest):
         src = apply_colormap(src)[..., :3, :, :]
-        src = torch.nn.functional.interpolate(src, dest.shape[-2:])
+        src = F.interpolate(src, dest.shape[-2:])
         _ = alpha_blend(src, dest)[0].squeeze_(0)
         self.save(path, _)
 
-    @pytest.mark.ci_skip
-    def test_save_output(self, model_type):
+    def test_save_output(self, model_type, tmp_path):
         torch.random.manual_seed(42)
         image_size = 512
         num_classes = 2
@@ -156,8 +158,8 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         img = torch.zeros(4, 1, image_size, image_size)
         target_cls = torch.tensor([0, 0, 1, 1]).unsqueeze_(-1).repeat(batch_size, 1, 1)
 
-        strides = [8, 16, 32, 64, 128]
-        sizes = [(image_size // stride,) * 2 for stride in strides]
+        strides = (8, 16, 32, 64, 128)
+        sizes: Tuple[Tuple[int, int]] = tuple((image_size // stride,) * 2 for stride in strides)  # type: ignore
 
         criterion = FCOSLoss(strides, num_classes, radius=center_radius)
         cls_targets, reg_targets, centerness_targets = criterion.create_targets(target_bbox, target_cls, sizes)
@@ -169,16 +171,15 @@ class TestFCOSDecoder(TorchScriptTestMixin):
 
         img_with_box = visualize_bbox(img, final_boxes, final_scores, final_cls)
 
-        subpath = os.path.join(self.DEST, "fcos_targets")
-        if not os.path.exists(subpath):
-            os.makedirs(subpath)
+        subpath = Path(self.DEST, "fcos_targets") if self.DEST is not None else Path(tmp_path)
+        if subpath.is_dir():
+            subpath.mkdir(exist_ok=True)
 
         for i, item in enumerate(img_with_box):
             filename = os.path.join(subpath, f"created_targets_{i}.png")
             self.save(filename, item)
 
-    @pytest.mark.ci_skip
-    def test_nms(self, model_type):
+    def test_nms(self, model_type, tmp_path):
         torch.random.manual_seed(42)
         image_size = 512
         num_classes = 1
@@ -201,9 +202,9 @@ class TestFCOSDecoder(TorchScriptTestMixin):
 
         img_with_box = visualize_bbox(img, final_boxes, final_scores, final_cls)
 
-        subpath = os.path.join(self.DEST, "fcos_targets")
-        if not os.path.exists(subpath):
-            os.makedirs(subpath)
+        subpath = Path(self.DEST, "fcos_targets") if self.DEST is not None else Path(tmp_path)
+        if subpath.is_dir():
+            subpath.mkdir(exist_ok=True)
 
         for i, item in enumerate(img_with_box):
             filename = os.path.join(subpath, f"created_targets_no_nms_{i}.png")
@@ -217,10 +218,6 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         final_cls = final_pred[..., 5:]
 
         img_with_box = visualize_bbox(img, final_boxes, final_cls, final_scores)
-
-        subpath = os.path.join(self.DEST, "fcos_targets")
-        if not os.path.exists(subpath):
-            os.makedirs(subpath)
 
         for i, item in enumerate(img_with_box):
             filename = os.path.join(subpath, f"created_targets_nms_{i}.png")
@@ -253,3 +250,7 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         batched = batched[(batched != -1).all(dim=-1)]
         assert batched.shape == unbatched.shape
         assert torch.allclose(batched, unbatched)
+
+    def test_script(self, model):
+        scripted = torch.jit.script(model)
+        assert isinstance(scripted, nn.Module)

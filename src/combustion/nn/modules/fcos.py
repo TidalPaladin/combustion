@@ -23,7 +23,7 @@ class BaseFCOSDecoder(nn.Module, ABC):
         num_classes: int,
         num_regressions: int,
         num_convs: int,
-        strides: Optional[Tuple[int]] = None,
+        strides: Tuple[int, ...],
         activation: nn.Module = nn.SiLU(),
         reg_activation: nn.Module = nn.ReLU(),
         num_groups: int = 32,
@@ -57,8 +57,9 @@ class BaseFCOSDecoder(nn.Module, ABC):
         self.reg_activation = reg_activation
         self.strides = strides
 
-        bias_value = torch.tensor(cls_prior).logit()
-        torch.nn.init.constant_(self.cls_head.final_conv_pw.bias, bias_value)
+        bias_value = float(torch.tensor(cls_prior).logit().item())
+        bias: Tensor = self.cls_head.final_conv_pw.bias  # type: ignore
+        torch.nn.init.constant_(bias, bias_value)
 
     def forward(self, fpn: Tuple[Tensor]) -> Tuple[List[Tensor], List[Tensor], List[Tensor]]:
         cls = self.cls_head(fpn)
@@ -68,14 +69,13 @@ class BaseFCOSDecoder(nn.Module, ABC):
         return cls, reg, centerness
 
     @abstractstaticmethod
-    def postprocess(cls: List[Tensor], reg: List[Tensor], centerness: List[Tensor]) -> Tensor:
+    def postprocess(cls: List[Tensor], reg: List[Tensor], centerness: List[Tensor]) -> Tensor:  # type: ignore
         raise NotImplementedError()
 
     @staticmethod
     def reduce_heatmaps(
         heatmap: Tuple[Tensor, ...],
         reduction: Callable[[Tensor, Tensor], Tensor] = torch.max,
-        channel_reduction: Callable[[Tensor, int, bool], Tensor] = torch.amax,
         mode: str = "nearest",
     ) -> Tensor:
         r"""Helper function that reduces FCOS FPN heatmaps into a single channel heatmap
@@ -88,11 +88,6 @@ class BaseFCOSDecoder(nn.Module, ABC):
             reduction:
                 Function that should accept two equally sized tensors and reduce them to a
                 single output tensor. By default, heatmaps are reduced with :func:`torch.max`.
-
-            channel_reduction:
-                Function that should accept a tensor with multiple channels and reduce it to
-                a single channel output tensor. By default, channels are reduced with
-                :func:`torch.amax` along ``dim=1``.
         """
         result = heatmap[0]
         C = result.shape[1]
@@ -227,9 +222,9 @@ class FCOSDecoder(BaseFCOSDecoder):
         in_channels: int,
         num_classes: int,
         num_convs: int,
-        strides: Optional[Tuple[int]] = None,
+        strides: Tuple[int, ...],
         activation: nn.Module = nn.SiLU(),
-        num_groups: float = 32,
+        num_groups: int = 32,
         gn_epsilon: float = 1e-5,
     ):
 
@@ -246,8 +241,9 @@ class FCOSDecoder(BaseFCOSDecoder):
         )
 
     @staticmethod
+    @torch.jit.script
     def postprocess(
-        cls: List[Tensor],
+        cls: List[Tensor],  # type: ignore
         reg: List[Tensor],
         centerness: List[Tensor],
         strides: List[int],
@@ -322,7 +318,7 @@ class FCOSDecoder(BaseFCOSDecoder):
         num_classes = cls[0].shape[1]
 
         # iterate over each FPN level
-        for i, (stride, level_cls, level_reg, level_centerness) in enumerate(zip(strides, cls, reg, centerness)):
+        for stride, level_cls, level_reg, level_centerness in zip(strides, cls, reg, centerness):
             bbox, batch = _postprocess_level(stride, level_cls, level_reg, level_centerness, threshold, from_logits)
             boxes.append(bbox)
             batch_idx.append(batch)

@@ -15,6 +15,8 @@ from combustion.lightning.callbacks import (
     KeypointVisualizeCallback,
     VisualizeCallback,
 )
+from combustion.lightning.callbacks.visualization import prepare_image
+from combustion.nn.functional import clamp_normalize
 from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import to_8bit
 
@@ -57,24 +59,6 @@ class TestVisualizeCallback:
     def mode(self, request):
         return request.param
 
-    # returns a no-args closure of callback function appropriate for `mode`
-    @pytest.fixture
-    def callback_func(self, mode, trainer, model):
-        if mode == "train":
-            pass
-        elif mode == "val":
-            pass
-        elif mode == "test":
-            pass
-        else:
-            raise ValueError(f"{mode}")
-
-        def func(self):
-            f = getattr(self, func)
-            return f(trainer, model)
-
-        return func
-
     @pytest.fixture
     def data_shape(self):
         return 2, 3, 32, 32
@@ -84,7 +68,7 @@ class TestVisualizeCallback:
         data = create_image(*data_shape)
         return data
 
-    @pytest.fixture
+    @pytest.fixture(autouse=True)
     def model(self, request, mocker, callback, data, mode, trainer):
 
         if hasattr(request, "param"):
@@ -114,7 +98,7 @@ class TestVisualizeCallback:
         return model
 
     @pytest.fixture
-    def callback(self, request, trainer):
+    def callback(self, request):
         cls = self.callback_cls
         init_signature = inspect.signature(cls)
         defaults = {
@@ -139,8 +123,9 @@ class TestVisualizeCallback:
     def expected_calls(self, data, model, mode, callback):
         if not hasattr(model, callback.attr_name):
             return []
+        data = prepare_image(data)
 
-        B, C, H, W = data.shape
+        B, _, H, W = data.shape
         img = [data]
         name = [
             f"{mode}/{callback.name}",
@@ -151,7 +136,10 @@ class TestVisualizeCallback:
             img, name = [], []
             splits = torch.split(data, callback.split_channels, dim=-3)
             for i, s in enumerate(splits):
-                n = f"{mode}/{callback.name[i]}"
+                if isinstance(callback.name, str):
+                    n = f"{mode}/{callback.name}_{i}"
+                else:
+                    n = f"{mode}/{callback.name[i]}"
                 name.append(n)
                 img.append(s)
 
@@ -227,7 +215,7 @@ class TestVisualizeCallback:
         ],
         indirect=True,
     )
-    def test_basic_logging(self, model, mode, callback, logger_func, expected_calls):
+    def test_basic_logging(self, callback, logger_func, expected_calls):
         callback.trigger()
         if callback.as_uint8:
             atol = 1
@@ -250,9 +238,9 @@ class TestVisualizeCallback:
         indirect=True,
     )
     def test_limit_num_images(self, callback, logger_func, data_shape):
-        B, C, H, W = data_shape
+        B, C, _, _ = data_shape
         num_steps = 20
-        for i in range(num_steps):
+        for _ in range(num_steps):
             callback.trigger()
 
         limit = callback.max_calls
@@ -322,7 +310,7 @@ class TestVisualizeCallback:
         ],
         indirect=True,
     )
-    def test_log_custom_fn(self, callback, model, logger_func, tmp_path, mocker):
+    def test_log_custom_fn(self, callback, tmp_path, mocker):
         PIL = pytest.importorskip("PIL", reason="test requires PIL")
         spy = mocker.spy(PIL.Image.Image, "save")
         callback.log_fn = ImageSave(tmp_path)
@@ -361,12 +349,13 @@ class TestKeypointVisualizeCallback(TestVisualizeCallback):
         return torch.empty(B, N, 1).fill_(-1)
 
     @pytest.fixture
-    def expected_calls(self, data, model, mode, callback, mocker):
+    def expected_calls(self, data, model, mode, callback):
         if not hasattr(model, callback.attr_name):
             return []
 
         data, target = data
-        B, C, H, W = data.shape
+        data = prepare_image(data)
+        B, _, _, _ = data.shape
         img = [data]
         name = [
             f"{mode}/{callback.name}",
@@ -420,18 +409,24 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
     def data(self, data_shape, request):
         B, C, H, W = data_shape
         img = create_image(B, C, H, W)
+        if request.param:
+            img = img.float()
+        else:
+            img = img.long()
         return img.clone(), img.clone()
 
     @pytest.fixture
-    def expected_calls(self, data, model, mode, callback, mocker):
+    def expected_calls(self, data, model, mode, callback):
         if not hasattr(model, callback.attr_name):
             return []
 
-        if callback.split_channels == (2, 1):
+        if callback.split_channels == (2, 1) or callback.split_channels == ([2, 1], None):
             pytest.skip("incompatible test")
 
         data1, data2 = data
-        B, C, H, W = data1.shape
+        data1 = prepare_image(data1)
+        data2 = prepare_image(data2)
+        B, _, _, _ = data1.shape
         img1 = [data1]
         img2 = [data2]
         name1 = [
@@ -452,7 +447,10 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
                 img_new, name_new = [], []
                 splits = torch.split(data[pos], callback.split_channels[pos], dim=-3)
                 for i, s in enumerate(splits):
-                    n = f"{mode}/{callback.name[i]}"
+                    if isinstance(callback.name, str):
+                        n = f"{mode}/{callback.name}_{i}"
+                    else:
+                        n = f"{mode}/{callback.name[i]}"
                     name_new.append(n)
                     img_new.append(s)
                 img[pos] = img_new
@@ -489,8 +487,8 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
         name = name[0]
         final_img = []
         for pos, (d, s) in enumerate(zip(img[0], img[1])):
-            B1, C1, H1, W1 = d.shape
-            B2, C2, H2, W2 = s.shape
+            _, C1, _, _ = d.shape
+            _, C2, _, _ = s.shape
 
             if C1 != C2:
                 if C1 == 1:
@@ -500,6 +498,8 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
                 else:
                     raise ValueError(f"could not match shapes {d.shape}, {s.shape}")
 
+            s = clamp_normalize(s, inplace=True)
+            d = clamp_normalize(d, inplace=True)
             final_img.append(alpha_blend(d, s, callback.alpha[1], callback.alpha[0])[0])
         img = final_img
 
@@ -530,9 +530,9 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
         indirect=True,
     )
     def test_limit_num_images(self, callback, logger_func, data_shape):
-        B, C, H, W = data_shape
+        B, C, _, _ = data_shape
         num_steps = 20
-        for i in range(num_steps):
+        for _ in range(num_steps):
             callback.trigger()
 
         limit = callback.max_calls

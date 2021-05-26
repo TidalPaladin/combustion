@@ -33,7 +33,7 @@ class TestBoxAveragePrecision:
 
         metric = BoxAveragePrecision(iou_threshold=0.5, pos_label=pos_label, true_positive_limit=true_positive_limit)
 
-        value = metric(pred, target)
+        value = metric(pred, target)  # type: ignore
         assert value == 1.0
 
     @pytest.mark.parametrize("true_positive_limit", [True, False])
@@ -60,7 +60,7 @@ class TestBoxAveragePrecision:
 
         metric = BoxAveragePrecision(iou_threshold=0.5, pos_label=pos_label, true_positive_limit=true_positive_limit)
 
-        value = metric(pred, target)
+        value = metric(pred, target)  # type: ignore
         assert value == 0.5
 
     @pytest.mark.parametrize(
@@ -105,6 +105,6 @@ class TestBoxAveragePrecision:
         metric = BoxAveragePrecision(
             iou_threshold=iou_threshold, pos_label=pos_label, true_positive_limit=true_positive_limit
         )
-        value = metric(pred, target)
+        value = metric(pred, target)  # type: ignore
         expected = torch.tensor(expected)
         assert torch.allclose(value, expected, atol=1e-3)

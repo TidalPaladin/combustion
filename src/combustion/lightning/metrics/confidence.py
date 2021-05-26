@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
-from scipy.stats import norm as Normal
-from scipy.stats import t as StudentT
+from scipy.stats import norm as Normal  # type: ignore
+from scipy.stats import t as StudentT  # type: ignore
 from torch import Tensor
 
 
@@ -108,18 +108,13 @@ class BootstrapMixin:
         tail = tail.lower()
         dist = dist.lower()
 
-        if dist == "t":
-
-            def crit_func(a):
+        def crit_func(a):
+            if dist == "t":
                 return StudentT.ppf(q=a, df=df)
-
-        elif dist == "normal":
-
-            def crit_func(a):
+            elif dist == "normal":
                 return Normal.ppf(q=a)
-
-        else:
-            raise ValueError(f"{dist}")
+            else:
+                raise ValueError(f"{dist}")
 
         if tail in ("left", "right"):
             q = alpha

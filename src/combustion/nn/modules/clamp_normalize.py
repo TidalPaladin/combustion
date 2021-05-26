@@ -64,7 +64,7 @@ class ClampAndNormalize(nn.Module):
         if self.norm_max != 1:
             s += f", norm_max={self.norm_max}"
         if self.inplace:
-            s += f", inplace={inplace}"
+            s += f", inplace={self.inplace}"
         return s
 
     def forward(self, inputs: Tensor) -> Tensor:

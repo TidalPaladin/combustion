@@ -25,7 +25,7 @@ class TestSaveTensors(BaseAttributeCallbackTest):
         if not hasattr(model, callback.attr_name):
             return []
 
-        img = [data]
+        img = [attr]
         name = [
             f"{mode}/{callback.name}",
         ]
@@ -99,7 +99,7 @@ class TestSaveTensors(BaseAttributeCallbackTest):
         ],
         indirect=True,
     )
-    def test_save_multiple_tensors(self, mocker, model, mode, hook, callback, tmp_path, attr, trainer):
+    def test_save_multiple_tensors(self, mocker, model, mode, callback, tmp_path, attr):
         callback.ignore_errors = False
         sio = pytest.importorskip("scipy.io", reason="test requires scipy")
         path_torch = Path(

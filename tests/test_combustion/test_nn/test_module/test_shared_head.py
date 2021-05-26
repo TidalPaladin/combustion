@@ -51,5 +51,5 @@ class TestSharedDecoder(TorchScriptTestMixin):
             assert level.shape[2:] == fpn[level_idx].shape[2:]
             assert level.shape[1] == out_channels
 
-        scalar = sum([x.sum() for x in output])
+        scalar: Tensor = sum([x.sum() for x in output])  # type: ignore
         scalar.backward()

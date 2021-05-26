@@ -61,6 +61,8 @@ class TestRelativeIntensityFunctional:
             expected = torch.add(v1, v2).div_(2)
         elif combine == "sum":
             expected = torch.add(v1, v2)
+        else:
+            raise RuntimeError()
 
         assert torch.allclose(actual, expected, atol=1e-4)
 
@@ -121,5 +123,7 @@ class TestRelativeIntensityClass:
             expected = torch.add(v1, v2).div_(2)
         elif combine == "sum":
             expected = torch.add(v1, v2)
+        else:
+            raise RuntimeError()
 
         assert torch.allclose(actual, expected, atol=1e-4)

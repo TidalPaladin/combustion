@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -12,7 +12,7 @@ from combustion.util import double, single, triple
 
 
 class _SharedMeta(type):
-    def __new__(cls, name, bases, dct):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         if "3d" in name:
             x.Conv = nn.Conv3d
@@ -32,13 +32,17 @@ class _SharedMeta(type):
 
 
 class _SharedDecoder(nn.Sequential):
+    Conv: nn.Module
+    BatchNorm: nn.Module
+    ToTuple: nn.Module
+
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         num_convs: int,
         scaled: bool = False,
-        strides: Optional[Tuple[int]] = None,
+        strides: Optional[Tuple[int, ...]] = None,
         activation: nn.Module = nn.ReLU(inplace=True),
         final_activation: nn.Module = nn.Identity(),
         num_groups: int = 32,

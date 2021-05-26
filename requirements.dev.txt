@@ -1,0 +1,4 @@
+-r requirements.txt
+-r requirements.quality.txt
+-r requirements.docs.txt
+-r requirements.test.txt

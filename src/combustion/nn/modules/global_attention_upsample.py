@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
-from typing import Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple, Union
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,37 +10,42 @@ from torch import Tensor
 
 from combustion.util import double, single, triple
 
-from ..activations import HardSigmoid
 from .dynamic_pad import DynamicSamePad
 
 
 class _GAUMeta(type):
-    def __new__(cls, name, bases, dct):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         if "3d" in name:
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
             x.AdaptiveAvgPool = nn.AdaptiveAvgPool3d
             x.AdaptiveMaxPool = nn.AdaptiveMaxPool3d
-            x.Tuple = staticmethod(triple)
+            x.ToTuple = staticmethod(triple)
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
             x.AdaptiveAvgPool = nn.AdaptiveAvgPool2d
             x.AdaptiveMaxPool = nn.AdaptiveMaxPool2d
-            x.Tuple = staticmethod(double)
+            x.ToTuple = staticmethod(double)
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x.AdaptiveAvgPool = nn.AdaptiveAvgPool1d
             x.AdaptiveMaxPool = nn.AdaptiveMaxPool1d
-            x.Tuple = staticmethod(single)
+            x.ToTuple = staticmethod(single)
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
         return x
 
 
 class _AttentionUpsample(nn.Module):
+    Conv: nn.Module
+    BatchNorm: nn.Module
+    AdaptiveAvgPool: nn.Module
+    AdaptiveMaxPool: nn.Module
+    ToTuple: Callable[[Union[int, Tuple[int, ...]]], int]
+
     def __init__(
         self,
         low_filters: int,
@@ -48,13 +53,11 @@ class _AttentionUpsample(nn.Module):
         output_filters: Optional[int] = None,
         kernel_size: Union[int, Tuple[int, ...]] = 3,
         pool: bool = True,
-        activation: Optional[nn.Module] = HardSigmoid(),
-        bn_momentum: float = 0.1,
-        bn_epsilon: float = 1e-5,
+        activation: Optional[nn.Module] = nn.Hardsigmoid(),
     ):
         super().__init__()
         output_filters = high_filters if output_filters is None else output_filters
-        kernel_size = self.Tuple(kernel_size)
+        kernel_size = self.ToTuple(kernel_size)
         self.align_corners = False
         self._pool = pool
 

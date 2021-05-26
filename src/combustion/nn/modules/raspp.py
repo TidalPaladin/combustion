@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import List, Tuple, Union
+from typing import Any, Callable, List, Tuple, Union
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,29 +12,36 @@ from combustion.util import double, single, triple
 
 
 class _RASPPMeta(type):
-    def __new__(cls, name, bases, dct):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         if "3d" in name:
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
             x.AvgPool = nn.AvgPool3d
-            x.Tuple = staticmethod(triple)
+            x.ToTuple = staticmethod(triple)
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
             x.AvgPool = nn.AvgPool2d
-            x.Tuple = staticmethod(double)
+            x.ToTuple = staticmethod(double)
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x.AvgPool = nn.AvgPool1d
-            x.Tuple = staticmethod(single)
+            x.ToTuple = staticmethod(single)
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
         return x
 
 
 class _RASPPLite(nn.Module):
+
+    Conv: nn.Module
+    BatchNorm: nn.Module
+    SqueezeExcite: nn.Module
+    AvgPool: nn.Module
+    ToTuple: Callable[[Union[int, Tuple[int, ...]]], int]
+
     def __init__(
         self,
         input_filters: int,
@@ -50,9 +57,9 @@ class _RASPPLite(nn.Module):
         bn_epsilon: float = 1e-5,
     ):
         super().__init__()
-        pool_kernel = self.Tuple(pool_kernel)
-        pool_stride = self.Tuple(pool_stride)
-        dilation = self.Tuple(dilation)
+        pool_kernel = self.ToTuple(pool_kernel)
+        pool_stride = self.ToTuple(pool_stride)
+        dilation = self.ToTuple(dilation)
 
         self.pooled = nn.Sequential(
             self.AvgPool(pool_kernel, stride=pool_stride),

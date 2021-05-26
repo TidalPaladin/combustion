@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -14,7 +14,7 @@ from .efficientnet import _EfficientNet
 
 
 class _EfficientDetMeta(type):
-    def __new__(cls, name, bases, dct):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         if "3d" in name:
             x.Conv = nn.Conv3d
@@ -37,10 +37,15 @@ class _EfficientDetMeta(type):
 class _EfficientDet(_EfficientNet):
     __constants__ = ["fpn_levels"]
 
+    Conv: nn.Module
+    BatchNorm: nn.Module
+    BiFPN: nn.Module
+    _get_blocks: Callable
+
     def __init__(
         self,
         block_configs: List[MobileNetBlockConfig],
-        fpn_levels: List[int] = [3, 5, 7, 8, 9],
+        fpn_levels: Tuple[int, ...] = (3, 5, 7, 8, 9),
         fpn_filters: int = 64,
         fpn_repeats: int = 3,
         width_coeff: float = 1.0,

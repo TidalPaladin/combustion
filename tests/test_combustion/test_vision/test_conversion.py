@@ -87,7 +87,7 @@ class TestTo8bit:
     def test_input_unchanged(self):
         input = torch.tensor([[0, 1000], [1001, 2000]]).unsqueeze(0).long()
         original_input = input.clone()
-        result = to_8bit(input, per_channel=True)
+        _ = to_8bit(input, per_channel=True)
         assert torch.allclose(input, original_input)
 
     @pytest.mark.parametrize(

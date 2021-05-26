@@ -24,7 +24,7 @@ def model_class(request):
 
     if request.param == "list":
 
-        def forward(self, x):
+        def forward(self, x):  # type: ignore
             return [
                 self.conv(x),
             ]

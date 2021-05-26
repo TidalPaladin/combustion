@@ -14,20 +14,23 @@ def clamp_normalize(
     norm_min: float = 0.0,
     norm_max: float = 1.0,
     inplace: bool = True,
-):
+    eps: float = 1e-8,
+) -> Tensor:
     if maximum <= minimum:
         raise ValueError(f"Expected maximum > minimum: got {maximum} vs {minimum}")
     if norm_max <= norm_min:
         raise ValueError(f"Expected norm_max > norm_min: got {norm_max} vs {norm_min}")
+    if eps <= 0:
+        raise ValueError(f"Expected eps > 0: got {eps}")
 
-    inputs = inputs.float()
-    minimum = float(minimum) if minimum != float("-inf") else inputs.amin().item()
-    maximum = float(maximum) if maximum != float("inf") else inputs.amax().item()
+    if not inputs.is_floating_point():
+        inputs = inputs.float()
 
-    delta = maximum - minimum
+    minimum = float(minimum) if minimum != float("-inf") else float(inputs.amin().item())
+    maximum = float(maximum) if maximum != float("inf") else float(inputs.amax().item())
+
+    delta = max(maximum - minimum, eps)
     output_delta = norm_max - norm_min
-    if delta == 0:
-        delta = maximum
     assert output_delta > 0
 
     if inplace:

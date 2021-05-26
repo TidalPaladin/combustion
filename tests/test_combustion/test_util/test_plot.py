@@ -61,13 +61,13 @@ class TestAlphaBlend:
     def test_input_shapes(self, shape):
         dest = torch.rand(*shape)
         src = torch.rand(*shape)
-        out, out_alpha = alpha_blend(src, dest)
+        out, _ = alpha_blend(src, dest)
         assert out.shape == dest.shape
 
     def test_output_alpha(self):
         dest = torch.rand(1, 1, 10, 10)
         src = torch.rand(1, 1, 10, 10)
-        out, out_alpha = alpha_blend(src, dest)
+        _, out_alpha = alpha_blend(src, dest)
         assert (out_alpha == 1).all()
 
     def test_output_channels(self, cuda):
@@ -81,7 +81,7 @@ class TestAlphaBlend:
         dest[0, 0, 0, 0] = 1.0
         src[0, 0, 1, 1] = 1.0
 
-        out, out_alpha = alpha_blend(src, dest)
+        out, _ = alpha_blend(src, dest)
         assert out.device == dest.device
         assert out[0, 0, 0, 0] == 0.5
         assert out[0, 0, 1, 1] == 0.5
@@ -93,7 +93,7 @@ class TestAlphaBlend:
         dest[0, 0, 0, 0] = 255
         src[0, 0, 1, 1] = 255
 
-        out, out_alpha = alpha_blend(src, dest)
+        out, _ = alpha_blend(src, dest)
         assert out.dtype == torch.uint8
         assert out[0, 0, 0, 0] == 127
         assert out[0, 0, 1, 1] == 127

@@ -89,6 +89,8 @@ class TestBootstrapMixin:
     @pytest.mark.parametrize("sample,ci,dist,expected", get_ci_test_cases())
     def test_confidence_interval_approximate(self, sample, ci, dist, expected):
         ci = BootstrapMixin.confidence_interval(sample, ci, dist=dist)
+        assert ci[0] is not None
+        assert ci[1] is not None
         expected = tuple(torch.tensor(x) for x in expected)
         assert torch.allclose(expected[0], ci[0], atol=2.0)
         assert torch.allclose(expected[1], ci[1], atol=2.0)
@@ -104,6 +106,7 @@ class TestBootstrapMixin:
         ub = mean + crit_val * se
 
         ci = BootstrapMixin.confidence_interval(samples, 1 - alpha, dist="t", tail="two")
-
+        assert ci[0] is not None
+        assert ci[1] is not None
         assert torch.allclose(ci[0], lb.expand_as(ci[0]))
         assert torch.allclose(ci[1], ub.expand_as(ci[1]))

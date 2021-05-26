@@ -2,10 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import os
+from pathlib import Path
 from typing import Optional
 
 import pytest
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 from combustion.nn import FCOSDecoder, FCOSLoss
@@ -102,8 +104,6 @@ class TestFCOSLoss:
         assert result.shape == torch.Size([bbox.shape[-2], *size_target])
 
         for box, res in zip(bbox, result):
-            h1, w1, h2, w2 = box[1], box[0], box[3], box[2]
-
             center_x = (box[0] + box[2]).true_divide(2)
             center_y = (box[1] + box[3]).true_divide(2)
             radius_x = (box[2] - box[0]).true_divide(2)
@@ -240,7 +240,7 @@ class TestFCOSLoss:
         num_classes = 2
 
         cls, reg, centerness = FCOSLoss.create_target_for_level(
-            bbox, cls, num_classes, stride, size_target, [-1, 64], center_radius
+            bbox, cls, num_classes, stride, size_target, (-1, 64), center_radius
         )
 
         assert cls.shape == torch.Size([num_classes, *size_target])
@@ -252,21 +252,15 @@ class TestFCOSLoss:
         assert centerness.max() <= 1.0
         assert ((centerness >= 0) | (centerness == -1)).all()
 
-    @pytest.mark.parametrize(
-        "stride,center_radius,size_target",
-        [
-            pytest.param(1, None, (10, 10)),
-            pytest.param(1, 1, (15, 15)),
-        ],
-    )
-    def test_create_targets(self, stride, center_radius, size_target):
+    @pytest.mark.parametrize("center_radius", [None, 1])
+    def test_create_targets(self, center_radius):
         num_classes = 2
         target_bbox = torch.randint(0, 100, (2, 10, 4))
         target_cls = torch.randint(0, num_classes, (2, 10, 1))
 
-        strides = [8, 16, 32, 64, 128]
+        strides = (8, 16, 32, 64, 128)
         base_size = 512
-        sizes = [(base_size // stride,) * 2 for stride in strides]
+        sizes: Tuple[Tuple[int, int], ...] = tuple((base_size // stride,) * 2 for stride in strides)  # type: ignore
 
         criterion = FCOSLoss(strides, num_classes)
         criterion.create_targets(target_bbox, target_cls, sizes)
@@ -283,7 +277,7 @@ class TestFCOSLoss:
         target_cls = torch.tensor([0, 0, 1, 0]).unsqueeze_(-1)
 
         num_classes = 2
-        strides = [8, 16, 32, 64, 128]
+        strides = (8, 16, 32, 64, 128)
         base_size = 512
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
@@ -338,7 +332,7 @@ class TestFCOSLoss:
 
         batch_size = target_bbox.shape[0]
         num_classes = 2
-        strides = [8, 16, 32, 64, 128]
+        strides = (8, 16, 32, 64, 128)
         base_size = 512
         sizes = [(base_size // stride,) * 2 for stride in strides]
 
@@ -372,7 +366,7 @@ class TestFCOSLoss:
 
     def blend_and_save(self, path, src, dest):
         src = apply_colormap(src)[..., :3, :, :]
-        src = torch.nn.functional.interpolate(src, dest.shape[-2:])
+        src = F.interpolate(src, dest.shape[-2:])
         _ = alpha_blend(src, dest)[0].squeeze_(0)
         self.save(path, _)
 
@@ -386,7 +380,7 @@ class TestFCOSLoss:
             pytest.param(20),
         ],
     )
-    def test_save_output(self, center_radius):
+    def test_save_output(self, center_radius, tmp_path):
         image_size = 512
         num_classes = 2
         target_bbox = torch.tensor(
@@ -401,8 +395,8 @@ class TestFCOSLoss:
         img = torch.zeros(1, image_size, image_size)
         target_cls = torch.tensor([1, 0, 1, 1, 0]).unsqueeze_(-1)
 
-        strides = [8, 16, 32, 64, 128]
-        sizes = [(image_size // stride,) * 2 for stride in strides]
+        strides = (8, 16, 32, 64, 128)
+        sizes: Tuple[Tuple[int, int]] = tuple((image_size // stride,) * 2 for stride in strides)  # type: ignore
 
         criterion = FCOSLoss(strides, num_classes, radius=center_radius)
         targets = criterion.create_targets(target_bbox, target_cls, sizes)
@@ -416,13 +410,11 @@ class TestFCOSLoss:
 
         img_with_box = visualize_bbox(img, target_bbox, target_cls)[None]
 
-        subpath = os.path.join(self.DEST, "fcos_targets")
-        if not os.path.exists(subpath):
-            os.makedirs(subpath)
+        subpath = Path(self.DEST, "fcos_targets") if self.DEST is not None else Path(tmp_path)
+        subpath.mkdir(exist_ok=True)
 
-        subpath = os.path.join(subpath, f"radius_{center_radius}")
-        if not os.path.exists(subpath):
-            os.makedirs(subpath)
+        subpath = Path(subpath, f"radius_{center_radius}")
+        subpath.mkdir(exist_ok=True)
 
         for level in range(len(strides)):
             image_path = os.path.join(subpath)
@@ -477,9 +469,9 @@ class TestFCOSLoss:
 
         target_bbox.shape[0]
         num_classes = 2
-        strides = [8, 16, 32, 64, 128]
+        strides = (8, 16, 32, 64, 128)
         base_size = 512
-        sizes = [(base_size // stride,) * 2 for stride in strides]
+        sizes: Tuple[Tuple[int, int], ...] = tuple((base_size // stride,) * 2 for stride in strides)  # type: ignore
 
         criterion = FCOSLoss(strides, num_classes, radius=1.5)
         pred_cls, pred_reg, pred_centerness = criterion.create_targets(target_bbox, target_cls, sizes)
@@ -487,6 +479,5 @@ class TestFCOSLoss:
         pred_centerness = [torch.logit(x.clamp_(min=0, max=1), 1e-4) for x in pred_centerness]
         pred_reg = [x.clamp_min(0) for x in pred_reg]
 
-        output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, strides, from_logits=True)
-
+        output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, list(strides), from_logits=True)
         criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -12,26 +12,25 @@ from torch.utils.checkpoint import checkpoint as checkpoint_fn
 
 from combustion.util import double, single, triple
 
-from ..activations import HardSwish
-
 
 class _BiFPNMeta(type):
-    def __new__(cls, name, bases, dct):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         if "3d" in name:
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
-            x.Tuple = staticmethod(triple)
+            x.ToTuple = staticmethod(triple)
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
-            x.Tuple = staticmethod(double)
+            x.ToTuple = staticmethod(double)
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
-            x.Tuple = staticmethod(single)
+            x.ToTuple = staticmethod(single)
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
+
         return x
 
 
@@ -67,7 +66,7 @@ class _BiFPN_Level(nn.Module):
         if previous_level is None and next_level is None:
             raise ValueError("previous_level and next_level cannot both be None")
 
-        target_shape = same_level.shape[2:]
+        target_shape = list(same_level.shape[2:])
 
         # input + higher level
         if next_level is not None:
@@ -108,6 +107,10 @@ class _BiFPN_Level(nn.Module):
 class _BiFPN(nn.Module):
     __constants__ = ["levels"]
 
+    Conv: nn.Module
+    BatchNorm: nn.Module
+    ToTuple: Callable[[Union[int, Tuple[int, ...]]], Tuple[int, ...]]
+
     def __init__(
         self,
         num_channels: int,
@@ -117,7 +120,7 @@ class _BiFPN(nn.Module):
         epsilon: float = 1e-4,
         bn_momentum: float = 0.001,
         bn_epsilon: float = 4e-5,
-        activation: nn.Module = HardSwish(),
+        activation: nn.Module = nn.Hardswish(),
         upsample_mode: str = "nearest",
         checkpoint: bool = False,
     ):
@@ -132,8 +135,8 @@ class _BiFPN(nn.Module):
         upsample_mode = str(upsample_mode)
 
         self.levels = levels
-        kernel_size = self.Tuple(kernel_size)
-        stride = self.Tuple(stride)
+        kernel_size = self.ToTuple(kernel_size)
+        stride = self.ToTuple(stride)
         padding = tuple([(kernel - 1) // 2 for kernel in kernel_size])
         self.checkpoint = bool(checkpoint)
 

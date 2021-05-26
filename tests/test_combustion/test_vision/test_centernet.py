@@ -150,9 +150,9 @@ def test_reversible_with_points_to_anchors(downsample):
     midpoint = to_points(bbox, classes, image_shape)
     output = to_anchors(midpoint)
 
-    out_bbox = output[..., :4]
-    out_cls = output[..., 6:7]
-    out_score = output[..., 5:6]
+    out_bbox: Tensor = output[..., :4]  # type: ignore
+    out_cls: Tensor = output[..., 6:7]  # type: ignore
+    out_score: Tensor = output[..., 5:6]  # type: ignore
     assert torch.allclose(out_bbox, bbox)
     assert torch.allclose(out_cls.type_as(classes), classes)
 
@@ -165,7 +165,7 @@ def test_points_to_anchors_max_roi(max_roi):
     heatmap = torch.rand(3, num_classes + 4, *image_shape)
 
     to_anchors = PointsToAnchors(2, max_roi=max_roi)
-    result = to_anchors(heatmap)
+    result: Tensor = to_anchors(heatmap)  # type: ignore
 
     if max_roi is not None:
         assert result.shape[-2] <= max_roi

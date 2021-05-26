@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
-from typing import Optional, Union
+from typing import Any, Callable, Optional, Tuple, Union
 
 import torch.nn as nn
 from torch import Tensor
@@ -11,32 +11,39 @@ from combustion.util import double, single, triple
 
 
 class _SEMeta(type):
-    def __new__(cls, name, bases, dct):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         if "3d" in name:
             x.Conv = nn.Conv3d
             x.BatchNorm = nn.BatchNorm3d
             x.AdaptiveAvgPool = nn.AdaptiveAvgPool3d
             x.AdaptiveMaxPool = nn.AdaptiveMaxPool3d
-            x.Tuple = staticmethod(triple)
+            x.ToTuple = staticmethod(triple)
         elif "2d" in name:
             x.Conv = nn.Conv2d
             x.BatchNorm = nn.BatchNorm2d
             x.AdaptiveAvgPool = nn.AdaptiveAvgPool2d
             x.AdaptiveMaxPool = nn.AdaptiveMaxPool2d
-            x.Tuple = staticmethod(double)
+            x.ToTuple = staticmethod(double)
         elif "1d" in name:
             x.Conv = nn.Conv1d
             x.BatchNorm = nn.BatchNorm1d
             x.AdaptiveAvgPool = nn.AdaptiveAvgPool1d
             x.AdaptiveMaxPool = nn.AdaptiveMaxPool1d
-            x.Tuple = staticmethod(single)
+            x.ToTuple = staticmethod(single)
         else:
             raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
         return x
 
 
 class _SqueezeExcite(nn.Module):
+    Conv: nn.Module
+    BatchNorm: nn.Module
+    SqueezeExcite: nn.Module
+    AdaptiveAvgPool: nn.Module
+    AdaptiveMaxPool: nn.Module
+    ToTuple: Callable[[Union[int, Tuple[int, ...]]], int]
+
     def __init__(
         self,
         in_channels: int,
@@ -95,7 +102,7 @@ class _SqueezeExcite(nn.Module):
         return x
 
     def _get_global_pool(self) -> nn.Module:
-        target_size = self.Tuple(1)
+        target_size = self.ToTuple(1)
         return self.pool_type(target_size)
 
 

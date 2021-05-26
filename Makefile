@@ -20,6 +20,7 @@ VERSION := $(shell cat version.txt)
 check: 
 	$(MAKE) style
 	$(MAKE) quality
+	$(MAKE) types
 	$(MAKE) test
 
 ci-test: $(VENV)/bin/activate-test
@@ -53,7 +54,10 @@ clean:
 clean-venv:
 	rm -rf $(VENV)
 
-package: $(VENV)/bin/activate
+node_modules:
+	npm install
+
+package: venv
 	rm -rf dist
 	$(PYTHON) -m pip install --upgrade setuptools wheel
 	export COMBUSTION_BUILD_VERSION=$(VERSION) && $(PYTHON) setup.py sdist bdist_wheel
@@ -95,14 +99,16 @@ test: $(VENV)/bin/activate-test
 		-rs \
 		--cov=./src \
 		--cov-report=xml \
-		-s -v \
 		./tests/
 
 test-%: $(VENV)/bin/activate-test
-	$(PYTHON) -m pytest -rs -k $* -s -v ./tests/ 
+	$(PYTHON) -m pytest -rs -k $* ./tests/ 
 
 test-pdb-%: $(VENV)/bin/activate-test
-	$(PYTHON) -m pytest -rs --pdb -k $* -s -v ./tests/ 
+	$(PYTHON) -m pytest -rs --pdb -k $* ./tests/ 
+
+types: $(VENV)/bin/activate-dev node_modules ## checks types with pyright
+	npx --no-install pyright -p pyrightconfig.json 
 
 upload: package
 	$(PYTHON) -m pip install --upgrade twine

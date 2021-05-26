@@ -10,6 +10,7 @@ from combustion.nn import MobileNetBlockConfig
 from combustion.testing import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 
+@pytest.mark.skip
 class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     @pytest.fixture
     def model_type(self):
@@ -83,6 +84,7 @@ class EfficientNetBaseTest(TorchScriptTestMixin, TorchScriptTraceTestMixin):
         del model
 
 
+@pytest.mark.skip
 class TestEfficientNet1d(EfficientNetBaseTest):
     @pytest.fixture
     def model_type(self):
@@ -94,6 +96,7 @@ class TestEfficientNet1d(EfficientNetBaseTest):
         return torch.rand(1, 3, 32, requires_grad=True)
 
 
+@pytest.mark.skip
 @pytest.mark.ci_skip
 class TestEfficientNet2d(EfficientNetBaseTest):
     @pytest.fixture
@@ -106,6 +109,7 @@ class TestEfficientNet2d(EfficientNetBaseTest):
         return torch.rand(1, 3, 32, 32, requires_grad=True)
 
 
+@pytest.mark.skip
 @pytest.mark.ci_skip
 class TestEfficientNet3d(EfficientNetBaseTest):
     @pytest.fixture

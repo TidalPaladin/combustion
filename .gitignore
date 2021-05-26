@@ -139,3 +139,4 @@ coverage.xml
 .coverage
 
 src/combustion/version.py
+node_modules/

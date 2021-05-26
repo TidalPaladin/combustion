@@ -3,9 +3,8 @@
 
 import torch
 from packaging import version
+from torch import Tensor
 
-from ..activations.hsigmoid import hard_sigmoid
-from ..activations.swish import hard_swish, swish
 from ..loss.ciou import complete_iou_loss
 from ..modules.dynamic_pad import patch_dynamic_same_pad
 from .clamp_normalize import clamp_normalize
@@ -17,7 +16,7 @@ if version.parse(torch.__version__) > version.parse("1.7.1"):
     from .fourier_conv import fourier_conv2d
 else:
 
-    def fourier_conv2d(*args, **kwargs):
+    def fourier_conv2d(*args, **kwargs) -> Tensor:  # type: ignore
         raise RuntimeError(f"fourier_conv2d requires torch>=1.8, but found {torch.__version__}")
 
 

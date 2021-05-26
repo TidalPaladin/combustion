@@ -113,7 +113,9 @@ def random_rotate(
     rots = torch.rand_like(highs)
     rots.mul_(highs - lows).add_(lows)
 
-    return rotate(coords, rots[0], rots[1], rots[2], degrees, return_matrix)
+    rx, ry, rz = float(rots[0].item()), float(rots[1].item()), float(rots[2].item())
+
+    return rotate(coords, rx, ry, rz, degrees, return_matrix)
 
 
 class RandomRotate(nn.Module):

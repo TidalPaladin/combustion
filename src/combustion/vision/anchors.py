@@ -84,15 +84,15 @@ class Anchors(nn.Module):
         levels: List[int],
         strides: Optional[List[int]] = None,
         sizes: Optional[List[int]] = None,
-        ratios: Optional[List[int]] = None,
-        scales: Optional[List[int]] = None,
+        ratios: Optional[List[float]] = None,
+        scales: Optional[List[float]] = None,
     ):
         super(Anchors, self).__init__()
         self.levels = levels
         self.strides = [2 ** x for x in self.levels] if strides is None else strides
         self.sizes = [2 ** (x + 2) for x in self.levels] if sizes is None else sizes
-        self.ratios = torch.tensor([0.5, 1, 2]) if ratios is None else ratios
-        self.scales = torch.tensor([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)]) if scales is None else scales
+        self.ratios = torch.tensor([0.5, 1, 2] if ratios is None else ratios)
+        self.scales = torch.tensor([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)] if scales is None else scales)
 
         # buffer for anchors based on last image shape
         self._buffered_anchors = None
@@ -107,6 +107,7 @@ class Anchors(nn.Module):
 
         # try restoring from buffer if image.shape == last_image.shape
         if self._buffered_shape is not None and image_shape == self._buffered_shape:
+            assert self._buffered_anchors is not None
             return self._buffered_anchors
 
         image_shape = np.array(image_shape)
@@ -130,7 +131,7 @@ class Anchors(nn.Module):
         self._buffered_shape = image.shape
         return all_anchors
 
-    def _generate_anchors(self, base_size: int, ratios: List[float], scales: List[float]) -> Tensor:
+    def _generate_anchors(self, base_size: int, ratios: Tensor, scales: Tensor) -> Tensor:
         anchors = torch.zeros(self.num_anchors, 4)
 
         # generate anchors of all scales, repeated for each ratio
@@ -143,10 +144,10 @@ class Anchors(nn.Module):
 
         return anchors
 
-    def _shift(self, shape: Tensor, stride: Tensor, anchors: Tensor) -> Tensor:
+    def _shift(self, shape: Tensor, stride: int, anchors: Tensor) -> Tensor:
         # generate possible displacements
-        shift_x = torch.arange(0, shape[1]).type_as(anchors).mul_(stride)
-        shift_y = torch.arange(0, shape[0]).type_as(anchors).mul_(stride)
+        shift_x = torch.arange(0, shape[1].item()).type_as(anchors).mul_(stride)
+        shift_y = torch.arange(0, shape[0].item()).type_as(anchors).mul_(stride)
         shift_x, shift_y = torch.meshgrid(shift_x, shift_y)
         shifts = torch.stack([t.reshape(-1) for t in (shift_x, shift_y) * 2], 0).T
         del shift_x, shift_y

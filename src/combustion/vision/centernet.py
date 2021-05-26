@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import typing
 from typing import Iterable, List, Optional, Tuple, Union
 
 import torch
@@ -16,7 +17,7 @@ try:
     from kornia.feature import non_maxima_suppression2d
 except ImportError:
 
-    def non_maxima_suppression2d(*args, **kwargs):
+    def non_maxima_suppression2d(*args, **kwargs) -> None:
         raise ImportError(
             "PointsToAnchors requires kornia. "
             "Please install combustion with 'vision' extras using "
@@ -64,8 +65,8 @@ class AnchorsToPoints:
         self,
         num_classes: int,
         downsample: int,
-        iou_threshold: Optional[float] = 0.7,
-        radius_div: Optional[float] = 3,
+        iou_threshold: float = 0.7,
+        radius_div: float = 3,
         min_sigma: float = 1e-6,
     ):
         self.num_classes = abs(int(num_classes))
@@ -265,11 +266,13 @@ class PointsToAnchors:
         classes.shape[-3]
 
         # identify maxima as points greater than their 8 neighbors
-        classes = non_maxima_suppression2d(classes.unsqueeze(0), kernel_size=(3,) * 2).squeeze(0)
+        classes: Tensor = non_maxima_suppression2d(classes.unsqueeze(0), kernel_size=(3,) * 2)  # type: ignore
+        classes = classes.squeeze_(0)
 
         # extract class / center x / center y indices of top k scores over heatmap
         if self.max_roi is not None:
-            topk = min(self.max_roi, classes.numel())
+            max_roi = typing.cast(int, self.max_roi)
+            topk = min(max_roi, classes.numel())
             nms_scores, nms_idx = classes.view(-1).topk(topk, dim=-1)
         else:
             nms_scores, nms_idx = classes.view(-1).sort(dim=-1, descending=True)
@@ -282,6 +285,8 @@ class PointsToAnchors:
             final_indices = torch.zeros_like(classes.view(-1), dtype=torch.bool)
             final_indices[nms_idx] = True
             final_indices = final_indices.view_as(classes).nonzero(as_tuple=False)
+        else:
+            final_indices = None
 
         # % / width
         center_x = (nms_idx % (height * width) % width).unsqueeze(-1)
@@ -308,11 +313,12 @@ class PointsToAnchors:
         output = torch.cat([x1, y1, x2, y2, nms_scores.unsqueeze(-1), cls.float()], dim=-1)
         # output = output[nms_scores > self.threshold]
         if return_indices:
+            assert final_indices is not None
             return output, final_indices
         else:
             return output
 
-    def _batched_recurse(self, points: Tensor, return_indices: bool) -> Tensor:
+    def _batched_recurse(self, points: Tensor, return_indices: bool) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         assert points.ndim > 3
         batch_size = points.shape[0]
 
@@ -339,6 +345,7 @@ class PointsToAnchors:
             output[i, :num_roi, :] = result
 
         if return_indices:
+            assert indices is not None
             output_indices = torch.empty(batch_size, max_roi, 4, device=output.device).fill_(-1).long()
             for i, (src, dest) in enumerate(zip(indices, output_indices)):
                 # add batch index
@@ -346,8 +353,8 @@ class PointsToAnchors:
                 src = torch.cat([batch_idx, src], dim=-1)
                 dest[: src.shape[-2], :] = src.type_as(dest)
 
-        if return_indices:
             return output, output_indices
+
         return output
 
 

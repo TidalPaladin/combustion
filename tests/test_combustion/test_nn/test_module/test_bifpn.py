@@ -82,7 +82,7 @@ class BiFPNBaseTest:
         for x in output:
             assert x.requires_grad
 
-        scalar = sum([x.sum() for x in output])
+        scalar: Tensor = sum([x.sum() for x in output])  # type: ignore
         scalar.backward()
 
     @pytest.mark.parametrize("training", [True, False])

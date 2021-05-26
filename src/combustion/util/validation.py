@@ -256,8 +256,8 @@ def check_dimension_match(x: Array, y: Array, dim: int, x_name: str, y_name: str
 
 
 @torch.jit.ignore
-def check_names(x: Array, names: Union[List[str], Tuple[str, ...]], var_name) -> None:
-    assert isinstance(x, (Tensor, np.ndarray))
+def check_names(x: Tensor, names: Union[List[str], Tuple[str, ...]], var_name) -> None:
+    assert isinstance(x, Tensor)
     assert isinstance(names, (list, tuple))
     assert isinstance(var_name, str)
 
@@ -268,9 +268,9 @@ def check_names(x: Array, names: Union[List[str], Tuple[str, ...]], var_name) ->
 
 
 @torch.jit.ignore
-def check_names_match(x: Array, y: Array, x_name: str, y_name: str):
-    assert isinstance(x, (Tensor, np.ndarray))
-    assert isinstance(y, (Tensor, np.ndarray))
+def check_names_match(x: Tensor, y: Tensor, x_name: str, y_name: str):
+    assert isinstance(x, Tensor)
+    assert isinstance(y, Tensor)
     assert isinstance(x_name, str)
     assert isinstance(y_name, str)
 

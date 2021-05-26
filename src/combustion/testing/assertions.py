@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Iterable
+from typing import Iterable, Union
 
 import torch
 import torch.nn as nn
@@ -9,7 +9,7 @@ from torch import Tensor
 from torch.testing import assert_allclose
 
 
-def assert_has_gradient(module: nn.Module, recurse: bool = True):
+def assert_has_gradient(module: Union[nn.Module, Tensor], recurse: bool = True):
     r"""Asserts that the parameters in a module have ``requires_grad=True`` and
     that the gradient exists.
 

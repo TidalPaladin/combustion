@@ -13,16 +13,19 @@ from pytorch_lightning.callbacks import Callback
 from torch import Tensor
 from torchvision.utils import make_grid
 
+from combustion.nn.functional import clamp_normalize
 from combustion.util import alpha_blend, apply_colormap
 from combustion.vision import to_8bit, visualize_bbox
 
 from .base import AttributeCallback, mkdir, resolve_dir
 
 
-Colormap = Union[str, List[Optional[str]]]
+Colormap = str
+ColormapSequence = List[Optional[Colormap]]
+
 LogFunction = Callable[[Dict[str, Tensor], pl.Trainer, pl.LightningModule, int, Optional[int], AttributeCallback], None]
 ChannelSplits = Union[int, List[int]]
-KeypointFunction = Callable[[Tensor, Tensor], Tensor]
+KeypointFunction = Callable[[Tensor, Dict[str, Any]], Tensor]
 
 
 def tensorboard_log(
@@ -39,6 +42,15 @@ def tensorboard_log(
             experiment.add_images(name, img, step)
         else:
             experiment.add_image(name, img, step)
+
+
+def prepare_image(img: Tensor) -> Tensor:
+    needs_renorm = (img.is_floating_point() and (img.max() > 1 or img.min() < 0)) or (
+        not img.is_floating_point() and img.dtype != torch.uint8
+    )
+    if needs_renorm:
+        img = clamp_normalize(img)
+    return img
 
 
 class ImageSave:
@@ -93,7 +105,7 @@ class ImageSave:
         pl_module: pl.LightningModule,
         step: int,
         batch_idx: Optional[int],
-        caller: Callback,
+        caller: AttributeCallback,
     ) -> None:
         if self.path is None:
             self.path = Path(resolve_dir(trainer, self._path, "saved_images"))
@@ -108,11 +120,16 @@ class ImageSave:
                 self.save_image(img, dest, self.quality)
 
 
-def bbox_overlay(img: Tensor, keypoint_dict: Dict[str, Tensor], **kwargs) -> Tensor:
+def bbox_overlay(img: Tensor, keypoint_dict: Dict[str, Any], **kwargs) -> Tensor:
     coords = keypoint_dict["coords"]
     cls = keypoint_dict.get("class", None)
     score = keypoint_dict.get("score", None)
     names = keypoint_dict.get("names", None)
+
+    assert coords is None or isinstance(coords, Tensor)
+    assert cls is None or isinstance(cls, Tensor)
+    assert score is None or isinstance(score, Tensor)
+    assert names is None or isinstance(names, Dict)
 
     result = visualize_bbox(img, coords, cls, score, names, thickness=1, **kwargs)
     return result
@@ -222,7 +239,7 @@ class VisualizeCallback(AttributeCallback):
         )
 
         self.name = name
-        self.max_resolution = tuple(int(x) for x in max_resolution) if max_resolution is not None else None
+        self.max_resolution = max_resolution
         self.split_channels = split_channels
         self.split_batches = bool(split_batches)
         self.resize_mode = str(resize_mode)
@@ -269,19 +286,26 @@ class VisualizeCallback(AttributeCallback):
     def _process_image(
         self,
         img: Tensor,
-        colormap: Optional[Union[str, List[str]]],
+        colormap: Optional[Union[Colormap, ColormapSequence]],
         split_channels: Optional[ChannelSplits],
         name: Union[str, List[str]],
         max_resolution: Optional[Tuple[int, int]],
         as_uint8: bool = True,
-    ) -> Tensor:
+    ) -> Dict[str, Tensor]:
+        img = prepare_image(img)
+
         # split channels
+        images: Dict[str, Tensor]
         if split_channels is not None:
-            images = torch.split(img, split_channels, dim=1)
-            assert isinstance(name, list)
-            assert len(name) == len(images)
-            images = {n: x for n, x in zip(name, images)}
+            _images = torch.split(img, split_channels, dim=1)
+            if isinstance(name, str):
+                _name = [f"{name}_{i}" for i in range(len(_images))]
+            else:
+                _name = name
+            assert len(_name) == len(_images)
+            images = {n: x for n, x in zip(_name, _images)}
         else:
+            assert isinstance(name, str)
             images = {name: img}
 
         # apply resolution limit
@@ -289,13 +313,16 @@ class VisualizeCallback(AttributeCallback):
             images = {k: self._apply_log_resolution(v, max_resolution, self.resize_mode) for k, v in images.items()}
 
         # apply colormap
-        if colormap is not None:
-            if isinstance(colormap, str):
-                colormap = [colormap] * len(images)
-            assert len(colormap) == len(images)
+        colormap_seq: Optional[ColormapSequence] = None
+        if isinstance(colormap, str):
+            colormap_seq = [colormap] * len(images)  # type: ignore
+        elif colormap is not None:
+            colormap_seq = colormap
+        if colormap_seq is not None:
+            assert len(colormap_seq) == len(images)
             images = {
                 k: self.apply_colormap(v, cmap) if cmap is not None else v
-                for cmap, (k, v) in zip(colormap, images.items())
+                for cmap, (k, v) in zip(colormap_seq, images.items())
             }
 
         # convert to byte
@@ -366,6 +393,9 @@ class VisualizeCallback(AttributeCallback):
             src = src[None]
         elif dest.ndim > 4:
             src = src.view(-1, *src.shape[-3:])
+
+        src = clamp_normalize(src, inplace=True)
+        dest = clamp_normalize(dest, inplace=True)
 
         B1, C1, H1, W1 = dest.shape
         B2, C2, H2, W2 = src.shape
@@ -503,10 +533,7 @@ class KeypointVisualizeCallback(VisualizeCallback):
             as_uint8,
             per_img_norm,
         )
-        if overlay_keypoints is not None:
-            self.overlay_keypoints = overlay_keypoints
-        else:
-            self.overlay_keypoints = KeypointVisualizeCallback.bbox_overlay
+        self.overlay_keypoints = overlay_keypoints
 
     def callback_fn(
         self,
@@ -546,12 +573,13 @@ class KeypointVisualizeCallback(VisualizeCallback):
         self,
         img: Tensor,
         keypoint_dict: Dict[str, Tensor],
-        colormap: Optional[Union[str, List[str]]],
+        colormap: Optional[Union[Colormap, ColormapSequence]],
         split_channels: Optional[ChannelSplits],
         name: Union[str, List[str]],
         max_resolution: Optional[Tuple[int, int]],
         as_uint8: bool = True,
-    ) -> Tensor:
+    ) -> Dict[str, Tensor]:
+        img = prepare_image(img)
 
         B, C, H, W = img.shape
         images = super()._process_image(img, colormap, split_channels, name, max_resolution, False)
@@ -679,32 +707,52 @@ class BlendVisualizeCallback(VisualizeCallback):
         per_img_norm: Optional[bool] = None,
         alpha: Tuple[float, float] = (1.0, 0.5),
     ):
-        if isinstance(split_channels, int) or (isinstance(split_channels, Iterable) and len(split_channels) != 2):
-            split_channels = (split_channels, None)
-        if isinstance(colormap, str) or (isinstance(colormap, Iterable) and len(colormap) != 2):
-            colormap = (colormap, None)
+        _split_channels: Tuple[Optional[ChannelSplits], Optional[ChannelSplits]]
+        if isinstance(split_channels, int):
+            _split_channels = (split_channels, None)
+        elif isinstance(split_channels, List):
+            _split_channels = (split_channels, None)
+        else:
+            _split_channels = split_channels
+
+        _colormap = Tuple[Optional[Colormap], Optional[Colormap]]
+        if isinstance(colormap, str):
+            _colormap = (colormap, None)
+        elif isinstance(colormap, Iterable) and len(colormap) != 2:
+            _colormap = (colormap, None)
+        else:
+            _colormap = colormap
+
+        if not isinstance(name, str):
+            _name = name[0]
+        else:
+            _name = name
 
         super().__init__(
-            name,
+            _name,
             triggers,
             hook,
             attr_name,
             epoch_counter,
             max_resolution,
             max_calls,
-            split_channels[0],
+            None,
             split_batches,
             interval,
             resize_mode,
-            colormap[0],
+            None,
             ignore_errors,
             log_fn,
             as_uint8,
             per_img_norm,
         )
-        self.split_channels = tuple(split_channels)
-        self.colormap = tuple(colormap)
+        self.name = name
         self.alpha = alpha
+        self.colormap = _colormap
+        self.split_channels = _split_channels
+        assert isinstance(self.split_channels, tuple)
+        assert len(self.split_channels) == 2
+        # assert len(self.split_channels[0])
 
     def callback_fn(
         self,
@@ -725,7 +773,7 @@ class BlendVisualizeCallback(VisualizeCallback):
         dest, src = attr
         if isinstance(dest, Tensor) and isinstance(src, Tensor):
             images = self._process_image(
-                dest, src, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8
+                dest, src, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8  # type: ignore
             )
             self._log(_mode, images, trainer, pl_module, step, batch_idx)
         elif not self.ignore_errors:
@@ -742,7 +790,9 @@ class BlendVisualizeCallback(VisualizeCallback):
         name: Union[str, List[str]],
         max_resolution: Optional[Tuple[int, int]],
         as_uint8: bool = True,
-    ) -> Tensor:
+    ) -> Dict[str, Tensor]:
+        dest = prepare_image(dest)
+        src = prepare_image(src)
 
         B, C, H, W = dest.shape
         if any(split_channels):
@@ -763,8 +813,8 @@ class BlendVisualizeCallback(VisualizeCallback):
             else:
                 raise ValueError(
                     f"Unable to broadcast processed images:\n"
-                    f"Destination dict:\n {k: v.shape for k, v in images_dest.items()}\n\n"
-                    f"Source dict:\n {k: v.shape for k, v in images_src.items()}"
+                    f"Destination dict:\n {{k: v.shape for k, v in images_dest.items()}}\n\n"
+                    f"Source dict:\n {{k: v.shape for k, v in images_src.items()}}"
                 )
 
         dest_alpha, src_alpha = self.alpha

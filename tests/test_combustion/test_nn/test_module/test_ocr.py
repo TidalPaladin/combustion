@@ -40,10 +40,10 @@ class TestOCR(TorchScriptTestMixin):
     def model(self):
         return OCR(5, 10, 3)
 
-    def test_construct(self, downsample, in_channels, num_classes, key_channels):
+    def test_construct(self, in_channels, num_classes, key_channels):
         OCR(in_channels, key_channels, num_classes)
 
-    def test_forward(self, downsample, num_classes, in_channels, key_channels, pixels, regions):
+    def test_forward(self, num_classes, in_channels, key_channels, pixels, regions):
         l = OCR(in_channels, key_channels, num_classes)
         output = l(pixels, regions)
         assert isinstance(output, Tensor)
@@ -51,7 +51,7 @@ class TestOCR(TorchScriptTestMixin):
         assert output.shape[1] == num_classes
         assert output.shape[2:] == pixels.shape[2:]
 
-    def test_backward(self, downsample, num_classes, in_channels, key_channels, pixels, regions):
+    def test_backward(self, num_classes, in_channels, key_channels, pixels, regions):
         pixels.requires_grad = True
         regions.requires_grad = True
         l = OCR(in_channels, key_channels, num_classes)

@@ -3,7 +3,7 @@
 
 import math
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -14,7 +14,7 @@ from combustion.util import double, single, triple
 
 
 class _EfficientNetMeta(type):
-    def __new__(cls, name, bases, dct):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         if "3d" in name:
             x.Conv = nn.Conv3d
@@ -40,6 +40,12 @@ class _EfficientNetMeta(type):
 
 
 class _EfficientNet(nn.Module):
+
+    Conv: nn.Module
+    BatchNorm: nn.Module
+    _get_blocks: Callable
+    ToTuple: Callable[[Union[int, Tuple[int, ...]]], Tuple[int, ...]]
+
     DEFAULT_BLOCKS = [
         MobileNetBlockConfig(
             kernel_size=3,
@@ -368,10 +374,10 @@ class _EfficientNet(nn.Module):
         if compound_coeff is not None:
             x = int(compound_coeff)
         elif hasattr(self, "compound_coeff"):
-            x = int(self.compound_coeff)
+            x = int(getattr(self, "compound_coeff", 1))
         else:
             raise ValueError("compound_coeff must be provided when model was not created via from_predefined()")
-        return self.__class__.Tuple(512 + 128 * x)
+        return self.__class__.ToTuple(512 + 128 * x)
 
 
 class EfficientNet1d(_EfficientNet, metaclass=_EfficientNetMeta):

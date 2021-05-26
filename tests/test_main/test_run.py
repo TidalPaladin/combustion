@@ -76,8 +76,7 @@ def test_skip_loading_train_dataset(mocker):
     m.assert_called_once()
 
 
-@pytest.mark.ci_skip
-def test_preprocess_train(mocker, tmp_path):
+def test_preprocess_train(tmp_path):
     pytest.importorskip("torchvision")
     size = 100
     sys.argv = [
@@ -95,9 +94,6 @@ def test_preprocess_train(mocker, tmp_path):
 @pytest.mark.ci_skip
 @pytest.mark.filterwarnings("ignore: .*To copy construct from a tensor, it is recommended to use.*")
 def test_load_checkpoint(tmp_path):
-    callback = pl.callbacks.ModelCheckpoint(dirpath=tmp_path, filename="{epoch}", mode="min")
-    trainer = pl.Trainer(default_root_dir=tmp_path, callbacks=[callback], max_epochs=1)
-
     sys.argv = [
         sys.argv[0],
         "trainer=test",
