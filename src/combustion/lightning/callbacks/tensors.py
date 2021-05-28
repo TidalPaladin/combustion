@@ -155,3 +155,11 @@ class SaveTensors(AttributeCallback):
         """When pretrain routine starts we build the dest dir on the fly"""
         path = resolve_dir(trainer, self.path, "saved_tensors")
         self.path = Path(path)
+
+    def on_test_start(self, trainer, pl_module):
+        """When pretrain routine starts we build the dest dir on the fly"""
+        self.on_pretrain_routine_start(trainer, pl_module)
+
+    def on_predict_start(self, trainer, pl_module):
+        """When pretrain routine starts we build the dest dir on the fly"""
+        self.on_pretrain_routine_start(trainer, pl_module)

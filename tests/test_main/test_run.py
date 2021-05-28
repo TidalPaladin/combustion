@@ -56,7 +56,7 @@ def test_skip_train(mocker):
         "trainer.test_only=True",
     ]
     runpy.run_module("examples.basic", run_name="__main__", alter_sys=True)
-    fit.assert_called()
+    fit.assert_not_called()
     test.assert_called_once()
 
 

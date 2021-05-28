@@ -327,7 +327,7 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
                 # TODO this still needs some work
                 model = model.__class__.load_from_checkpoint(load_from_checkpoint)
                 model.hparams
-                model.hparams = cfg
+                model.hparams.update(cfg)
 
         # run auto learning rate find if requested
         lr_find = cfg.trainer.params.get("auto_lr_find", False)
