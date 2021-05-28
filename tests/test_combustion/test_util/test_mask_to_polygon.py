@@ -88,18 +88,21 @@ def case():
     return {"mask": mask, "boxes": boxes, "polygons": polygons, "instances": instances}
 
 
+@pytest.mark.ci_skip
 def test_mask_to_instances(case):
     instances = mask_to_instances(case["mask"])
     true_instances = case["instances"]
     assert torch.allclose(instances, true_instances)
 
 
+@pytest.mark.ci_skip
 def test_mask_to_box(case):
     boxes = mask_to_box(case["mask"])
     true_boxes = case["boxes"]
     assert torch.allclose(boxes, true_boxes)
 
 
+@pytest.mark.ci_skip
 def test_mask_to_polygon(case):
     polygons = mask_to_polygon(case["mask"])
     true_polygons = case["polygons"]
