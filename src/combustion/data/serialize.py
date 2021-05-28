@@ -90,7 +90,7 @@ def save_hdf5(
         files.add(f)
     else:
         if not verbose:
-            bar = bar(f"Saving dataset", max=len(dataset))
+            bar = bar("Saving dataset", max=len(dataset))
         else:
             bar = None
 
@@ -488,7 +488,7 @@ def _write_shard(path, source, shard_size, shard_index=None, verbose=True):
         path, ext = os.path.splitext(path)
         path = path + f"_{shard_index}" + ext
 
-    bar = tqdm(enumerate(source), desc=f"Saving dataset", disable=(not verbose))
+    bar = tqdm(enumerate(source), desc="Saving dataset", disable=(not verbose))
     with h5py.File(path, "w") as f:
         for example_index, example in bar:
             example = (example,) if isinstance(example, Tensor) else example

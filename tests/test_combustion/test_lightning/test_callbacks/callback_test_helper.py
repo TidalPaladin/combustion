@@ -32,7 +32,7 @@ class BaseAttributeCallbackTest:
 
     @pytest.fixture
     def attr(self):
-        raise NotImplementedError(f"attr fixture")
+        raise NotImplementedError("attr fixture")
 
     @pytest.fixture
     def trainer(self, mocker, tmp_path):

@@ -164,7 +164,8 @@ class MatplotlibCallback(AttributeCallback):
                 The second string will be one of ``"train"``, ``"val"``, or ``"test"``.
 
             attr (any):
-                The value attribute assigned to the LightningModule, retrieved with ``getattr(pl_module, self.attr_name)``.
+                The value attribute assigned to the LightningModule, retrieved with
+                ``getattr(pl_module, self.attr_name)``.
 
             trainer (:class:`pytorch_lightning.Trainer`)
                 Pytorch Lightning trainer instance
