@@ -95,7 +95,7 @@ def install(version):
             "pynvml",
         ],
         extras_require=extras,
-        python_requires=">=3.7.0",
+        python_requires=">=3.8.0",
         classifiers=[
             "Intended Audience :: Developers",
             "Intended Audience :: Education",

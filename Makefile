@@ -53,7 +53,7 @@ clean:
 clean-venv:
 	rm -rf $(VENV)
 
-package: venv
+package: $(VENV)/bin/activate
 	rm -rf dist
 	$(PYTHON) -m pip install --upgrade setuptools wheel
 	export COMBUSTION_BUILD_VERSION=$(VERSION) && $(PYTHON) setup.py sdist bdist_wheel
@@ -106,11 +106,12 @@ test-pdb-%: $(VENV)/bin/activate-test
 
 upload: package
 	$(PYTHON) -m pip install --upgrade twine
-	$(PYTHON) -m twine upload --repository pypi dist/*
+	$(PYTHON) -m twine upload --repository combustion dist/*
 
 upload-test: package
 	$(PYTHON) -m pip install --upgrade twine
 	$(PYTHON) -m twine upload --repository testpypi dist/*
+
 
 venv: $(VENV)/bin/activate
 
