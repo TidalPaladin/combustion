@@ -134,6 +134,7 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         _ = alpha_blend(src, dest)[0].squeeze_(0)
         self.save(path, _)
 
+    @pytest.mark.ci_skip
     def test_save_output(self, model_type):
         torch.random.manual_seed(42)
         image_size = 512
@@ -176,6 +177,7 @@ class TestFCOSDecoder(TorchScriptTestMixin):
             filename = os.path.join(subpath, f"created_targets_{i}.png")
             self.save(filename, item)
 
+    @pytest.mark.ci_skip
     def test_nms(self, model_type):
         torch.random.manual_seed(42)
         image_size = 512

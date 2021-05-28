@@ -376,6 +376,7 @@ class TestFCOSLoss:
         _ = alpha_blend(src, dest)[0].squeeze_(0)
         self.save(path, _)
 
+    @pytest.mark.ci_skip
     @pytest.mark.parametrize(
         "center_radius",
         [
