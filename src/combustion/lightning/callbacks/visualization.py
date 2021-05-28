@@ -773,7 +773,13 @@ class BlendVisualizeCallback(VisualizeCallback):
         dest, src = attr
         if isinstance(dest, Tensor) and isinstance(src, Tensor):
             images = self._process_image(
-                dest, src, self.colormap, self.split_channels, self.name, self.max_resolution, self.as_uint8  # type: ignore
+                dest,
+                src,
+                self.colormap,  # type: ignore
+                self.split_channels,
+                self.name,
+                self.max_resolution,
+                self.as_uint8,
             )
             self._log(_mode, images, trainer, pl_module, step, batch_idx)
         elif not self.ignore_errors:
@@ -812,7 +818,7 @@ class BlendVisualizeCallback(VisualizeCallback):
                 images_src = {k: val for k in images_dest.keys()}
             else:
                 raise ValueError(
-                    f"Unable to broadcast processed images:\n"
+                    "Unable to broadcast processed images:\n"  # noqa
                     f"Destination dict:\n {{k: v.shape for k, v in images_dest.items()}}\n\n"
                     f"Source dict:\n {{k: v.shape for k, v in images_src.items()}}"
                 )

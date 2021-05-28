@@ -221,4 +221,4 @@ class TorchDataset(SerializeMixin):
             return len(self.files)
 
 
-__all__ = ["save_torch", "SerializeMixin", "TorchDataset", "TransformableDataset"]
+__all__ = ["save_torch", "SerializeMixin", "TorchDataset"]
