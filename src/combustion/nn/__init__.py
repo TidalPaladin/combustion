@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .activations import HardSigmoid, HardSwish, Swish
 from .loss import (
     CategoricalFocalLoss,
     CenterNetLoss,
@@ -22,19 +21,7 @@ from .modules import (
     BiFPN1d,
     BiFPN2d,
     BiFPN3d,
-    Bottleneck1d,
-    Bottleneck2d,
-    Bottleneck3d,
-    BottleneckFactorized2d,
-    BottleneckFactorized3d,
     ClampAndNormalize,
-    Conv1d,
-    Conv2d,
-    Conv3d,
-    ConvTranspose1d,
-    ConvTranspose2d,
-    ConvTranspose3d,
-    DownSample3d,
     DropConnect,
     DynamicSamePad,
     FCOSDecoder,
@@ -53,8 +40,6 @@ from .modules import (
     SqueezeExcite2d,
     SqueezeExcite3d,
     Standardize,
-    UpSample2d,
-    UpSample3d,
 )
 
 

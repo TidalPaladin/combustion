@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Optional
+from typing import List, Optional
 
 import torch
 from torch import Tensor

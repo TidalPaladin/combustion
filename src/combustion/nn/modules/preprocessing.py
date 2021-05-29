@@ -28,7 +28,7 @@ class Standardize(nn.Module):
         - Output: Same shape as input.
     """
 
-    def __init__(self, dims: Union[int, Tuple[int]], epsilon: float = 1e-9, unbiased: bool = True):
+    def __init__(self, dims: Union[int, Tuple[int, ...]], epsilon: float = 1e-9, unbiased: bool = True):
         super(Standardize, self).__init__()
         if isinstance(dims, int):
             dims = (dims,)

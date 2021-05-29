@@ -16,7 +16,7 @@ class AttentionUpsampleBaseTest(TorchScriptTestMixin):
         raise NotImplementedError()
 
     @pytest.fixture
-    def data(self, request, levels, num_classes):
+    def data(self):
         raise NotImplementedError()
 
     @pytest.fixture
@@ -65,13 +65,13 @@ class AttentionUpsampleBaseTest(TorchScriptTestMixin):
         layer = model
         output = layer(low, high)
 
-        scalar = sum([x.sum() for x in output])
+        scalar: Tensor = sum([x.sum() for x in output])  # type: ignore
         scalar.backward()
 
 
 class TestAttentionUpsample2d(AttentionUpsampleBaseTest):
     @pytest.fixture
-    def model_class(self, request):
+    def model_class(self):
         return AttentionUpsample2d
 
     @pytest.fixture(params=["same_shape", "different_shape"])
@@ -91,7 +91,7 @@ class TestAttentionUpsample2d(AttentionUpsampleBaseTest):
 
 class TestAttentionUpsample3d(AttentionUpsampleBaseTest):
     @pytest.fixture
-    def model_class(self, request):
+    def model_class(self):
         return AttentionUpsample3d
 
     @pytest.fixture(params=["same_shape", "different_shape"])
@@ -111,7 +111,7 @@ class TestAttentionUpsample3d(AttentionUpsampleBaseTest):
 
 class TestAttentionUpsample1d(AttentionUpsampleBaseTest):
     @pytest.fixture
-    def model_class(self, request):
+    def model_class(self):
         return AttentionUpsample1d
 
     @pytest.fixture(params=["same_shape", "different_shape"])

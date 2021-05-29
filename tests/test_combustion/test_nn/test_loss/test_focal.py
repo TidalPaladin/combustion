@@ -86,7 +86,7 @@ class TestFunctionalFocalLoss:
         y = torch.rand(10, 10).round()
         if not has_positive:
             y = torch.zeros_like(y)
-        num_positive_examples = (y == 1.0).sum()
+        num_positive_examples = (y == 1.0).sum().item()
 
         expected = fn(x, y, 2.0, reduction="none") / max(num_positive_examples, 1)
         norm_loss = fn(x, y, 2.0, reduction="none", normalize=True)
@@ -213,7 +213,7 @@ class TestFocalLoss:
         y = torch.rand(10, 10).round()
         if not has_positive:
             y = torch.zeros_like(y)
-        num_positive_examples = (y == 1.0).sum()
+        num_positive_examples = (y == 1.0).sum().item()
 
         expected = cls(2.0, reduction="none")(x, y) / max(num_positive_examples, 1)
         norm_loss = cls(2.0, reduction="none", normalize=True)(x, y)

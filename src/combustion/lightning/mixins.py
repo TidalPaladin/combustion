@@ -96,6 +96,7 @@ class HydraMixin(ModelIO):
         """
         # instantiate the actual model
         model = HydraMixin.instantiate(hparams.model)
+        assert hasattr(model, "hparams")
 
         # create a wrapper class so that loading from checkpoint
         # can accept a hydra config rather than model level hparams
@@ -109,17 +110,14 @@ class HydraMixin(ModelIO):
                     )
 
                 # check that save_hyperparameters was called
-                has_params = bool(signature(model).parameters)
-                if not hasattr(model, "hparams") or (has_params and not model.hparams):
-                    import pdb
-
-                    pdb.set_trace()
+                has_params = bool(signature(model).parameters)  # type: ignore
+                if not hasattr(model, "hparams") or (has_params and not model.hparams):  # type: ignore
                     raise InstantiationException(
                         "Please call self.save_hyperparameters() in your model's __init__ method"
                     )
 
                 # construct the wrapped model by reading instantiated hyperparams
-                super().__init__(**model.hparams)
+                super().__init__(**model.hparams)  # type: ignore
                 self.__class__.__name__ = f"ModelWrapper<{model.__class__.__name__}>"
 
                 # replace hparams property with hydra dictconfig
@@ -134,16 +132,17 @@ class HydraMixin(ModelIO):
         #
         # to handle this, we replace test/val dataloader methods if test/val step methods
         # arent overridden
+        assert issubclass(cls, pl.LightningModule)
         if cls.validation_step == pl.LightningModule.validation_step:
-            cls.val_dataloader = pl.LightningModule.val_dataloader
+            cls.val_dataloader = pl.LightningModule.val_dataloader  # type: ignore
         else:
-            cls.val_dataloader = HydraMixin.val_dataloader
+            cls.val_dataloader = HydraMixin.val_dataloader  # type: ignore
         if cls.test_step == pl.LightningModule.test_step:
-            cls.test_dataloader = pl.LightningModule.test_dataloader
+            cls.test_dataloader = pl.LightningModule.test_dataloader  # type: ignore
         else:
-            cls.test_dataloader = HydraMixin.test_dataloader
+            cls.test_dataloader = HydraMixin.test_dataloader  # type: ignore
 
-        x = super(HydraMixin, cls).__new__(cls)
+        x = super(HydraMixin, cls).__new__(cls)  # type: ignore
         return x
 
     def get_lr(self, pos: int = 0, param_group: int = 0) -> float:
@@ -160,6 +159,7 @@ class HydraMixin(ModelIO):
                 optimizer for the entire model this can be omitted.
 
         """
+        assert isinstance(self, pl.LightningModule)
         if not self.trainer.lr_schedulers:
             return self.trainer.optimizer.state_dict()["param_groups"][param_group]["lr"]
         else:
@@ -197,8 +197,8 @@ class HydraMixin(ModelIO):
                 final_div_factor: 10000.0
                 anneal_strategy: cos
         """
-        scheduler = self.hparams.get("schedule", None)
-        optim = self.hparams.get("optimizer")
+        scheduler = self.hparams.get("schedule", None)  # type: ignore
+        optim = self.hparams.get("optimizer")  # type: ignore
         # multiple optimizers
         if isinstance(optim, ListConfig):
             num_optims = len(optim)
@@ -234,7 +234,7 @@ class HydraMixin(ModelIO):
 
         # single optimizer
         else:
-            return self._configure_optimizers(optim, self.parameters(), scheduler)
+            return self._configure_optimizers(optim, self.parameters(), scheduler)  # type: ignore
 
     def get_optimizer_parameters(self, optim_idx: int) -> Generator[nn.Parameter, None, None]:
         r"""Abstract method that must be implemented when using multiple optimizers. With multiple
@@ -258,7 +258,7 @@ class HydraMixin(ModelIO):
             raise NotImplementedError(
                 "HydraMixin modules using multiple optimizers must implement `get_optimizer_parameters`."
             )
-        return self.parameters()
+        return self.parameters()  # type: ignore
 
     def _configure_optimizers(
         self,
@@ -280,17 +280,19 @@ class HydraMixin(ModelIO):
             if "monitor" not in schedule_config.keys():
                 warnings.warn("'monitor' missing from lr schedule config")
 
-            test_only = self.hparams.trainer.get("test_only", False)
+            test_only = self.hparams.trainer.get("test_only", False)  # type: ignore
             dl = self.train_dataloader()
             if dl is not None:
                 # get gpus / num_nodes / accum_grad_batches to compute optimizer steps per epoch
-                accum_grad_batches = int(self.hparams.trainer["params"].get("accumulate_grad_batches", 1))
+                accum_grad_batches = int(
+                    self.hparams.trainer["params"].get("accumulate_grad_batches", 1)  # type: ignore
+                )  # type: ignore
                 assert accum_grad_batches >= 1
-                gpus = self.hparams.trainer["params"].get("gpus", 1)
+                gpus = self.hparams.trainer["params"].get("gpus", 1)  # type: ignore
                 if isinstance(gpus, Iterable):
-                    gpus = len(gpus)
+                    gpus = len(gpus)  # type: ignore
                 gpus = max(gpus, 1)
-                num_nodes = self.hparams.trainer["params"].get("num_nodes", 1)
+                num_nodes = self.hparams.trainer["params"].get("num_nodes", 1)  # type: ignore
                 steps_per_epoch = math.ceil(len(dl) / (accum_grad_batches * gpus * num_nodes))
 
                 schedule_dict = {
@@ -382,27 +384,31 @@ class HydraMixin(ModelIO):
               # test: 0.1
         """
         if self._has_datasets and not force:
-            return self.train_ds, self.val_ds, self.test_ds
+            return self.train_ds, self.val_ds, self.test_ds  # type: ignore
 
-        dataset_cfg = self.hparams.get("dataset")
+        dataset_cfg = self.hparams.get("dataset")  # type: ignore
 
         # when in test_only mode, try to avoid setting up training/validation sets
         # training set is only needed if test set is a split from training
-        test_only = "test_only" in self.hparams.trainer and self.hparams.trainer["test_only"]
+        test_only = "test_only" in self.hparams.trainer and self.hparams.trainer["test_only"]  # type: ignore
         if test_only and not isinstance(dataset_cfg["test"], (int, float)):
             test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
             self.train_ds = None
             self.val_ds = None
             self.test_ds = test_ds
             self._has_datasets = True
-            return self.train_ds, self.val_ds, self.test_ds
+            return self.train_ds, self.val_ds, self.test_ds  # type: ignore
 
         train_ds: Optional[Dataset] = (
             HydraMixin.instantiate(dataset_cfg["train"]) if "train" in dataset_cfg.keys() else None
         )
 
         # determine sizes validation/test sets if specified as a fraction of training set
-        splits = {"train": len(train_ds) if train_ds is not None else None, "validate": None, "test": None}
+        splits = {
+            "train": len(train_ds) if train_ds is not None else None,  # type: ignore
+            "validate": None,
+            "test": None,
+        }  # type: ignore
         for split in splits.keys():
             if not (split in dataset_cfg.keys() and isinstance(dataset_cfg[split], (int, float))):
                 continue
@@ -414,7 +420,7 @@ class HydraMixin(ModelIO):
             # for ints, assume value is size of the subset
             # for floats, assume value is a percentage of full dataset
             if isinstance(split_value, float):
-                split_value = round(len(train_ds) * split_value)
+                split_value = round(len(train_ds) * split_value)  # type: ignore
 
             splits[split] = split_value
             splits["train"] -= split_value
@@ -422,55 +428,63 @@ class HydraMixin(ModelIO):
         # create datasets
         if splits["validate"] is not None and splits["test"] is not None:
             lengths = (splits["train"], splits["validate"], splits["test"])
-            train_ds, val_ds, test_ds = random_split(train_ds, lengths)
+            train_ds, val_ds, test_ds = random_split(train_ds, lengths)  # type: ignore
         elif splits["validate"] is not None:
             lengths = (splits["train"], splits["validate"])
-            train_ds, val_ds = random_split(train_ds, lengths)
-            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+            train_ds, val_ds = random_split(train_ds, lengths)  # type: ignore
+            test_ds = (
+                HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None  # type: ignore
+            )  # type: ignore
         elif splits["test"] is not None:
             lengths = (splits["train"], splits["test"])
-            train_ds, test_ds = random_split(train_ds, lengths)
+            train_ds, test_ds = random_split(train_ds, lengths)  # type: ignore
             val_ds = HydraMixin.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
         else:
             val_ds = HydraMixin.instantiate(dataset_cfg["validate"]) if "validate" in dataset_cfg.keys() else None
-            test_ds = HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None
+            test_ds = (
+                HydraMixin.instantiate(dataset_cfg["test"]) if "test" in dataset_cfg.keys() else None  # type: ignore
+            )  # type: ignore
 
         self.train_ds = train_ds
         self.val_ds = val_ds
         self.test_ds = test_ds
         self._has_datasets = True
-        return self.train_ds, self.val_ds, self.test_ds
+        return self.train_ds, self.val_ds, self.test_ds  # type: ignore
 
     def train_dataloader(self) -> Optional[DataLoader]:
         train_ds, _, _ = self.get_datasets()
-        return self._dataloader(train_ds, "train")
+        return self._dataloader(train_ds, "train")  # type: ignore
 
     def val_dataloader(self) -> Optional[DataLoader]:
         _, val_ds, _ = self.get_datasets()
-        return self._dataloader(val_ds, "validate")
+        return self._dataloader(val_ds, "validate")  # type: ignore
 
     def test_dataloader(self) -> Optional[DataLoader]:
         _, _, test_ds = self.get_datasets()
-        return self._dataloader(test_ds, "test")
+        return self._dataloader(test_ds, "test")  # type: ignore
 
     def _dataloader(self, dataset: Optional[Dataset], split: str) -> Optional[DataLoader]:
         if dataset is not None:
             # try loading keys from dataset config
-            assert split in self.hparams.dataset, f"split {split} missing from dataset config"
-            if isinstance(self.hparams.dataset[split], (DictConfig, dict)):
-                dataset_config = dict(self.hparams.dataset[split])
+            assert split in self.hparams.dataset, f"split {split} missing from dataset config"  # type: ignore
+            if isinstance(self.hparams.dataset[split], (DictConfig, dict)):  # type: ignore
+                dataset_config = dict(self.hparams.dataset[split])  # type: ignore
 
             # fallback to using training config, but force shuffle=False for test/val
             else:
-                dataset_config = dict(self.hparams.dataset["train"])
+                dataset_config = dict(self.hparams.dataset["train"])  # type: ignore
                 dataset_config["shuffle"] = False
 
-            num_workers = dataset_config.get("num_workers", None) or self.hparams.dataset.get("batch_size", None) or 1
+            num_workers = (
+                dataset_config.get("num_workers", None)
+                or self.hparams.dataset.get("batch_size", None)  # type: ignore
+                or 1  # type: ignore
+            )  # type: ignore
             pin_memory = dataset_config.get("pin_memory", False)
             drop_last = dataset_config.get("drop_last", False)
             shuffle = dataset_config.get("shuffle", False)
             collate_fn = dataset_config.get("collate_fn", None)
-            batch_size = dataset_config.get("batch_size", self.hparams.dataset["batch_size"])
+            batch_size = dataset_config.get("batch_size", self.hparams.dataset["batch_size"])  # type: ignore
 
             if collate_fn is not None:
                 collate_fn = self.instantiate(collate_fn)
@@ -502,7 +516,7 @@ class HydraMixin(ModelIO):
         if isinstance(config, dict):
             config = DictConfig(config)
         elif isinstance(config, list):
-            config = ListConfig(config)
+            config = ListConfig(config)  # type: ignore
 
         # deepcopy so we can modify config
         config = deepcopy(config)
@@ -511,9 +525,9 @@ class HydraMixin(ModelIO):
 
         if "params" in config.keys():
             if isinstance(config.get("params"), (dict, DictConfig)):
-                params = dict(config.get("params"))
+                params = dict(config.get("params"))  # type: ignore
             elif isinstance(config.get("params"), (list, ListConfig)):
-                params = list(config.get("params"))
+                params = list(config.get("params"))  # type: ignore
         else:
             params = {}
 
@@ -524,18 +538,18 @@ class HydraMixin(ModelIO):
                 return any([_has_instantiate_key(x.keys()) for x in d if isinstance(x, (dict, DictConfig))])
             return False
 
-        if isinstance(params, list):
+        if isinstance(params, list):  # type: ignore
             for i, subconfig in enumerate(params):
                 subconfig = DictConfig(subconfig)
                 if isinstance(subconfig, (dict, DictConfig)) and "params" not in subconfig.keys():
                     subconfig["params"] = {}
-                subconfig._set_parent(config)
+                subconfig._set_parent(config)  # type: ignore
                 params[i] = HydraMixin.instantiate(subconfig)
             del config["params"]
             return instantiate(config, *params, *args, **kwargs)
 
         else:
-            subclasses = {key: subconfig for key, subconfig in params.items() if is_subclass(subconfig)}
+            subclasses = {key: subconfig for key, subconfig in params.items() if is_subclass(subconfig)}  # type: ignore
 
             # instantiate recursively, remove those keys from config used in hydra instantiate call
             for key, subconfig in subclasses.items():
@@ -545,7 +559,7 @@ class HydraMixin(ModelIO):
                     # avoid issues when cls given without params
                     if "params" not in subconfig:
                         subconfig["params"] = {}
-                    subconfig._set_parent(config)
+                    subconfig._set_parent(config)  # type: ignore
                     subclasses[key] = HydraMixin.instantiate(subconfig)
                 else:
                     subclasses[key] = [HydraMixin.instantiate(x) for x in subconfig]

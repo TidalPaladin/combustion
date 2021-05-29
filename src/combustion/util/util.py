@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import typing
 from enum import IntEnum
-from typing import Any, Callable, Iterable, Tuple, Union
+from typing import Any, Callable, Iterable, Sized, Tuple, TypeVar, Union
 
 from decorator import decorator
+
+
+T = TypeVar("T")
 
 
 class Dim(IntEnum):
@@ -25,8 +29,7 @@ def arg_factory(*required_args):
     return classmethod(decorator(caller))
 
 
-def one_diff_tuple(count, default, new, pos):
-    # type: (int, Union[int, float], Union[int, float], int) -> Tuple[Union[int, float], ...]
+def one_diff_tuple(count: int, default: Any, new: Any, pos: int) -> Tuple[Any, ...]:
     result = [default] * count
     result[pos] = new
     return tuple(result)
@@ -36,7 +39,7 @@ def replace_tuple(tup, pos, new):
     return tup[:pos] + (new,) + tup[pos + 1 :]
 
 
-def ntuple(count: int) -> Callable[[Union[Any, Tuple[Any, ...]]], Tuple[Any, ...]]:
+def ntuple(count: int) -> Callable[[Union[T, Iterable[T]]], Tuple[T, ...]]:
     r"""Returns a function that will accept either a single value or tuple of length ``count``
     and return a tuple of length ``count``.
 
@@ -50,16 +53,29 @@ def ntuple(count: int) -> Callable[[Union[Any, Tuple[Any, ...]]], Tuple[Any, ...
         >>> twotuple((3, 3)) # (3, 3)
     """
 
-    def func(arg):
+    def func(arg: Union[T, Iterable[T]]) -> Tuple[T, ...]:
         if not isinstance(arg, Iterable):
-            arg = (arg,) * count
-        elif len(arg) != count:
+            return (arg,) * count
+        if isinstance(arg, Sized) and len(arg) != count:
             raise ValueError(f"expected {count}-tuple but found {arg}")
+        arg = typing.cast(Iterable, arg)
         return tuple(arg)
 
     return func
 
 
-single = ntuple(1)
-double = ntuple(2)
-triple = ntuple(3)
+def single(arg: Union[T, Iterable[T]]) -> Tuple[T]:
+    return typing.cast(Tuple[T], _single(arg))
+
+
+def double(arg: Union[T, Iterable[T]]) -> Tuple[T, T]:
+    return typing.cast(Tuple[T, T], _double(arg))
+
+
+def triple(arg: Union[T, Iterable[T]]) -> Tuple[T, T, T]:
+    return typing.cast(Tuple[T, T, T], _triple(arg))
+
+
+_single = ntuple(1)
+_double = ntuple(2)
+_triple = ntuple(3)

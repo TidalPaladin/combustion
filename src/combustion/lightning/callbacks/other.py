@@ -4,6 +4,7 @@
 
 import logging
 import warnings
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import pytorch_lightning as pl
@@ -115,18 +116,9 @@ class TorchScriptCallback(Callback):
     def _get_script(self, pl_module: pl.LightningModule) -> ScriptModule:
         return torch.jit.script(pl_module)
 
-    def _get_default_save_path(self, trainer: pl.Trainer) -> str:
-        if hasattr(trainer, "default_root_dir"):
-            return trainer.default_root_dir
-        # backwards compat
-        elif hasattr(trainer, "default_save_path"):
-            return trainer.default_save_path
-        else:
-            import os
-            import warnings
-
-            warnings.warn("Failed to find default path attribute on Trainer")
-            return os.getcwd()
+    def _get_default_save_path(self, trainer: pl.Trainer) -> Path:
+        path = trainer.log_dir or trainer.default_root_dir or Path.cwd()
+        return Path(path)
 
 
 class CountMACs(Callback):
@@ -179,7 +171,7 @@ class CountMACs(Callback):
         else:
             inputs = self.sample_input
 
-        macs, params = profile(pl_module, inputs=inputs, custom_ops=self.custom_ops)
+        macs, params = profile(pl_module, inputs=inputs, custom_ops=self.custom_ops)  # type: ignore
         macs, params = int(macs), int(params)
         log.info("Model MACs: %d", macs)
         log.info("Model Parameters: %d", params)

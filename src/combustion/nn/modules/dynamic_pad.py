@@ -177,9 +177,9 @@ class DynamicSamePad(nn.Module):
         module: nn.Module,
         padding_mode: str = "constant",
         pad_value: float = 0.0,
-        kernel_size: Optional[Union[Tuple[float], float]] = None,
-        stride: Optional[Union[Tuple[float], float]] = None,
-        dilation: Optional[Union[Tuple[float], float]] = None,
+        kernel_size: Optional[Union[Tuple[int, ...], int]] = None,
+        stride: Optional[Union[Tuple[int, ...], int]] = None,
+        dilation: Optional[Union[Tuple[int, ...], int]] = None,
     ):
         super().__init__()
         name = module.__class__.__name__
@@ -190,16 +190,20 @@ class DynamicSamePad(nn.Module):
         if not hasattr(module, "stride"):
             raise AttributeError(f"Expected {name} to have `stride` attribute or `stride` param to be given")
 
+        assert isinstance(module.stride, (tuple, int))
+        _stride: Union[int, Tuple[int, ...]] = stride if stride is not None else module.stride
+        self._stride = self._to_tuple(module, _stride)
+
+        assert isinstance(module.kernel_size, (tuple, int))
+        _kernel_size: Union[int, Tuple[int, ...]] = kernel_size if kernel_size is not None else module.kernel_size
+        self._kernel_size = self._to_tuple(module, _kernel_size)
+
+        assert not hasattr(module, "dilation") or isinstance(module.dilation, (tuple, int))
+        _dilation = dilation or getattr(module, "dilation", 1)
+        self._dilation = self._to_tuple(module, _dilation)
+
         self._module = module
         self._stride = self._to_tuple(module, stride if stride is not None else module.stride)
-        self._kernel_size = self._to_tuple(module, kernel_size if kernel_size is not None else module.kernel_size)
-
-        if dilation is None:
-            if hasattr(module, "dilation"):
-                dilation = module.dilation
-            else:
-                dilation = 1
-        self._dilation = self._to_tuple(module, dilation)
 
         padding_mode = str(padding_mode).lower()
         if padding_mode not in ["constant", "reflect", "replicate", "circular"]:
@@ -208,7 +212,8 @@ class DynamicSamePad(nn.Module):
         self._padding_value = float(pad_value)
 
         # override module's padding if set
-        module.padding = (0,) * len(self._to_tuple(module, module.padding))
+        _padding = getattr(module, "padding", 0)
+        module.padding = (0,) * len(self._to_tuple(module, _padding))
 
     def extra_repr(self):
         s = f"padding_mode={self._padding_mode}"
@@ -248,7 +253,7 @@ class DynamicSamePad(nn.Module):
         padded_input = F.pad(inputs, padding, self._padding_mode, self._padding_value)
         return self._module(padded_input)
 
-    def _to_tuple(self, module: nn.Module, val: Union[Tuple[int], int]) -> Tuple[int]:
+    def _to_tuple(self, module: nn.Module, val: Union[Tuple[int, ...], int]) -> Tuple[int, ...]:
         if isinstance(val, tuple):
             return val
 

@@ -2,44 +2,36 @@
 # -*- coding: utf-8 -*-
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Any, ClassVar, Optional, Tuple, Type, TypeVar, Union
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.utils.checkpoint import checkpoint as checkpoint_fn
 
-from combustion.util import double, single, triple
-
 from .dropconnect import DropConnect
 from .dynamic_pad import DynamicSamePad
 from .squeeze_excite import SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d
+from .util import SpatialMeta, SpatialMixin
 
 
-class _MobileNetMeta(type):
-    def __new__(cls, name, bases, dct):
+T = TypeVar("T")
+
+
+class _MobileNetMeta(SpatialMeta):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
-        if "3d" in name:
-            x.Conv = nn.Conv3d
-            x.BatchNorm = nn.BatchNorm3d
-            x.SqueezeExcite = SqueezeExcite3d
-            x.Tuple = staticmethod(triple)
-        elif "2d" in name:
-            x.Conv = nn.Conv2d
-            x.BatchNorm = nn.BatchNorm2d
-            x.SqueezeExcite = SqueezeExcite2d
-            x.Tuple = staticmethod(double)
-        elif "1d" in name:
-            x.Conv = nn.Conv1d
-            x.BatchNorm = nn.BatchNorm1d
-            x.SqueezeExcite = SqueezeExcite1d
-            x.Tuple = staticmethod(single)
-        else:
-            raise RuntimeError(f"Metaclass: error processing name {cls.__name__}")
+        attr = SpatialMeta.lookup_attr(x, (SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d))
+        SpatialMeta.register_type(x, "SqueezeExcite", attr, Type[nn.Module])
         return x
 
 
-class _MobileNetConvBlockNd(nn.Module):
+SqueezeExciteNd = Union[SqueezeExcite1d, SqueezeExcite2d, SqueezeExcite3d]
+
+
+class _MobileNetConvBlockNd(nn.Module, SpatialMixin):
+    SqueezeExcite: ClassVar[SqueezeExciteNd]
+
     def __init__(
         self,
         input_filters: int,
@@ -60,19 +52,17 @@ class _MobileNetConvBlockNd(nn.Module):
         checkpoint: bool = False,
     ):
         super().__init__()
-        kernel_size = self.Tuple(kernel_size)
-        stride = self.Tuple(stride)
-        dilation = self.Tuple(dilation)
+        self.__class__.Dim
+        self._kernel_size = self.ToTuple(kernel_size)
+        self._stride = self.ToTuple(stride)
+        self._dilation = self.ToTuple(dilation)
 
         self._input_filters = int(input_filters)
         self._output_filters = int(output_filters)
-        self._kernel_size = kernel_size
-        self._stride = stride
-        self._dilation = dilation
         self._bn_momentum = float(bn_momentum)
         self._bn_epsilon = float(bn_epsilon)
         self._activation = activation
-        self._se_ratio = abs(float(squeeze_excite_ratio))
+        self._se_ratio = abs(float(squeeze_excite_ratio)) if squeeze_excite_ratio else None
         self._expand_ratio = float(expand_ratio)
         self._use_skipconn = bool(use_skipconn)
         self._global_se = bool(global_se)
@@ -170,7 +160,7 @@ class _MobileNetConvBlockNd(nn.Module):
         return x
 
     @classmethod
-    def from_config(cls, config: "MobileNetBlockConfig") -> Union[nn.Sequential, "_MobileNetConvBlockNd"]:
+    def from_config(cls: Type[T], config: "MobileNetBlockConfig") -> Union[nn.Sequential, T]:
         r"""Constructs a MobileNetConvBlock using a MobileNetBlockConfig dataclass.
 
         Args:
@@ -386,11 +376,11 @@ class MobileNetBlockConfig:
     num_repeats: int = 1
     checkpoint: bool = False
 
-    def get_1d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock1d, nn.Sequential]:
+    def get_1d_blocks(self) -> Union[MobileNetConvBlock1d, nn.Sequential]:
         return MobileNetConvBlock1d.from_config(self)
 
-    def get_2d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock2d, nn.Sequential]:
+    def get_2d_blocks(self) -> Union[MobileNetConvBlock2d, nn.Sequential]:
         return MobileNetConvBlock2d.from_config(self)
 
-    def get_3d_blocks(self, repeated: bool = True) -> Union[MobileNetConvBlock3d, nn.Sequential]:
+    def get_3d_blocks(self) -> Union[MobileNetConvBlock3d, nn.Sequential]:
         return MobileNetConvBlock3d.from_config(self)

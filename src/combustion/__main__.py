@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import sys
+import typing
 from glob import glob
 from typing import Any, Callable, Optional, Tuple
 
@@ -111,7 +112,7 @@ def auto_lr_find(cfg: DictConfig, model: pl.LightningModule) -> Optional[float]:
             lr_finder = lr_trainer.tuner.lr_find(model)
         else:
             # pl <= 1.0.0
-            lr_finder = lr_trainer.lr_find(model)
+            lr_finder = lr_trainer.lr_find(model)  # type: ignore
         lr = lr_finder.suggestion()
         log.info("Found learning rate %f", lr)
         cfg.optimizer["params"]["lr"] = lr
@@ -273,7 +274,7 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
         ``python -m my_module trainer.load_from_checkpoint=foo.ckpt trainer.test_only=True``
     """
     train_results, test_results = None, None
-    model: Optional[pl.LightningModule] = None
+    model: pl.LightningModule
     trainer: Optional[pl.Trainer] = None
 
     try:
@@ -289,10 +290,11 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
         # instantiate model (and optimizer) selected in yaml
         # see pytorch lightning docs: https://pytorch-lightning.rtfd.io/en/latest
         try:
-            model: pl.LightningModule = HydraMixin.create_model(cfg)
+            model = HydraMixin.create_model(cfg)
         except RuntimeError:
             log.error("Failed to instantiate model")
             log.error("Model Config:\n%s", cfg.model.to_yaml())
+            raise
 
         # preprocess data
         preprocess_training_path = cfg.trainer.get("preprocess_train_path", None)
@@ -310,7 +312,7 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
 
             log.info("Writing preprocessed training set to %s", preprocess_training_path)
             model.prepare_data()
-            train_ds = model.train_dataloader().dataset
+            train_ds = model.train_dataloader().dataset  # type: ignore
             for i in range(preprocess_training_epochs):
                 save_torch(train_ds, preprocess_training_path, f"epoch_{i}_example_")
             log.info("Finished writing preprocessed training set. Update Hydra config and rerun training.")
@@ -326,8 +328,7 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
                 log.info("Loading checkpoint %s", load_from_checkpoint)
                 # TODO this still needs some work
                 model = model.__class__.load_from_checkpoint(load_from_checkpoint)
-                model.hparams
-                model.hparams.update(cfg)
+                model._hparams = cfg
 
         # run auto learning rate find if requested
         lr_find = cfg.trainer.params.get("auto_lr_find", False)
@@ -343,7 +344,8 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
 
         # instantiate trainer with params as selected in yaml
         # handles tensorboard, checkpointing, etc
-        trainer: pl.Trainer = HydraMixin.instantiate(cfg.trainer)
+        trainer = HydraMixin.instantiate(cfg.trainer)
+        trainer = typing.cast(pl.Trainer, trainer)
 
         # train
         if "train" in cfg.dataset:
@@ -379,7 +381,7 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
     finally:
         # flush logger to ensure free memory for next run
         if trainer is not None:
-            experiment = trainer.logger.experiment
+            experiment = trainer.logger.experiment  # type: ignore
             if experiment is not None and hasattr(experiment, "flush"):
                 experiment.flush()
                 log.debug("Flushed experiment to disk")
@@ -390,11 +392,11 @@ def main(cfg: DictConfig, process_results_fn: Optional[Callable[[Tuple[Any, Any]
     # postprocess results if desired (e.g. to scalars for bayesian optimization)
     if process_results_fn is not None:
         log.debug("Running results postprocessing")
-        output = process_results_fn(train_results, test_results)
+        output = process_results_fn(train_results, test_results)  # type: ignore
     else:
         output = train_results, test_results
 
-    return output
+    return output  # type: ignore
 
 
 if __name__ == "__main__":

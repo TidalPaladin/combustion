@@ -83,9 +83,9 @@ def classes(label):
     return label[..., 4:]
 
 
-def test_points_to_anchors(points, upsample, one_hot_indices, max_rois, num_classes, input_size, batch_size, threshold):
+def test_points_to_anchors(points, upsample, max_rois, num_classes, batch_size, threshold):
     layer = PointsToAnchors(upsample, max_rois, threshold)
-    output = layer(points)
+    output: Tensor = layer(points)  # type: ignore
 
     if batch_size is None:
         assert output.shape[0] <= max_rois
@@ -109,7 +109,7 @@ def test_cuda(batch_size):
         points = torch.rand(batch_size, 6, 32, 32).cuda()
     else:
         points = torch.rand(6, 32, 32).cuda()
-    output = layer(points)
+    output: Tensor = layer(points)  # type: ignore
     assert output.device == points.device
 
 
@@ -145,7 +145,7 @@ def test_corner_case():
     )
     input = input.view(2, 8, 6).permute(-1, 0, 1).contiguous()
     layer = PointsToAnchors(1, 10, 0.0)
-    output = layer(input)
+    output: Tensor = layer(input)  # type: ignore
     expected = torch.tensor(
         [
             [-98.0, -48.0, 102.0, 52.0, 1.0, 1.0],

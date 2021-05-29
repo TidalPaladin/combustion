@@ -8,6 +8,7 @@ from kornia.filters import get_gaussian_kernel2d
 from torch import Tensor
 
 from combustion.nn.functional import fourier_conv2d
+from combustion.util import double
 
 
 class GaussianBlur2d(nn.Module):
@@ -66,4 +67,6 @@ def gaussian_blur2d(
     fill_value: float = 0.0,
 ) -> Tensor:
     r"""See :class:`combustion.vision.filters.GaussianBlur2d`"""
+    kernel_size = double(kernel_size)
+    sigma = double(sigma)
     return GaussianBlur2d(kernel_size, sigma, padding_mode, fill_value)(inputs)

@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
-import torch_scatter
+import torch_scatter  # type: ignore
 from torch import Tensor
 
 from combustion.points import center_crop
@@ -46,15 +46,12 @@ def projection_mapping(
     coords = coords.view(coords.shape[-2], coords.shape[-1])
 
     mask = torch.empty(1, device=coords.device).type_as(coords)
-    x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
+    x, y, _ = coords[..., 0], coords[..., 1], coords[..., 2]
 
     # find xy mins/maxes
-    min_x = coords[..., 0].min()
-    max_x = coords[..., 0].max()
-    min_y = coords[..., 1].min()
-    max_y = coords[..., 1].max()
+    min_x = x.min()
+    min_y = y.min()
     mins = torch.stack([min_x, min_y], dim=0)
-    maxes = torch.stack([max_x, max_y], dim=0)
 
     if image_size is not None:
         height, width = image_size
@@ -68,6 +65,8 @@ def projection_mapping(
 
     else:
         # calculate size one from min/max
+        max_x = x.max()
+        max_y = y.max()
         height = int(max_y.sub(min_y).floor_divide_(resolution).long().item())
         width = int(max_x.sub(min_x).floor_divide_(resolution).long().item())
         mask = torch.tensor([True], device=coords.device).expand(coords.shape[0])
@@ -75,15 +74,12 @@ def projection_mapping(
     assert height > 0
     assert width > 0
 
-    x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
+    x, y, _ = coords[..., 0], coords[..., 1], coords[..., 2]
 
     # recompute mins/maxes after cropping
     mins = torch.min(coords[..., :2], dim=0).values
-    maxes = torch.max(coords[..., :2], dim=0).values
 
     # map each point to a height/width in the 2d grid
-    x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
-
     mapping = coords[..., :2].roll(1, dims=-1).sub(mins.roll(1, dims=-1)).floor_divide(resolution)
     mapping[..., 0].clamp_max_(height - 1)
     mapping[..., 1].clamp_max_(width - 1)

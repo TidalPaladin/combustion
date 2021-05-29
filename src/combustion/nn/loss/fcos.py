@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
-from typing import Optional, Tuple
+from typing import Iterable, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -74,7 +74,7 @@ class FCOSLoss:
         interest_range: Tuple[Tuple[int, int], ...] = DEFAULT_INTEREST_RANGE,
         gamma: float = 2.0,
         alpha: float = 0.5,
-        radius: Optional[int] = 1,
+        radius: Optional[float] = 1,
         pad_value: float = -1,
     ):
         self.strides = tuple([int(x) for x in strides])
@@ -91,9 +91,9 @@ class FCOSLoss:
 
     def __call__(
         self,
-        cls_pred: Tuple[Tensor, ...],
-        reg_pred: Tuple[Tensor, ...],
-        centerness_pred: Tuple[Tensor, ...],
+        cls_pred: Iterable[Tensor],
+        reg_pred: Iterable[Tensor],
+        centerness_pred: Iterable[Tensor],
         target_bbox: Tensor,
         target_cls: Tensor,
     ) -> Tuple[Tensor, Tensor, Tensor]:
@@ -109,35 +109,41 @@ class FCOSLoss:
             _target_cls = target_cls[i][~padding]
             assert _target_bbox.shape[:-1] == _target_cls.shape[:-1]
             _cls_loss, _reg_loss, _centerness_loss = self.compute_from_box_target(
-                cls, reg, centerness, _target_bbox, _target_cls
+                tuple(cls), tuple(reg), tuple(centerness), _target_bbox, _target_cls
             )
             cls_loss.append(_cls_loss)
             reg_loss.append(_reg_loss)
             centerness_loss.append(_centerness_loss)
 
-        cls_loss = sum(cls_loss) / batch_size
-        reg_loss = sum(reg_loss) / batch_size
-        centerness_loss = sum(centerness_loss) / batch_size
+        cls_loss = torch.as_tensor(sum(cls_loss) / batch_size)
+        reg_loss = torch.as_tensor(sum(reg_loss) / batch_size)
+        centerness_loss = torch.as_tensor(sum(centerness_loss) / batch_size)
         return cls_loss, reg_loss, centerness_loss
 
-    def _reduce(self, cls_loss, reg_loss, centerness_loss, fcos_target):
+    def _reduce(
+        self,
+        cls_loss: Iterable[Tensor],
+        reg_loss: Iterable[Tensor],
+        centerness_loss: Iterable[Tensor],
+        fcos_target: Iterable[Tuple[Tensor, Tensor, Tensor]],
+    ) -> Tuple[Tensor, Tensor, Tensor]:
         num_gpus = self.get_num_gpus()
         cls_target, reg_target, centerness_target = list(zip(*fcos_target))
-        pos_inds = sum([x.sum() for x in cls_target])
-        centerness_inds = sum([(x != IGNORE).sum() for x in centerness_target])
+        pos_inds = torch.as_tensor(sum([x.sum() for x in cls_target]))
+        centerness_inds = torch.as_tensor(sum([(x != IGNORE).sum() for x in centerness_target]))
 
-        total_num_pos = self.reduce_sum(pos_inds).item()
+        total_num_pos = float(self.reduce_sum(pos_inds).item())
         num_pos_avg_per_gpu = max(total_num_pos / float(num_gpus), 1.0)
-        sum_centerness_targets_avg_per_gpu = self.reduce_sum(centerness_inds).item() / float(num_gpus)
+        sum_centerness_targets_avg_per_gpu = float(self.reduce_sum(centerness_inds).item()) / float(num_gpus)
 
-        cls_loss = sum([x.sum() for x in cls_loss])
-        reg_loss = sum([x.sum() for x in reg_loss])
-        centerness_loss = sum([x.sum() for x in centerness_loss])
+        _cls_loss = sum([x.sum() for x in cls_loss])
+        _reg_loss = sum([x.sum() for x in reg_loss])
+        _centerness_loss = sum([x.sum() for x in centerness_loss])
 
-        cls_loss = cls_loss / max(num_pos_avg_per_gpu, 1.0)
-        reg_loss = reg_loss / max(sum_centerness_targets_avg_per_gpu, 1.0)
-        centerness_loss = centerness_loss / max(num_pos_avg_per_gpu, 1.0)
-        return cls_loss, reg_loss, centerness_loss
+        _cls_loss = torch.as_tensor(_cls_loss / max(num_pos_avg_per_gpu, 1.0))
+        _reg_loss = torch.as_tensor(_reg_loss / max(sum_centerness_targets_avg_per_gpu, 1.0))
+        _centerness_loss = torch.as_tensor(_centerness_loss / max(num_pos_avg_per_gpu, 1.0))
+        return _cls_loss, _reg_loss, _centerness_loss
 
     def get_num_gpus(self) -> int:
         return int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
@@ -155,23 +161,25 @@ class FCOSLoss:
 
     def compute_from_box_target(
         self,
-        cls_pred: Tuple[Tensor, ...],
-        reg_pred: Tuple[Tensor, ...],
-        centerness_pred: Tuple[Tensor, ...],
+        cls_pred: Iterable[Tensor],
+        reg_pred: Iterable[Tensor],
+        centerness_pred: Iterable[Tensor],
         target_bbox: Tensor,
         target_cls: Tensor,
     ) -> Tuple[Tensor, Tensor, Tensor]:
-        size_targets = tuple([x.shape[-2:] for x in cls_pred])
+        size_targets: Tuple[Tuple[int, int]] = tuple([tuple(x.shape[-2:]) for x in cls_pred])  # type: ignore
         with torch.no_grad():
-            fcos_targets = self.create_targets(target_bbox, target_cls, size_targets)
+            fcos_targets: Tuple[Tuple[Tensor, Tensor, Tensor]] = self.create_targets(
+                target_bbox, target_cls, size_targets
+            )  # type: ignore
         return self.compute_from_fcos_target(cls_pred, reg_pred, centerness_pred, fcos_targets)
 
     def compute_from_fcos_target(
         self,
-        cls_pred: Tuple[Tensor, ...],
-        reg_pred: Tuple[Tensor, ...],
-        centerness_pred: Tuple[Tensor, ...],
-        fcos_target: Tuple[Tuple[Tensor, Tensor, Tensor], ...],
+        cls_pred: Iterable[Tensor],
+        reg_pred: Iterable[Tensor],
+        centerness_pred: Iterable[Tensor],
+        fcos_target: Iterable[Tuple[Tensor, Tensor, Tensor]],
     ) -> Tuple[Tensor, Tensor, Tensor]:
 
         cls_loss, reg_loss, centerness_loss = [], [], []
@@ -194,12 +202,14 @@ class FCOSLoss:
             reg_loss.append(_reg_loss)
             centerness_loss.append(_centerness_loss)
 
-        cls_loss, reg_loss, centerness_loss = self._reduce(cls_loss, reg_loss, centerness_loss, fcos_target)
+        cls_loss, reg_loss, centerness_loss = self._reduce(
+            cls_loss, reg_loss, centerness_loss, list(fcos_target)
+        )  # type: ignore
         return cls_loss, reg_loss, centerness_loss
 
     def create_targets(
         self, bbox: Tensor, cls: Tensor, size_targets: Tuple[Tuple[int, int], ...]
-    ) -> Tuple[Tuple[Tensor, Tensor, Tensor], ...]:
+    ) -> Union[Tuple[Tensor, Tensor, Tensor], Tuple[Tuple[Tensor, Tensor, Tensor], ...]]:
         if bbox.ndim >= 3:
             batch_size = bbox.shape[0]
             targets = []
@@ -219,7 +229,7 @@ class FCOSLoss:
                 reg_targets.append(reg_targets_i)
                 centerness_targets.append(centerness_targets_i)
 
-            return cls_targets, reg_targets, centerness_targets
+            return cls_targets, reg_targets, centerness_targets  # type: ignore
 
         class_targets, reg_targets, centerness_targets = [], [], []
         for irange, stride, size_target in zip(self.interest_range, self.strides, size_targets):
@@ -243,7 +253,7 @@ class FCOSLoss:
         size_target: Tuple[int, int],
         interest_range: Tuple[int, int],
         center_radius: Optional[int] = None,
-    ) -> Tensor:
+    ) -> Tuple[Tensor, Tensor, Tensor]:
         # handle case of no boxes
         if not bbox.numel():
             cls_target = torch.zeros(num_classes, *size_target, device=cls.device, dtype=torch.float)

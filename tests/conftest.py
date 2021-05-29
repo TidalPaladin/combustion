@@ -53,13 +53,6 @@ def pytest_report_header(config):
     except ImportError:
         pass
 
-    try:
-        import h5py
-
-        s += f"h5py: {h5py.__version__}"
-    except ImportError:
-        pass
-
     return s
 
 

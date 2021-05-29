@@ -22,7 +22,7 @@ class TestEntropy:
         p = logits.sigmoid()
         expected = (p.log() * p + (1 - p).log() * (1 - p)).sum().div_(logits.numel()).neg_()
 
-        entropy = metric(logits)
+        entropy = metric(logits)  # type: ignore
         assert torch.allclose(entropy, expected)
 
     def test_categorical_entropy(self, cuda):
@@ -42,7 +42,7 @@ class TestEntropy:
         N = logits.shape[dim]
         p = logits.softmax(dim=dim)
         expected = (p.log() * p).sum(dim=dim).neg_().sum().div_(logits.numel() / N)
-        entropy = metric(logits)
+        entropy = metric(logits)  # type: ignore
         assert torch.allclose(entropy, expected)
 
         if cuda:

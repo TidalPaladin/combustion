@@ -24,7 +24,7 @@ def assert_calls_equal(call1, call2, **kwargs):
     call1 = tuple(call1.args) if type(call1) != tuple else call1
     call2 = tuple(call2.args) if type(call2) != tuple else call2
     for arg1, arg2 in zip(call1, call2):
-        assert_equal(arg1, arg2)
+        assert_equal(arg1, arg2, **kwargs)
 
 
 class BaseAttributeCallbackTest:
@@ -35,7 +35,7 @@ class BaseAttributeCallbackTest:
         raise NotImplementedError("attr fixture")
 
     @pytest.fixture
-    def trainer(self, mocker, tmp_path):
+    def trainer(self, tmp_path, capsys):
         trainer = pl.Trainer(default_root_dir=tmp_path)
         return trainer
 
@@ -50,7 +50,7 @@ class BaseAttributeCallbackTest:
         return request.param
 
     @pytest.fixture
-    def callback(self, mocker, request, trainer, hook):
+    def callback(self, mocker, request, hook):
         cls = self.callback_cls
         init_signature = inspect.signature(cls)
         defaults = {
@@ -100,7 +100,8 @@ class BaseAttributeCallbackTest:
     def test_repr(self, callback):
         print(callback)
 
-    def test_callback_fn_call(self, model, mode, hook, callback):
+    @pytest.mark.usefixtures("model", "mode", "hook")
+    def test_callback_fn_call(self, callback):
         callback.trigger()
         func = callback.callback_fn
         func.assert_called_once()
@@ -118,7 +119,7 @@ class BaseAttributeCallbackTest:
     )
     def test_max_calls(self, callback):
         num_steps = 20
-        for i in range(num_steps):
+        for _ in range(num_steps):
             callback.trigger()
 
         limit = callback.max_calls

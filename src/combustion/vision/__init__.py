@@ -17,13 +17,11 @@ from .centernet import AnchorsToPoints, PointsToAnchors
 from .contour import mask_to_polygon
 from .convert import to_8bit
 from .iou_assign import BinaryLabelIoU, CategoricalLabelIoU, ConfusionMatrixIoU
-from .nms import nms
 
 
 __all__ = [
     "AnchorsToPoints",
     "BinaryLabelIoU",
-    "nms",
     "mask_to_polygon",
     "PointsToAnchors",
     "visualize_bbox",

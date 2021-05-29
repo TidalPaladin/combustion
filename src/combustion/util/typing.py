@@ -9,4 +9,4 @@ from torch import Tensor
 
 TensorTuple = Tuple[Tensor, ...]
 
-Array = Union[Tensor, np.array]
+Array = Union[Tensor, np.ndarray]

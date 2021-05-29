@@ -47,7 +47,7 @@ class PyplotSave:
         pl_module: pl.LightningModule,
         step: int,
         batch_idx: int,
-        caller: Callback,
+        caller: AttributeCallback,
     ) -> None:
         if self.path is None:
             self.path = Path(resolve_dir(trainer, self._path, "saved_figures"))
@@ -195,7 +195,7 @@ class MatplotlibCallback(AttributeCallback):
         step: int,
         batch_idx: Optional[int],
     ) -> None:
-        _hook, _mode = hook
+        _, _mode = hook
 
         self.prepare_figure(hook, attr, trainer, pl_module, step)
         if isinstance(attr, plt.Figure):

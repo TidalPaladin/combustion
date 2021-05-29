@@ -190,9 +190,8 @@ class _FocalLoss(nn.Module):
         )
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
-        loss = self.__class__._loss(
-            input, target, self.gamma, self.alpha, self.label_smoothing, self.reduction, self.normalize
-        )
+        func = getattr(self.__class__, "_loss")
+        loss = func(input, target, self.gamma, self.alpha, self.label_smoothing, self.reduction, self.normalize)
         return loss
 
 

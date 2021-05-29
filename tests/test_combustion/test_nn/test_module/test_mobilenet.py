@@ -148,21 +148,21 @@ class TestMobileNetBlockConfig:
         torch.random.manual_seed(42)
         return torch.rand(2, 4, 32, 32)
 
-    def test_get_1d_blocks(self, config, data, num_repeats):
+    def test_get_1d_blocks(self, config, num_repeats):
         output = config.get_1d_blocks()
         if num_repeats > 1:
             assert isinstance(output, torch.nn.Sequential)
         else:
             assert isinstance(output, MobileNetConvBlock1d)
 
-    def test_get_2d_blocks(self, config, data, num_repeats):
+    def test_get_2d_blocks(self, config, num_repeats):
         output = config.get_2d_blocks()
         if num_repeats > 1:
             assert isinstance(output, torch.nn.Sequential)
         else:
             assert isinstance(output, MobileNetConvBlock2d)
 
-    def test_get_3d_blocks(self, config, data, num_repeats):
+    def test_get_3d_blocks(self, config, num_repeats):
         output = config.get_3d_blocks()
         if num_repeats > 1:
             assert isinstance(output, torch.nn.Sequential)

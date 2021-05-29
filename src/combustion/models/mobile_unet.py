@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
-from typing import List, Optional
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -12,7 +12,7 @@ from combustion.nn import MatchShapes, MobileNetBlockConfig
 
 
 class _MobileUnetMeta(type):
-    def __new__(cls, name, bases, dct):
+    def __new__(cls: Any, name, bases, dct):
         x = super().__new__(cls, name, bases, dct)
         if "3d" in name:
             x.Conv = nn.Conv3d
@@ -35,6 +35,12 @@ class _MobileUnetMeta(type):
 
 
 class _MobileUnet(nn.Module):
+    Conv: nn.Module
+    ConvTranspose: nn.Module
+    BatchNorm: nn.Module
+    _get_blocks: Callable
+    ToTuple: Callable[[Union[int, Tuple[int, ...]]], Tuple[int, ...]]
+
     def __init__(
         self,
         down_configs: List[MobileNetBlockConfig],

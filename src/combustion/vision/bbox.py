@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Sized, Tuple, Union
 
 import torch
 from numpy import ndarray
@@ -126,9 +126,8 @@ def visualize_bbox(
     img_shape = img.shape[-2:]
 
     # convert to cpu tensor
-    img, bbox, classes, scores = [
-        torch.as_tensor(x).cpu() if x is not None else x for x in (img, bbox, classes, scores)
-    ]
+    img, bbox = (torch.as_tensor(x).cpu() for x in (img, bbox))
+    classes, scores = (torch.as_tensor(x).cpu() if x is not None else None for x in (classes, scores))
 
     # add a channel dimension to img if not present
     if img.ndim == 2:
@@ -138,9 +137,9 @@ def visualize_bbox(
     img = img.view(1, *img.shape) if not batched else img
     bbox = bbox.view(1, *bbox.shape) if not batched else bbox
     if classes is not None:
-        classes = classes.unsqueeze(0) if not batched else classes
+        classes = classes.view(1, *classes.shape) if not batched else classes
     if scores is not None:
-        scores = scores.unsqueeze(0) if not batched else scores
+        scores = scores.view(1, *scores.shape) if not batched else scores
 
     # convert image to 8-bit and convert to channels_last
     img_was_float = img.is_floating_point()
@@ -172,7 +171,7 @@ def visualize_bbox(
             x_min, y_min, x_max, y_max = [int(c) for c in coords]
 
             # draw the bounding box
-            cv2.rectangle(
+            cv2.rectangle(  # type: ignore
                 result_i,
                 (x_min, y_min),
                 (x_max, y_max),
@@ -202,16 +201,18 @@ def visualize_bbox(
                     text += f" | {scores_i[box_idx, score_idx].item():0.3f}"
 
             # tag bounding box with class name / integer id
-            ((text_width, text_height), _) = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)
-            cv2.rectangle(result_i, (x_min, y_min - int(1.3 * text_height)), (x_min + text_width, y_min), box_color, -1)
-            cv2.putText(
+            ((text_width, text_height), _) = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.35, 1)  # type: ignore
+            cv2.rectangle(  # type: ignore
+                result_i, (x_min, y_min - int(1.3 * text_height)), (x_min + text_width, y_min), box_color, -1
+            )  # type: ignore
+            cv2.putText(  # type: ignore
                 result_i,
                 text,
                 (x_min, y_min - int(0.3 * text_height)),
-                cv2.FONT_HERSHEY_SIMPLEX,
+                cv2.FONT_HERSHEY_SIMPLEX,  # type: ignore
                 0.35,
                 text_color,
-                lineType=cv2.LINE_AA,
+                lineType=cv2.LINE_AA,  # type: ignore
             )
 
         # permute back to channels first and add to result list
@@ -276,7 +277,7 @@ def split_box_target(target: Tensor, split_label: Union[bool, Iterable[int]] = F
         upper_bound = lower_bound + delta
         final_label.append(label[..., lower_bound:upper_bound])
         lower_bound = upper_bound
-    assert len(final_label) == len(split_label)
+    assert not isinstance(split_label, Sized) or len(final_label) == len(split_label)
     return tuple([bbox] + final_label)
 
 
@@ -325,7 +326,7 @@ def split_bbox_scores_class(target: Tensor, split_scores: Union[bool, Iterable[i
         upper_bound = lower_bound + delta
         final_scores.append(scores[..., lower_bound:upper_bound])
         lower_bound = upper_bound
-    assert len(final_scores) == len(split_scores)
+    assert not isinstance(split_scores, Sized) or len(final_scores) == len(split_scores)
     return tuple([bbox] + final_scores + [cls])
 
 
@@ -412,7 +413,7 @@ def batch_box_target(target: List[Tensor], pad_value: float = -1) -> Tensor:
     target = [x.unsqueeze(0) if x.ndim < 3 else x for x in target]
 
     # compute output batch size
-    batch_size = torch.tensor([x.shape[0] for x in target]).sum().item()
+    batch_size = int(torch.tensor([x.shape[0] for x in target]).sum().item())
 
     # create empty output tensor of correct shape
     output_shape = (batch_size, max_boxes, target[0].shape[-1])
@@ -454,7 +455,7 @@ def unbatch_box_target(target: Tensor, pad_value: float = -1) -> List[Tensor]:
     return torch.split(flat_result, split_size.tolist(), dim=0)
 
 
-def flatten_box_target(target: Tensor, pad_value: float = -1) -> List[Tensor]:
+def flatten_box_target(target: Tensor, pad_value: float = -1) -> Tensor:
     r"""Flattens a batch of bounding box target tensors, removing padded locations
 
     Args:

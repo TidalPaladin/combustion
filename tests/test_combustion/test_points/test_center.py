@@ -9,7 +9,8 @@ from combustion.points import center
 
 class TestCenterFunctional:
     @pytest.mark.parametrize(
-        "strategy", ["minmax", "mean", pytest.param("BAD", marks=pytest.mark.xfail(raises=torch.jit.Error))]
+        "strategy",
+        ["minmax", "mean", pytest.param("BAD", marks=pytest.mark.xfail(raises=torch.jit.Error))],  # type: ignore
     )
     def test_center_basic(self, strategy):
         torch.random.manual_seed(42)

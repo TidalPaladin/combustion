@@ -93,7 +93,7 @@ class TestTorchScriptCallback:
             spy.assert_called()
 
     @pytest.mark.parametrize("training", [True, False])
-    def test_module_training_state_unchanged(self, model, trainer, path, mocker, training):
+    def test_module_training_state_unchanged(self, model, trainer, path, training):
         if training:
             model.train()
         else:
@@ -134,6 +134,6 @@ class TestCountMACs:
         assert hasattr(model, "param_count")
         assert model.param_count == 910
 
-    def test_handles_no_input_data(self, model, trainer, data):
+    def test_handles_no_input_data(self, model, trainer):
         callback = CountMACs()
         callback.on_train_start(trainer, model)

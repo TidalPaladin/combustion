@@ -9,7 +9,7 @@ from combustion.util import input, output
 
 
 @pytest.fixture
-def func(mocker, torch):
+def func(mocker):
     def f(arg1, arg2=None, *args, **kwargs):
         """foo bar baz"""
 
@@ -134,7 +134,7 @@ class TestInput:
         decorated = input("arg1", name=("A",))(func)
         assert signature(decorated) == signature(func)
 
-    def test_preserves_docstring(self, func):
+    def test_preserves_docstring(self):
         def f(arg1, arg2=None, *args, **kwargs):
             """foo bar baz"""
 

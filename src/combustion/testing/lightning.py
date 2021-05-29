@@ -94,15 +94,15 @@ class LightningModuleTest:
     DISTRIBUTED: bool = True
 
     def init_process_group(self):
-        if not torch.distributed.is_initialized():
+        if not torch.distributed.is_initialized():  # type: ignore
             torch.cuda.set_device(0)
-            torch.distributed.init_process_group(
+            torch.distributed.init_process_group(  # type: ignore
                 backend="nccl", world_size=1, rank=0, init_method="tcp://127.0.0.1:23456"
             )
 
     def _distributed_model(self, model: pl.LightningModule) -> LightningDistributedDataParallel:
-        model = LightningDistributedDataParallel(model, device_ids=[0], find_unused_parameters=True)
-        return model
+        m = LightningDistributedDataParallel(model, device_ids=[0], find_unused_parameters=True)
+        return m
 
     @pytest.fixture
     def model(self):
@@ -119,7 +119,7 @@ class LightningModuleTest:
         return self._distributed_model(model)
 
     @pytest.fixture
-    def prepare_data(self, model):
+    def prepare_data(self, model: pl.LightningModule):
         model = expose_distributed_model(model)
         try:
             model.prepare_data()
@@ -202,7 +202,7 @@ class LightningModuleTest:
             pytest.skip()
 
         if torch.cuda.is_available():
-            model = model.cuda()
+            model = model.cuda()  # type: ignore
             data = data.cuda()
 
         if training:
@@ -238,7 +238,7 @@ class LightningModuleTest:
             if not self.DISTRIBUTED:
                 pytest.skip("LightningModuleTest.DISTRIBUTED was False, skipping distributed training step")
             self.init_process_group()
-            model = self._distributed_model(model.cuda())
+            model = self._distributed_model(model.cuda())  # type: ignore
 
         if isinstance(model, (LightningDistributedDataParallel, LightningDistributedModule)):
             dl = expose_distributed_model(model).train_dataloader()
@@ -249,7 +249,7 @@ class LightningModuleTest:
 
         if torch.cuda.is_available():
             batch = [x.cuda() for x in batch]
-            model = model.cuda()
+            model = model.cuda()  # type: ignore
 
         model.train()
 
@@ -307,7 +307,7 @@ class LightningModuleTest:
 
         if torch.cuda.is_available():
             batch = [x.cuda() for x in batch]
-            model = model.cuda()
+            model = model.cuda()  # type: ignore
 
         model.eval()
         output = model.validation_step(batch, 0)
@@ -343,14 +343,14 @@ class LightningModuleTest:
         dl = model.val_dataloader()
 
         if torch.cuda.is_available():
-            model = model.cuda()
+            model = model.cuda()  # type: ignore
             model.eval()
             outputs = [model.validation_step([x.cuda() for x in batch], 0) for batch in dl]
         else:
             model.eval()
             outputs = [model.validation_step(batch, 0) for batch in dl]
 
-        result = model.validation_epoch_end(outputs)
+        result = model.validation_epoch_end(outputs)  # type: ignore
         assert isinstance(result, dict)
         return outputs, result
 
@@ -374,7 +374,7 @@ class LightningModuleTest:
 
         if torch.cuda.is_available():
             batch = [x.cuda() for x in batch]
-            model = model.cuda()
+            model = model.cuda()  # type: ignore
 
         # TODO this can't handle multiple optimizers
         model.eval()
@@ -410,13 +410,13 @@ class LightningModuleTest:
         dl = model.test_dataloader()
 
         if torch.cuda.is_available():
-            model = model.cuda()
+            model = model.cuda()  # type: ignore
             model.eval()
             outputs = [model.test_step([x.cuda() for x in batch], 0) for batch in dl]
         else:
             model.eval()
             outputs = [model.test_step(batch, 0) for batch in dl]
 
-        result = model.test_epoch_end(outputs)
+        result = model.test_epoch_end(outputs)  # type: ignore
         assert isinstance(result, dict)
         return outputs, result

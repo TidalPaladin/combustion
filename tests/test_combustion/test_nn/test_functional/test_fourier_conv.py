@@ -55,12 +55,13 @@ def test_conv2d(kernel_size, stride, padding, bias):
 
     layer = nn.Conv2d(1, 1, kernel_size, stride, padding, bias=False)
     layer.weight = nn.Parameter(kernel)
-    if bias:
+    if _bias is not None:
         layer.bias = nn.Parameter(_bias)
     else:
         layer.register_parameter("bias", None)
 
     actual = fourier_conv2d(inputs, kernel, stride=stride, padding=padding, bias=_bias)
+
     expected = layer(inputs)
     assert actual.shape == expected.shape
     assert torch.allclose(expected, actual, atol=1e-4)

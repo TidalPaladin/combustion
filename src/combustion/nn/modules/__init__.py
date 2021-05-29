@@ -2,12 +2,9 @@
 # -*- coding: utf-8 -*-
 
 from .bifpn import BiFPN, BiFPN1d, BiFPN2d, BiFPN3d
-from .bottleneck import Bottleneck1d, Bottleneck2d, Bottleneck3d, BottleneckFactorized2d, BottleneckFactorized3d
 from .clamp_normalize import ClampAndNormalize
-from .conv import DownSample3d, UpSample2d, UpSample3d
 from .dropconnect import DropConnect
 from .dynamic_pad import DynamicSamePad
-from .factorized import Conv1d, Conv2d, Conv3d, ConvTranspose1d, ConvTranspose2d, ConvTranspose3d
 from .fcos import FCOSDecoder
 from .fpn_shared_head import SharedDecoder1d, SharedDecoder2d, SharedDecoder3d
 from .global_attention_upsample import AttentionUpsample1d, AttentionUpsample2d, AttentionUpsample3d
@@ -27,25 +24,11 @@ __all__ = [
     "BiFPN1d",
     "BiFPN2d",
     "BiFPN3d",
-    "Conv3d",
-    "ConvTranspose3d",
-    "Conv2d",
-    "ConvTranspose2d",
-    "Conv1d",
-    "ConvTranspose1d",
     "ClampAndNormalize",
-    "DownSample3d",
     "DropConnect",
     "DynamicSamePad",
     "FCOSDecoder",
     "MatchShapes",
-    "UpSample3d",
-    "UpSample2d",
-    "Bottleneck3d",
-    "Bottleneck2d",
-    "Bottleneck1d",
-    "BottleneckFactorized3d",
-    "BottleneckFactorized2d",
     "Standardize",
     "MobileNetBlockConfig",
     "MobileNetConvBlock1d",

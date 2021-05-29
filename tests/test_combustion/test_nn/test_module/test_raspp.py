@@ -17,7 +17,7 @@ class RASPPBaseTest(TorchScriptTestMixin):
         raise NotImplementedError()
 
     @pytest.fixture
-    def data(self, request, levels, num_classes):
+    def data(self):
         raise NotImplementedError()
 
     @pytest.fixture
@@ -75,13 +75,13 @@ class RASPPBaseTest(TorchScriptTestMixin):
         layer = model
         output = layer(inputs)
 
-        scalar = sum([x.sum() for x in output])
+        scalar: Tensor = sum([x.sum() for x in output])  # type: ignore
         scalar.backward()
 
 
 class TestRASPP2d(RASPPBaseTest):
     @pytest.fixture
-    def model_class(self, request):
+    def model_class(self):
         return RASPPLite2d
 
     @pytest.fixture

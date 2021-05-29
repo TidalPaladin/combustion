@@ -78,7 +78,7 @@ class SaveTensors(AttributeCallback):
         max_calls: Optional[int] = None,
         interval: Optional[int] = None,
         ignore_errors: bool = False,
-        output_format: str = "pth",
+        output_format: Union[str, Iterable[str]] = "pth",
         **kwargs,
     ):
         super().__init__(triggers, hook, attr_name, epoch_counter, max_calls, interval, ignore_errors)
@@ -90,11 +90,13 @@ class SaveTensors(AttributeCallback):
             self.output_format = str(output_format).lower()
             if self.output_format not in VALID_FORMATS:
                 raise ValueError(f"Invalid `output_format` {self.output_format}")
-        else:
+        elif isinstance(output_format, Iterable):
             self.output_format = tuple(str(x).lower() for x in output_format)
             for x in self.output_format:
                 if x not in VALID_FORMATS:
                     raise ValueError(f"Invalid `output_format` {x}")
+        else:
+            raise TypeError(f"`output_format` must be a str or iterable of str, found {type(output_format)}")
 
     @staticmethod
     def save_tensor(p: Path, t: Tensor, output_format: str, **kwargs) -> None:
@@ -138,6 +140,7 @@ class SaveTensors(AttributeCallback):
                 raise TypeError(f"Expected type({self.attr_name}) == Tensor, found {type(attr)}")
 
         base_path = self.path
+        assert base_path is not None, "should be assigned by pretrain_routine_start or test_start"
         path = Path(base_path, _mode, f"{self.attr_name}", self.read_step_as_str(pl_module, batch_idx)).with_suffix(
             ".pth"
         )

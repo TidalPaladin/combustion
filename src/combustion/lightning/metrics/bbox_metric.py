@@ -3,7 +3,7 @@
 
 
 from abc import ABC
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -108,7 +108,7 @@ class BoxClassificationMetric(Metric, ABC):
         self,
         pred: Tensor,
         target: Tensor,
-    ) -> Tensor:
+    ) -> Tuple[Tensor, Tensor, Tensor]:
         r"""Given a predicted CenterNet heatmap and target bounding box label, use box IoU to
         create a paring of predicted and target boxes such that each predicted box has
         an associated gold standard label.

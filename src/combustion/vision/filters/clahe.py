@@ -28,7 +28,7 @@ class CLAHE:
     """
 
     def __init__(self, *args, **kwargs):
-        self.clahe = cv2.createCLAHE(*args, **kwargs)
+        self.clahe = cv2.createCLAHE(*args, **kwargs)  # type: ignore
         self._args = args
         self._kwargs = kwargs
 
@@ -74,7 +74,7 @@ class CLAHE:
                 batch_elem = batch_elem.permute(1, 2, 0)
                 if is_float:
                     batch_elem = batch_elem.mul(2 ** 16).numpy().astype(np.uint16)
-                batch_elem = cv2.cvtColor(batch_elem, cv2.COLOR_RGB2YUV)
+                batch_elem = cv2.cvtColor(batch_elem, cv2.COLOR_RGB2YUV)  # type: ignore
                 luminance = batch_elem[0, ...]
 
                 # apply CLAHE to luminance channel and update
@@ -83,7 +83,7 @@ class CLAHE:
                 batch_elem[0, ...] = luminance
 
                 # convert CLAHE YUV channel back to RGB
-                output = cv2.cvtColor(batch_elem, cv2.COLOR_YUV2RGB)
+                output = cv2.cvtColor(batch_elem, cv2.COLOR_YUV2RGB)  # type: ignore
                 if is_float:
                     output = output.astype(float)
 

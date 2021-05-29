@@ -15,6 +15,7 @@ from combustion.vision import visualize_bbox
 
 
 @pytest.mark.skip
+@pytest.mark.skip
 class TestEfficientDetFCOS(TorchScriptTestMixin, TorchScriptTraceTestMixin):
     @pytest.fixture
     def model_type(self):

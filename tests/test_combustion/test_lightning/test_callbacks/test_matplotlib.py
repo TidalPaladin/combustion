@@ -16,14 +16,16 @@ class TestMatplotlibCallback(BaseAttributeCallbackTest):
 
     @pytest.fixture
     def attr(self):
-        return plt.figure()
+        fig = plt.figure()
+        yield fig
+        plt.close()
 
     @pytest.fixture
     def logger_func(self, model):
         return model.logger.experiment.add_figure
 
     @pytest.fixture
-    def callback(self, request, trainer, mocker, hook):
+    def callback(self, request, mocker, hook):
         cls = self.callback_cls
         init_signature = inspect.signature(cls)
         defaults = {
@@ -64,13 +66,13 @@ class TestMatplotlibCallback(BaseAttributeCallbackTest):
         ],
         indirect=True,
     )
-    def test_log_plot(self, mocker, model, mode, hook, callback, attr, trainer, logger_func, expected_calls):
+    def test_log_plot(self, callback, logger_func, expected_calls):
         callback.trigger()
         for actual, expected in zip(logger_func.mock_calls, expected_calls):
             assert_calls_equal(actual, expected)
 
     @pytest.mark.parametrize("relpath", [None, "subdir"])
-    def test_save_plot(self, mocker, model, mode, hook, callback, attr, trainer, relpath, tmp_path):
+    def test_save_plot(self, mocker, model, mode, callback, attr, relpath, tmp_path):
         subdir = Path(mode, callback.name, callback.read_step_as_str(model, model.batch_idx))
         if relpath is None:
             real_path = Path(tmp_path, "lightning_logs", "version_0", "saved_figures")

@@ -174,7 +174,7 @@ class SparseWindow(Window):
         """
         low = pos - self.before
         high = pos + self.after
-        return sorted(tuple(set([low, pos, high])))
+        return tuple(sorted(set([low, pos, high])))
 
 
 __all__ = ["Window", "DenseWindow", "SparseWindow"]

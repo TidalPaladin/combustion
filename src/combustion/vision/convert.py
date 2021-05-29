@@ -27,7 +27,7 @@ def to_8bit(img: Union[Tensor, ndarray], per_channel: bool = True, same_on_batch
     """
     return_tensor = isinstance(img, Tensor)
     check_is_array(img, "img")
-    img: Tensor = torch.as_tensor(img)
+    img = torch.as_tensor(img)
     if not isinstance(per_channel, bool):
         raise TypeError(f"Expected bool for per_channel, found {type(per_channel)}")
     if not isinstance(same_on_batch, bool):

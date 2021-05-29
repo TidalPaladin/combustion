@@ -5,13 +5,25 @@ orbs:
   codecov: codecov/codecov@1.0.2
 
 
+commands:
+    setup_node_modules:
+        steps:
+            - run: sudo apt update
+            - run: sudo apt install -y npm
+            - run: sudo npm cache clean -f
+            - run: sudo npm install -g n
+            - run: sudo n stable
+            - run:
+                name: Install static type checker
+                command: npm ci
+
+
 jobs:
 
     check_code_quality:
         working_directory: ~/combustion
         docker:
             - image: circleci/python:3.8
-        parallelism: 1
         steps:
             - checkout
             - run: 
@@ -23,7 +35,6 @@ jobs:
         working_directory: ~/combustion
         docker:
             - image: circleci/python:3.8
-        parallelism: 1
         steps:
             - checkout
             - run: 
@@ -33,6 +44,10 @@ jobs:
                 paths:
                   - ~/.cache/pip
                 key: v1-dependencies-{{ checksum "setup.py" }}
+            - setup_node_modules
+            - run:
+                name: Run static type checking
+                command: make types
             - run: 
                 name: Run tests
                 command: make ci-test
@@ -49,7 +64,6 @@ workflow_filters: &workflow_filters
 
 
 workflows:
-    version: 2
     build_and_test:
         jobs:
             - check_code_quality

@@ -102,7 +102,7 @@ def scores(request, input_type, img_shape):
     elif scores_t == "np.array":
         return tensor.numpy()
     else:
-        raise pytest.UsageError(f"unknown type for fixture bbox: {bbox_t}")
+        raise pytest.UsageError(f"unknown type for fixture input_type: {input_type}")
 
 
 class TestVisualizeBbox:
@@ -123,18 +123,18 @@ class TestVisualizeBbox:
 
         img_c = copy(img)
         bbox_c = copy(bbox)
-        if label is not None:
-            label_c = copy(label)
-        if scores is not None:
-            scores_c = copy(scores)
+        label_c = copy(label) if label is not None else None
+        scores_c = copy(scores) if scores is not None else None
 
         result = visualize_bbox(img, bbox=bbox, classes=label, scores=scores, class_names=class_names)
 
         assert torch.allclose(torch.as_tensor(img), img_c)
         assert torch.allclose(torch.as_tensor(bbox), bbox_c)
         if label is not None:
+            assert label_c is not None
             assert torch.allclose(torch.as_tensor(label), label_c)
         if scores is not None:
+            assert scores_c is not None
             assert torch.allclose(torch.as_tensor(scores), scores_c)
 
     def test_visualize_bbox(self, img, label, bbox, class_names, scores):
@@ -369,9 +369,8 @@ class TestBboxHelpers:
         assert torch.allclose(target, true_target)
 
     @pytest.mark.parametrize("return_inverse", [False, True])
-    @pytest.mark.parametrize("pad_value", [-1, -2])
     @pytest.mark.parametrize("keep_classes", [[0], [0, 1], [0, 2]])
-    def test_filter_bbox_classes(self, return_inverse, pad_value, keep_classes):
+    def test_filter_bbox_classes(self, return_inverse, keep_classes):
         torch.random.manual_seed(42)
 
         possible_classes = set([0, 1, 2])

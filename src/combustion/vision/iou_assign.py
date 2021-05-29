@@ -152,7 +152,7 @@ class ConfusionMatrixIoU:
         if pred_scores is not None:
             if not pred_scores.shape[box_dim] == pred_num_boxes:
                 raise RuntimeError(
-                    f"bad num boxes in pred_scores -> expected {num_box}, found shape {pred_scores.shape}"
+                    f"bad num boxes in pred_scores -> expected {pred_num_boxes}, found shape {pred_scores.shape}"
                 )
 
 
@@ -200,9 +200,10 @@ class BinaryLabelIoU(ConfusionMatrixIoU):
 
         num_pred_boxes = tp.numel()
         num_fn = fn.sum()
+        size = int((num_pred_boxes + num_fn).item())
 
-        pred = torch.empty(num_pred_boxes + num_fn, device=pred_boxes.device).type_as(pred_scores).fill_(0)
-        target = torch.empty(num_pred_boxes + num_fn, device=pred_boxes.device).type_as(pred_scores).fill_(0)
+        pred = pred_scores.new_zeros(size)
+        target = pred_scores.new_zeros(size)
 
         pred[:num_pred_boxes] = pred_scores.view(-1)
         target[:num_pred_boxes][tp] = 1
@@ -255,10 +256,11 @@ class CategoricalLabelIoU(ConfusionMatrixIoU):
 
         num_pred_boxes = tp.numel()
         num_fn = fn.sum()
+        size = int((num_pred_boxes + num_fn).item())
 
-        pred = pred_scores.new_zeros(num_pred_boxes + num_fn)
-        target = pred_scores.new_empty(num_pred_boxes + num_fn).fill_(-1)
-        binary_target = pred_scores.new_zeros(num_pred_boxes + num_fn, dtype=torch.uint8)
+        pred = pred_scores.new_zeros(size)
+        target = pred_scores.new_empty(size).fill_(-1)
+        binary_target = pred_scores.new_zeros(size, dtype=torch.uint8)
 
         pred[:num_pred_boxes] = pred_scores.view(-1)
         target[:num_pred_boxes][tp] = pred_classes[tp].view(-1)

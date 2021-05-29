@@ -33,7 +33,7 @@ class TestBoxAUROC:
 
         metric = BoxAUROC(iou_threshold=0.5, pos_label=pos_label, true_positive_limit=true_positive_limit)
 
-        value = metric(pred, target)
+        value = metric(pred, target)  # type: ignore
         if pos_label == 2.0 or pos_label is None:
             assert value == 1.0
         else:
@@ -64,7 +64,7 @@ class TestBoxAUROC:
 
         metric = BoxAUROC(iou_threshold=0.5, pos_label=pos_label, true_positive_limit=true_positive_limit)
 
-        value = metric(pred, target)
+        value = metric(pred, target)  # type: ignore
         assert value == 0.0
 
     @pytest.mark.parametrize(
@@ -107,6 +107,6 @@ class TestBoxAUROC:
         ).float()
 
         metric = BoxAUROC(iou_threshold=iou_threshold, pos_label=pos_label, true_positive_limit=true_positive_limit)
-        value = metric(pred, target)
+        value = metric(pred, target)  # type: ignore
         expected = torch.tensor(expected)
         assert torch.allclose(value, expected, atol=1e-3)

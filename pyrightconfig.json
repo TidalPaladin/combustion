@@ -1,0 +1,17 @@
+{
+  "include": [
+    "src/combustion",
+    "tests"
+  ],
+  "exclude": [
+    "tests/test_combustion/test_model",
+    "tests/test_combustion/test_lightning/test_hydra_mixin.py"
+  ],
+	"venvPath": ".",
+	"venv": "venv",
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
+  ]
+}

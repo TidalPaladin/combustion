@@ -23,7 +23,7 @@ class TestStandardize:
                 [[-1.5, 0.0], [0.0, 1.5]],
             ]
         )
-        layer = Standardize(dims=[-1, -2])
+        layer = Standardize(dims=(-1, -2))
         output = layer(input)
         assert torch.allclose(output, expected)
 
@@ -43,7 +43,7 @@ class TestStandardize:
                 [[-1.5, 0.0], [0.0, 1.5]],
             ]
         ).permute(1, 0, 2)
-        layer = Standardize(dims=[0, 2])
+        layer = Standardize(dims=(0, 2))
         output = layer(input)
         assert torch.allclose(output, expected)
 
@@ -56,10 +56,10 @@ class TestStandardize:
             ]
         )
 
-        layer = Standardize(dims=[-1, -2])
+        layer = Standardize(dims=(-1, -2))
         output = layer(input)
         assert not torch.isnan(output).any(), "divided by zero because variance=0"
 
     def test_repr(self):
-        layer = Standardize(dims=[-1, -2])
+        layer = Standardize(dims=(-1, -2))
         print(layer)
