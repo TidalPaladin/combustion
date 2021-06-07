@@ -29,7 +29,7 @@ class TestKernels:
         R = 5
         data = torch.rand(L, N, E)
         projection = torch.rand(E, R)
-        kernel_func = lambda x: x
+        kernel_func = lambda x, y: x
 
         features = generalized_kernel_features(data, kernel_func, projection)
         assert isinstance(features, Tensor)
