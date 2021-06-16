@@ -45,3 +45,21 @@ class PositionalEncoder(nn.Module):
         seq_len = x.size(1)
         x = x + self.pe[:,:seq_len]
         return x
+
+class RelativePositionalEncoder(nn.Module):
+    def __init__(self, num_coords: int, d_model: int):
+        super().__init__()
+        self.d_model = d_model
+        self.num_coords = num_coords
+        self.linear = nn.Sequential(
+            nn.Linear(num_coords, d_model),
+            nn.ReLU()
+        )
+    
+    def forward(self, center: Tensor, points: Tensor) -> Tensor:
+        L, N, C = center.shape
+        K, L, N, C = points.shape
+        assert C == self.num_coords
+        with torch.no_grad():
+            delta = points - center.view(1, L, N, C)
+        return self.linear(delta)

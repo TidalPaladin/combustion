@@ -1,38 +1,33 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import math
 import pytest
 from torch import Tensor
 import torch
 import torch.nn as nn
 from timeit import timeit
 
-from combustion.nn.modules.transformer.performer import generalized_kernel_features, gaussian_orthogonal_random_matrix, FAVOR, PerformerLayer
+from combustion.nn.modules.transformer.performer import FAVOR, PerformerLayer, SoftmaxORF, SoftmaxHyp
 
-class TestKernels:
 
-    @pytest.mark.parametrize("uniform_q", [False, True])
-    @pytest.mark.parametrize("rows,cols", [
-        pytest.param(5, 5),
-        pytest.param(10, 5),
-        pytest.param(10, 8),
-    ])
-    def test_gaussian_orthogonal_matrix(self, rows, cols, uniform_q):
-        mat = gaussian_orthogonal_random_matrix(rows, cols, uniform_q)
-        assert isinstance(mat, Tensor)
-        diag = torch.mm(mat, mat.T).diag()
+class TestSoftmaxORF:
+
+    def test_gaussian_orthogonal_matrix(self):
+        L, N, E = 100, 2, 10
+        torch.random.manual_seed(42)
+        k = SoftmaxORF(E, E)
+        query = torch.normal(0, 1, (L, N, E))
+        key = torch.normal(0, 1, (L, N, E))
+        query_sm = k(query, is_query=True)
+        key_sm = k(key, is_query=False)
+
+        out = torch.einsum("lne,pne->nlp", query, key).div_(math.sqrt(E)).softmax(dim=-1)
+        out2 = torch.einsum("lne,pne->nlp", query_sm, key_sm)
+        assert False
 
         # test only works when scaling not applied
         #assert torch.allclose(diag, torch.ones_like(diag))
 
-    def test_generalized_kernel(self):
-        L, N, E = 10, 3, 20
-        R = 5
-        data = torch.rand(L, N, E)
-        projection = torch.rand(E, R)
-        kernel_func = lambda x, y: x
-
-        features = generalized_kernel_features(data, kernel_func, projection)
-        assert isinstance(features, Tensor)
 
 class TestFavor:
 
@@ -52,7 +47,7 @@ class TestFavor:
         assert out.shape == (L, N, E)
 
     def test_stability(self):
-        torch.random.manual_seed(42)
+        torch.random.manual_seed(11)
         E, R = 512, 96
         L, N = 1024, 2
 
@@ -65,38 +60,58 @@ class TestFavor:
         out, _ = m(x, x, x)
         assert not out.isnan().any()
 
-    def test_vs_standard_attn(self):
-        num_heads = 4
+    def test_vs_standard_attn_no_favor(self):
+        seed = 30
+        num_heads = 1
         E, R = 512, 96
-        L, N = 1024, 2
+        L, N = 1024, 1
 
-        torch.random.manual_seed(42)
+        torch.random.manual_seed(seed)
         s = nn.MultiheadAttention(E, num_heads)
-        torch.random.manual_seed(42)
+        torch.random.manual_seed(seed)
         f = FAVOR(E, R, num_heads, fast=False)
 
-        x = torch.rand(L, N, E)
+        for param_s, param_f in zip(s.parameters(), f.parameters()):
+            assert (param_s == param_f).all()
+
+        s.eval()
+        f.eval()
+
+        x = torch.normal(0, 1, (L, N, E))
         out_s, _ = s(x, x, x)
         out_f, _ = f(x, x, x)
-        assert torch.allclose(out_s, out_f, atol=1e-5)
+        assert (out_s == out_f).all()
 
     def test_vs_standard_attn2(self):
-        num_heads = 4
-        E, R = 200, 128
-        L, N = 1024, 4
+        num_heads = 8
+        E, R = 128, 128
+        L, N = 1025, 4
 
-        torch.random.manual_seed(42)
+        torch.random.manual_seed(11)
         s = nn.MultiheadAttention(E, num_heads)
+        for p in s.parameters():
+            torch.random.manual_seed(11)
+            torch.nn.init.normal_(p, std=0.1)
         torch.random.manual_seed(42)
         f = FAVOR(E, R, num_heads)
+        for p in f.parameters():
+            torch.random.manual_seed(11)
+            torch.nn.init.normal_(p, std=0.1)
 
-        x = torch.rand(L, N, E)
+        f.eval()
+        s.eval()
+
+        x = torch.normal(0, 1, (L, N, E)).relu_()
         out_s, weight_s = s(x, x, x, need_weights=True)
+        out_b, weight_b = f(x, x, x, need_weights=True, fast=False)
         out_f, weight_f = f(x, x, x, need_weights=True)
         out_mse = (out_s - out_f).pow(2).mean().item() 
         weight_mse = (weight_s - weight_f).pow(2).mean().item() 
+        out_max_err = (out_f - out_s).abs().max()
+        weight_max_err = (weight_f - weight_s).abs().max()
         assert weight_mse < 1e-6
         assert out_mse < 1e-3
+        assert False
 
     @pytest.mark.ci_skip
     def test_approximation_error(self):
@@ -111,7 +126,7 @@ class TestFavor:
         for seed in seed_values:
             torch.random.manual_seed(seed)
             s = nn.MultiheadAttention(E, num_heads)
-            x = torch.rand(L, N, E)
+            x = torch.randn(L, N, E)
             out_s, weight_s = s(x, x, x, need_weights=True)
 
             for R in m_values:
@@ -122,6 +137,7 @@ class TestFavor:
                 results[f"{seed}-{R}"] = mse_out
 
         assert (v < 1e-2 for v in results.values())
+        assert False
 
     @pytest.mark.ci_skip
     def test_speed(self):

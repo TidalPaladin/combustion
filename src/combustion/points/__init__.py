@@ -4,9 +4,9 @@
 from typing import Tuple
 
 from torch import Tensor
-
 from .crop import CenterCrop, center_crop
 from .transforms import RandomRotate, Rotate, center, random_rotate, rotate
+from .point_transformer import NearestNeighborCluster, FarthestPointsReduce
 
 
 # torch-scatter doesn't install correctly unless combustion[points] is installed after combustion
@@ -24,6 +24,8 @@ else:
 
     def projection_mapping(*args, **kwargs) -> Tuple[Tensor, Tensor, Tuple[int, int]]:  # type: ignore
         raise ImportError("Operation requires torch_scatter, please install it with `pip install combustion[points]`")
+
+
 
 
 __all__ = [

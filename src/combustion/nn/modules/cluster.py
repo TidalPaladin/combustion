@@ -1,0 +1,252 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import torch
+from torch import Tensor
+from typing import Any, Tuple, List, Optional
+import torch.nn as nn
+from abc import ABC, abstractmethod
+
+from .transformer.position import RelativePositionalEncoder
+
+try:
+    import torch_cluster as tc
+except ImportError:
+    tc: Any = None
+
+try:
+    import torch_scatter as ts
+except ImportError:
+    ts: Any = None
+
+
+def flatten_batch(x: Tensor) -> Tuple[Tensor, Tensor]:
+    N, L, C = x.shape
+    batch_idx = (
+        torch.arange(N, device=x.device)
+        .view(N, 1)
+        .expand(N, L)
+        .contiguous()
+        .view(-1)
+    )
+    x = x.contiguous().view(-1, C).contiguous()
+    return x, batch_idx
+
+
+class Decimate(nn.Module, ABC):
+
+    def __init__(self, ratio: float = 0.25, max_points: Optional[int] = None):
+        super().__init__()
+        self.ratio = ratio
+        self.max_points = max_points
+
+    def extra_repr(self) -> str:
+        s = f"ratio={self.ratio}"
+        if self.max_points is not None:
+            s += f"max_points={self.max_points}"
+        return s
+
+    @abstractmethod
+    def forward(self, coords: Tensor) -> List[Tensor]:
+        if tc is None:
+            raise ImportError(f"{self.__class__.__name__} requires torch-cluster")
+        else:
+            assert tc is not None
+
+class Cluster(nn.Module, ABC):
+
+    def __init__(self, k: int):
+        super().__init__()
+        self.k = k
+
+    def extra_repr(self) -> str:
+        s = f"k={self.k}"
+        return s
+
+    @abstractmethod
+    def forward(self, coords1: Tensor, coords2: Tensor) -> List[Tensor]:
+        if tc is None:
+            raise ImportError(f"{self.__class__.__name__} requires torch-cluster")
+        else:
+            assert tc is not None
+
+class RandomDecimate(Decimate):
+
+    def __init__(self, ratio: float = 0.25, max_points: Optional[int] = None, seed: int = 42):
+        super().__init__(ratio, max_points)
+        self.seed = seed
+
+    def forward(self, coords: Tensor) -> List[Tensor]:
+        super().forward(coords)
+
+        L, N, C = coords.shape
+        K = int(L * self.ratio)
+
+        with torch.no_grad():
+            with torch.random.fork_rng(devices=[coords.device]):
+                torch.random.manual_seed(self.seed)
+                keep = torch.randperm(L, device=coords.device)[:K]
+                keep = torch.meshgrid(
+                    keep, 
+                    torch.arange(N, device=coords.device)
+                )
+                keep = [x.contiguous().view(-1) for x in keep]
+
+        return keep
+
+
+class FarthestPointsDecimate(Decimate):
+
+    def __init__(self, ratio: float = 0.25, max_points: Optional[int] = None):
+        super().__init__(ratio, max_points)
+
+    def forward(self, coords: Tensor) -> List[Tensor]:
+        super().forward(coords)
+        L, N, C = coords.shape
+
+        ratio = self.ratio
+        if self.max_points is not None:
+            ratio = self.max_points / L
+
+        with torch.no_grad():
+            # torch cluster requires batch_idx to be sorted, so permute before flattening
+            coords = coords.swapdims(0, 1)
+            coords, batch_idx = flatten_batch(coords)
+
+            # farthest point sampling to find points to keep
+            keep = tc.fps(coords, batch_idx, self.ratio)
+            keep = keep.view(N, -1).swapdims(0, 1).fmod_(L)
+            K = keep.shape[0]
+
+            indices = torch.meshgrid(
+                torch.arange(K, device=coords.device), 
+                torch.arange(N, device=coords.device)
+            )
+            indices = [keep.contiguous().view(-1), indices[-1].contiguous().view(-1)]
+
+        return indices
+
+
+class KNNCluster(Cluster):
+
+    def __init__(self, k: int, cosine: bool = False):
+        super().__init__(k)
+        self.cosine = cosine
+
+    def extra_repr(self) -> str:
+        s = f"k={self.k}"
+        if self.cosine:
+            s += f", cosine=True"
+        return s
+
+    def forward(self, coords1: Tensor, coords2: Tensor) -> List[Tensor]:
+        if tc is None:
+            raise ImportError(f"{self.__class__.__name__} requires torch-cluster")
+        else:
+            assert tc is not None
+
+        L1, N, C = coords1.shape
+        L2, N, C = coords2.shape
+        K = self.k
+        graph_knn = coords1 is coords2
+
+        with torch.no_grad():
+            coords1 = coords1.swapdims(0, 1)
+            coords1, batch_idx1 = flatten_batch(coords1)
+
+            if graph_knn:
+                coords2 = coords1
+                batch_idx2 = batch_idx1
+            else:
+                coords2 = coords2.swapdims(0, 1)
+                coords2, batch_idx2 = flatten_batch(coords2)
+
+            _, clusters = tc.knn(coords1, coords2, self.k, batch_idx1, batch_idx2, cosine=self.cosine)
+
+            # turn clusters into a set of indices into `features` or `coords`
+            clusters = clusters.view(N, L2, K).permute(-1, 1, 0).fmod_(L2)
+            assert tuple(clusters.shape) == (K, L2, N)
+            indices = torch.meshgrid(
+                torch.arange(K, device=coords2.device), 
+                torch.arange(L2, device=coords2.device), 
+                torch.arange(N, device=coords2.device)
+            )
+            indices = [clusters.contiguous().view(-1), indices[-1].contiguous().view(-1)]
+            assert len(indices[0]) == L2 * N * K
+
+        return indices
+
+
+class MLP(nn.Module):
+    def __init__(self, d_in: int, d_ff: int, d_out: int, act: nn.Module = nn.ReLU()):
+        super().__init__()
+        self.linear1 = nn.Linear(d_in, d_ff, bias=False)
+        self.norm1 = nn.LayerNorm(d_ff)
+        self.linear2 = nn.Linear(d_ff, d_out, bias=False)
+        self.norm2 = nn.LayerNorm(d_out)
+        self.act = act
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.linear1(x)
+        x = self.norm1(x)
+        x = self.linear2(x)
+        x = self.norm2(x)
+        return self.act(x)
+
+
+class TransitionDown(nn.Module):
+
+    def __init__(self, dim: int, dim_out: int, k: int, ratio: float = 0.25, act: nn.Module = nn.ReLU(), max_points: Optional[int] = None):
+        super().__init__()
+        #self.decimate =  RandomDecimate(ratio)
+        self.decimate =  FarthestPointsDecimate(ratio, max_points=max_points)
+        self.cluster = KNNCluster(k)
+        self.mlp = MLP(dim, dim_out, dim_out, act=act)
+
+    def forward(self, coords: Tensor, features: Tensor) -> Tuple[Tensor, Tensor, List[Tensor], List[Tensor]]:
+        L, N, D = features.shape
+        C = coords.shape[-1]
+        features = self.mlp(features)
+        D2 = features.shape[-1]
+
+        keep_idx = self.decimate(coords)
+        keep_coords = coords[keep_idx].view(-1, N, C)
+        L2 = keep_coords.shape[0]
+
+        neighbor_idx = self.cluster(coords, keep_coords)
+        pool_features = features[neighbor_idx].view(self.k, L2, N, D2)
+        pool_features = pool_features.amax(dim=0)
+
+        return keep_coords, pool_features, neighbor_idx, keep_idx
+
+    @property
+    def k(self) -> int:
+        return self.cluster.k
+
+    @property
+    def ratio(self) -> float:
+        return self.decimate.ratio
+
+
+class TransitionUp(nn.Module):
+
+    def __init__(self, dim_coarse: int, dim_fine: int, act: nn.Module = nn.ReLU()):
+        super().__init__()
+        self.mlp_coarse = MLP(dim_coarse, dim_fine, dim_fine, act=act)
+        self.mlp_fine = MLP(dim_fine, dim_fine, dim_fine, act=act)
+
+    def forward(self, features_coarse: Tensor, features_fine: Tensor, neighbor_idx: List[Tensor], keep_idx: List[Tensor]) -> Tensor:
+        Lc, N, Dc = features_coarse.shape
+        Lf, N, Df = features_fine.shape
+
+        features_coarse = self.mlp_coarse(features_coarse)
+        features_fine = self.mlp_fine(features_fine)
+        D = Dc = Df
+        assert tuple(features_coarse.shape) == (Lc, N, D)
+        assert tuple(features_fine.shape) == (Lf, N, D)
+
+        # TODO this wont handle a fine point that is in a cluster for multiple coarse points
+        updated_features = features_coarse.view(1, Lc, N, D) + features_fine[neighbor_idx].view(-1, Lc, N, D)
+        features_fine[neighbor_idx] = updated_features.view(-1, D)
+
+        return features_fine
