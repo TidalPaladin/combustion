@@ -412,9 +412,9 @@ def categorical_focal_loss(
         pos_weight = torch.as_tensor(pos_weight, device=ce_loss.device, dtype=ce_loss.dtype)
         ce_loss = torch.where(positive_indices, pos_weight * ce_loss, (1.0 - pos_weight) * ce_loss)
 
-    input = input.movedim(1, -1).view(-1, num_classes)
-    positive_indices = positive_indices.view(-1)
-    z = z.view(-1, num_classes)
+    input = input.movedim(1, -1).contiguous().view(-1, num_classes)
+    positive_indices = positive_indices.contiguous().view(-1)
+    z = z.contiguous().view(-1, num_classes)
 
     if gamma != 0:
         logS = torch.logsumexp(input, dim=-1, keepdim=True)

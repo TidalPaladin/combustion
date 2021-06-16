@@ -349,3 +349,16 @@ class TestCategoricalFocalLoss:
         y = torch.randint(0, num_classes, (1, 10, 10)).view(-1)
         criterion = cls(gamma=gamma, reduction="none")
         criterion(x, y)
+
+    def test_contiguous(self, cls):
+        L, N, C = 100, 2, 3
+        x = torch.rand(L, N, C, requires_grad=True)
+        y = torch.randint(0, C, (L, N))
+
+        x = x.permute(1, -1, 0)
+        y = y.swapdims(0, 1)
+
+        criterion = cls(gamma=2.0)
+        loss = criterion(x, y)
+        loss.backward()
+        assert loss.numel() == 1
