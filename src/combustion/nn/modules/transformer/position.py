@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import math
 from torch import Tensor
+from typing import Iterable, Optional
 
 class AbsolutePositionalEmbedding(nn.Module):
     def __init__(self, dim: int, max_seq_len: int):
@@ -63,3 +64,61 @@ class RelativePositionalEncoder(nn.Module):
         with torch.no_grad():
             delta = points - center.view(1, L, N, C)
         return self.linear(delta)
+
+class LearnableFourierFeatures(nn.Module):
+    def __init__(
+        self, 
+        d_in: int, 
+        num_features: int, 
+        d_out: int, 
+        gamma: float = 1, 
+        init: str = "normal",
+        norm_layer = nn.LayerNorm
+    ):
+        super().__init__()
+        self.num_features = num_features
+        self.features = nn.Linear(d_in, num_features, bias=False)
+        cat_features = 2 * num_features
+        self.mlp = nn.Sequential(
+            nn.Linear(cat_features, cat_features),
+            nn.ReLU(),
+            nn.Linear(cat_features, d_out),
+            nn.ReLU()
+        )
+        self.norm = norm_layer(d_out)
+
+        if init == "ortho":
+            torch.nn.init.orthogonal_(self.features.weight, gamma)
+        elif init == "normal":
+            torch.nn.init.normal_(self.features.weight, 0, gamma)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.features(x) 
+        x = torch.cat([x.cos(), x.sin()], dim=-1)
+        x = x / self.num_features ** 0.5
+        x = self.mlp(x)
+
+        if isinstance(self.norm, nn.LayerNorm):
+            x = self.norm(x)
+        else:
+            x = self.norm(x.movedim(0, -1)).movedim(-1, 0).contiguous()
+
+        return x
+
+    @staticmethod
+    def from_grid(dims: Iterable[int], proto: Optional[Tensor] = None, requires_grad: bool = True, **kwargs) -> Tensor:
+        if proto is not None:
+            device = proto.device
+            dtype = proto.dtype
+            _kwargs = {"device": device, "dtype": dtype}
+            _kwargs.update(kwargs)
+            kwargs = _kwargs
+
+        with torch.no_grad():
+            lens = tuple(torch.arange(d, **kwargs) for d in dims)
+            grid = torch.stack(torch.meshgrid(*lens), dim=0)
+            grid = grid.movedim(0, -1).view(-1, 1, len(lens))
+
+        requires_grad = requires_grad or (proto is not None and proto.requires_grad)
+        grid.requires_grad = requires_grad
+        return grid

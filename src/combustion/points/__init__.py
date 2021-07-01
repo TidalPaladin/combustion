@@ -7,7 +7,6 @@ from torch import Tensor
 
 from .crop import CenterCrop, center_crop
 from .transforms import RandomRotate, Rotate, center, random_rotate, rotate
-from .point_transformer import NearestNeighborCluster, FarthestPointsReduce
 
 
 # torch-scatter doesn't install correctly unless combustion[points] is installed after combustion

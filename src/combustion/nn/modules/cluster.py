@@ -129,9 +129,10 @@ class FarthestPointsDecimate(Decimate):
 
 class KNNCluster(Cluster):
 
-    def __init__(self, k: int, cosine: bool = False):
+    def __init__(self, k: int, cosine: bool = False, num_workers: int = 8, cpu_threshold = 4096):
         super().__init__(k)
         self.cosine = cosine
+        self.num_workers = num_workers
 
     def extra_repr(self) -> str:
         s = f"k={self.k}"
@@ -199,7 +200,7 @@ class TransitionDown(nn.Module):
     def __init__(self, dim: int, dim_out: int, k: int, ratio: float = 0.25, act: nn.Module = nn.ReLU(), max_points: Optional[int] = None):
         super().__init__()
         #self.decimate =  RandomDecimate(ratio)
-        self.decimate =  FarthestPointsDecimate(ratio, max_points=max_points)
+        self.decimate =  RandomDecimate(ratio, max_points=max_points)
         self.cluster = KNNCluster(k)
         self.mlp = MLP(dim, dim_out, dim_out, act=act)
 

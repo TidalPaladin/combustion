@@ -4,8 +4,9 @@
 import torch
 import pytest
 from timeit import timeit
+import time
 
-from combustion.nn.modules.cluster import KNNCluster, InverseCluster, PointReduction, PointPooling, TransitionDown, TransitionUp
+from combustion.nn.modules.cluster import KNNCluster, TransitionDown, TransitionUp
 
 class TestKNNCluster:
 
@@ -49,15 +50,17 @@ class TestKNNCluster:
         L, N, D = 100000, 2, 32
         K = 16
         coords = torch.rand((L, N, 3))
-        features = torch.rand(L, N, D)
 
         l = KNNCluster(k=K)
-        def func():
-            l(coords, features)
+        torch.cuda.synchronize()
+        t1 = time.time()
+        l(coords, coords)
+        torch.cuda.synchronize()
+        t2 = time.time()
 
-        ncalls = 3
-        t = timeit(func, number=ncalls) / ncalls
+        t = t2 - t1
         assert t < 0.25
+        assert False
 
 class TestTransitionDown:
 
@@ -95,6 +98,7 @@ class TestTransitionUp:
         final_features = l2(coarse, features, neighbor_idx, keep_idx)
 
     @pytest.mark.ci_skip
+    @pytest.mark.cuda_or_skip
     def test_runtime(self):
         L, N, D = 8192, 2, 32
         K = 16
@@ -109,63 +113,4 @@ class TestTransitionUp:
             final_features = l2(coarse, features, neighbor_idx, keep_idx)
         n = 2
         t = timeit(func, number=n) / n
-        assert False
-
-
-class TestFarthestPointsSampling:
-
-    @pytest.mark.skip
-    def test_cluster(self):
-        L, N, D = 5, 2, 3
-        K = 4
-        coords = torch.rand((L, N, 3))
-        coords[:, 0, :].add_(1)
-        coords[:, 1, :].sub_(1)
-
-        features = torch.rand(L, N, D)
-        features[:, 0, :].add_(1)
-        features[:, 1, :].sub_(1)
-        features.requires_grad = True
-
-        l = FarthestPointCluster(ratio=0.5)
-        l = FastFarthestPointSampling(ratio=0.5)
-        out_features, keep, reverse_idx = l(coords, features)
-        rev = InverseCluster()
-        upsampled = rev(out_features, features, reverse_idx)
-
-
-    @pytest.mark.ci_ckip
-    def test_runtime(self):
-        L, N, D = 10000, 2, 32
-        coords = torch.rand((L, N, 3))
-        features = torch.rand(L, N, D)
-
-        l = FarthestPointSampling(ratio=0.25)
-        def func():
-            l(coords, features)
-
-        ncalls = 3
-        t = timeit(func, number=ncalls) / ncalls
-        assert t < 0.25
-
-class TestVoxelDownsample:
-
-    def test_cluster(self):
-        L, N, D = 5, 2, 3
-        K = 4
-        coords = torch.rand((L, N, 3))
-        coords[:, 0, :].add_(1)
-        coords[:, 1, :].sub_(1)
-
-        features = torch.rand(L, N, D)
-        features[:, 0, :].add_(1)
-        features[:, 1, :].sub_(1)
-        features.requires_grad = True
-
-        c = KNNCluster(k=K)
-        out_features, indices = c(coords, features)
-
-        l = PointPooling(ratio=0.5)
-        out_features, keep, nearest, new_coords = l(coords, features, indices)
-        final_features = out_features[nearest].view_as(features) + features
         assert False

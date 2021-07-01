@@ -50,8 +50,7 @@ def make_orthogonal(mat: Tensor, uniform_q = True) -> Tensor:
 
 @torch.no_grad()
 def gaussian_orthogonal_random_matrix(
-    rows: int, 
-    cols: int, 
+    size: int, 
     uniform_q = True, 
     scaling: OrthoScaling = OrthoScaling.NORM,
     **kwargs
@@ -85,32 +84,19 @@ def gaussian_orthogonal_random_matrix(
     Shape:
         Output - :math:`(R, C)` where :math:`R, C` are ``rows``, ``cols``.
     """
-    D, R = rows, cols
-    assert R <= D, f"ORF requires R <= D, found {R}, {D}"
-    blocks = rows // cols + (1 if rows % cols else 0)
-    unstructured_block = torch.randn((blocks, cols, cols), **kwargs)
+    N = size
+    unstructured_block = torch.randn((N, N), **kwargs)
 
     # make_orthogonal uses QR decomposition to return orthogonal columns.
     # apply transpose to create orthogonal rows
     q = (
         make_orthogonal(unstructured_block, uniform_q)
         .contiguous()
-        .view(-1, cols)
         .transpose(-2, -1)
+        .mul_(N ** 0.5)
     )
-    q = q[..., :rows]
-    assert tuple(q.shape) == (R, D)
-
-    if scaling == OrthoScaling.NORM:
-        #multiplier = unstructured_block.view(-1, cols)[:rows].norm(dim=-1)
-        multiplier = unstructured_block.view(-1, cols)[:rows].norm(dim=-1).view(1, -1)
-    elif scaling == OrthoScaling.CONSTANT:
-        multiplier = D ** 0.5
-    elif scaling == OrthoScaling.NONE:
-        return q
-    q.mul_(multiplier)
-
     return q
+
 
 class KernelORF(nn.Module, ABC):
     r"""Base class for modules that approximate kernels using ORF
@@ -148,7 +134,7 @@ class KernelORF(nn.Module, ABC):
     def __init__(
         self, 
         d: int, 
-        num_features: int, 
+        num_heads: int, 
         kernel_eps: float = 1e-6, 
         normalize: bool = True,
         uniform_q: bool = True,
@@ -159,7 +145,8 @@ class KernelORF(nn.Module, ABC):
         self.kernel_eps = kernel_eps
         self.normalize = normalize
         self.d = d
-        self.num_features = num_features
+        self.num_heads = num_heads
+        self.num_features = self.d // self.num_heads
         self.uniform_q = uniform_q
         self.scaling = scaling
 
@@ -177,29 +164,26 @@ class KernelORF(nn.Module, ABC):
         )
         if self.kernel_eps:
             s += f", {self.kernel_eps}"
-        if not self.auto_redraw_features:
-            s += f", auto_redraw_features=False"
         return s
 
     def forward(self, data: Tensor, **kwargs) -> Tensor:
-        L, N, E = data.shape
+        L, N, H, E = data.shape
         projection = self.projection_matrix
 
         normalizer = (E ** -0.25) if self.normalize else 1
         data = data * normalizer
 
         R = projection.shape[-2]
-        projection = projection.view(1, *projection.shape).expand(N, -1, -1)
-        data = data.permute(1, -1, 0)
-        assert projection.shape == (N, R, E)
-        assert data.shape == (N, E, L)
+        projection = projection.view(1, *projection.shape).expand(N, -1, -1, -1)
+        data = data.movedim(0, -2)
+        assert projection.shape == (N, H, E, E)
+        assert data.shape == (N, H, L, E)
 
-        proj_data = projection.bmm(data)
-        assert proj_data.shape == (N, R, L)
+        proj_data = data.matmul(projection).swapdims(-1, -2)
+        assert proj_data.shape == (N, H, E, L)
 
         out = self.kernel_function(data, proj_data, **kwargs)
-        out = out.permute(2, 0, 1)
-        assert tuple(out.shape[:2]) == (L, N)
+        out = out.movedim(-1, 0)
         return out
 
     @abstractmethod
@@ -221,14 +205,16 @@ class KernelORF(nn.Module, ABC):
     @torch.no_grad()
     def create_projection(self, **kwargs) -> Tensor:
         r"""Creates a projection matrix using positive Gaussian orthogonal random features."""
-        mat = gaussian_orthogonal_random_matrix(
-            self.d, 
-            self.num_features, 
-            self.uniform_q, 
-            self.scaling, 
-            **kwargs
-        )
-        return mat
+        matrices: List[Tensor] = []
+        for _ in range(self.num_heads):
+            mat = gaussian_orthogonal_random_matrix(
+                self.num_features, 
+                self.uniform_q, 
+                self.scaling, 
+                **kwargs
+            )
+            matrices.append(mat)
+        return torch.stack(matrices, 0)
 
     @torch.no_grad()
     def redraw_projection_matrix(self, **kwargs) -> None:
@@ -249,12 +235,13 @@ class KernelORF(nn.Module, ABC):
 class SoftmaxORF(KernelORF):
 
     def kernel_function(self, data: Tensor, projection: Tensor, is_query: bool) -> Tensor:
-        N, E, L = data.shape
-        _, R, _ = projection.shape # (N, R, L)
-        E_dim = -2
-        L_dim = -1
+        N, H, L, E = data.shape
+        projection = projection.swapdims(-1, -2)
+        N, H, L, E = projection.shape # (N, R, L)
+        E_dim = -1
+        L_dim = -2
 
-        ratio = (R ** -0.5) # 1 / root(m) normalization from FAVOR
+        ratio = (E ** -0.5) # 1 / root(m) normalization from FAVOR
 
         # h(x) = exp(-||x||**2 / 2)
         # TODO: why is the normalizer ** 2 factor necessary?
@@ -268,13 +255,14 @@ class SoftmaxORF(KernelORF):
         )
 
         # additional stabilization
+        delta = projection - h
         if is_query:
-            diff = projection.amax(dim=E_dim, keepdim=True)
+            diff = delta.amax(dim=E_dim, keepdim=True)
         else:
-            diff = projection.amax(dim=(E_dim, L_dim), keepdim=True)
+            diff = delta.amax(dim=(E_dim, L_dim), keepdim=True)
 
-        result =  ratio * torch.exp(projection - h - diff)
-        return result
+        result =  ratio * torch.exp(delta - diff)
+        return result.swapdims(-1, -2)
 
 class SoftmaxHyp(KernelORF):
 
@@ -295,13 +283,14 @@ class SoftmaxHyp(KernelORF):
         )
 
         projection = torch.cat((projection, projection.neg()), dim=E_dim)
+        delta = projection - h
 
         if is_query:
-            diff = projection.amax(dim=E_dim, keepdim=True)
+            diff = delta.amax(dim=E_dim, keepdim=True)
         else:
-            diff = projection.amax(dim=(E_dim, L_dim), keepdim=True)
+            diff = delta.amax(dim=(E_dim, L_dim), keepdim=True)
 
-        result = ratio * torch.exp(projection - h - diff)
+        result = ratio * torch.exp(delta - diff)
         return result
 
 
@@ -315,15 +304,14 @@ def linear_attention(
     dropout: float = 0.0,
     stabilizer: float = 1e-6
 ) -> Tuple[Tensor, Optional[Tensor]]:
-    L, N, E = v.shape
-    v = v.permute(1, 0, 2)
-    kT = k.permute(1, 2, 0)
-    q = q.permute(1, 0, 2)
-    _, R, _ = kT.shape
+    L, N, H, E = v.shape
+    q = q.movedim(0, -2)
+    kT = k.movedim(0, -1)
+    v = v.movedim(0, -2)
 
-    assert tuple(v.shape) == (N, L, E)
-    assert tuple(q.shape) == (N, L, R)
-    assert tuple(kT.shape) == (N, R, L)
+    assert tuple(v.shape) == (N, H, L, E)
+    assert tuple(q.shape) == (N, H, L, E)
+    assert tuple(kT.shape) == (N, H, E, L)
     weight: Optional[Tensor] = None
 
     # NOTE: no root d normalization here, its baked into the kernel
@@ -332,9 +320,9 @@ def linear_attention(
         # here we express kT @ 1_L as kT.sum(dim=-1))
         # also, diag(a_i, ...).inverse() == diag(1 / a_i, ...)
         D_inv = (
-            q.bmm(kT.sum(dim=-1, keepdim=True))
-            .view(N, L, 1)
-            .clamp_min(stabilizer)
+            q.matmul(kT.sum(dim=-1, keepdim=True))
+            .view(N, H, L, 1)
+            .clamp_min(1e-16)
             .reciprocal()
         )
 
@@ -348,12 +336,12 @@ def linear_attention(
     # Fallback to normal attn (for debugging)
     else:
         q = q / (E ** -0.5)
-        weight = q.bmm(kT).softmax(dim=-1)
-        out = weight.bmm(v)
+        weight = q.matmul(kT).softmax(dim=-1)
+        out = weight.matmul(v)
 
-    out = out.permute(1, 0, 2)
-    assert out.shape == (L, N, E)
-    assert weight is None or tuple(weight.shape) == (N, L, L)
+    out = out.movedim(-2, 0)
+    assert out.shape == (L, N, H, E)
+    assert weight is None or tuple(weight.shape) == (N, H, L, L)
     return out, weight
 
 
@@ -371,13 +359,12 @@ class FAVOR(nn.MultiheadAttention):
     def __init__(
         self, 
         embed_dim: int, 
-        proj_dim: int, 
         num_heads: int, 
         dropout: float = 0., 
         bias: bool = True, 
         add_zero_attn: bool = False,
         fast: bool = True,
-        kernel_fn: Type[KernelORF] = SoftmaxHyp,
+        kernel_fn: Type[KernelORF] = SoftmaxORF,
         stabilizer: float = 1e-6,
         **kwargs
     ) -> None:
@@ -389,17 +376,10 @@ class FAVOR(nn.MultiheadAttention):
             False, 
             add_zero_attn,
         )
-        self.proj_dim = proj_dim
+        self.proj_dim = embed_dim // self.num_heads
         self.fast = fast
         self.stabilizer = stabilizer
-
-        if self.fast:
-            self.proj_head_dim = proj_dim // num_heads 
-            assert self.proj_head_dim * num_heads == self.proj_dim, "proj_dim must be divisible by num_heads"
-        else:
-            self.proj_head_dim = self.head_dim
-
-        self.kernel = kernel_fn(self.head_dim, self.proj_head_dim, **kwargs)
+        self.kernel = kernel_fn(self.embed_dim, self.num_heads, **kwargs)
 
     def forward(
         self, 
@@ -414,6 +394,7 @@ class FAVOR(nn.MultiheadAttention):
 
         # apply initial mapping
         L, N, E = query.shape
+        H = self.num_heads
         E_mh = self.head_dim
         #needs_favor = L >= self.head_dim
 
@@ -427,9 +408,9 @@ class FAVOR(nn.MultiheadAttention):
 
         # multi-head split
         L, N, R = query.shape
-        Q = Q.contiguous().view(L, N * self.num_heads, -1)
-        K = K.contiguous().view(L, N * self.num_heads, -1)
-        V = V.contiguous().view(L, N * self.num_heads, -1)
+        Q = Q.contiguous().view(L, N, H, -1)
+        K = K.contiguous().view(L, N, H, -1)
+        V = V.contiguous().view(L, N, H, -1)
 
         # get kernel function mapping Q -> Q', ...
         Q = self.kernel(Q, is_query=True)
@@ -441,7 +422,7 @@ class FAVOR(nn.MultiheadAttention):
 
         if weight is not None:
             with torch.no_grad():
-                weight = weight.reshape(N, self.num_heads, L, L).sum(dim=1).div_(self.num_heads)
+                weight = weight.mean(dim=1)
 
         out = self.out_proj(out)
         out = F.dropout(out, self.dropout, training=self.training)
@@ -489,7 +470,6 @@ class PerformerLayer(nn.TransformerEncoderLayer):
         self, 
         d_model: int, 
         nhead: int, 
-        favor_features: int, 
         dim_feedforward: int = 2048, 
         dropout: float = 0.1, 
         activation: str = "relu",
@@ -506,7 +486,6 @@ class PerformerLayer(nn.TransformerEncoderLayer):
         )
         self.self_attn = FAVOR(
             d_model, 
-            favor_features, 
             nhead, 
             fast=fast, 
             stabilizer=stabilizer, 

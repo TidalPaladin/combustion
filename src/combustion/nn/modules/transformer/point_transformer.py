@@ -6,7 +6,7 @@ from typing import Any, Tuple, List, Optional
 import torch.nn as nn
 
 from .position import RelativePositionalEncoder
-from ..cluster import TransitionDown, TransitionUp, MLP, KNNCluster, InitialTransitionDown
+from ..cluster import TransitionDown, TransitionUp, MLP, KNNCluster
 
 class PCTDown(nn.Module):
 
@@ -17,6 +17,7 @@ class PCTDown(nn.Module):
         self.attn = nn.TransformerEncoder(layer, repeats)
         self.down = TransitionDown(d, 2*d, k, ratio, act=nn.SiLU())
         self.cluster = KNNCluster(k)
+        self.register_buffer("coords", None)
 
     def forward(self, coords: Tensor, features: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         L1, N, D1 = features.shape
@@ -33,6 +34,8 @@ class PCTDown(nn.Module):
         pool_features = self.attn(pool_features.view(-1, L2 * N, D2)).view(-1, L2, N, D2)
         pool_features = pool_features.mean(dim=0)
 
+        setattr(self, "coords", keep_coords.clone())
+        assert self.coords is not None
         return keep_coords, pool_features, neighbor_idx, keep_idx, attn_idx
 
 class PCTUp(nn.Module):
@@ -44,6 +47,7 @@ class PCTUp(nn.Module):
         self.attn = nn.TransformerEncoder(layer, repeats)
         self.up = TransitionUp(2*d, d, act=nn.SiLU())
         self.cluster = KNNCluster(k)
+        self.register_buffer("coords", None)
 
     def forward(self, features_coarse: Tensor, features_fine: Tensor, neighbor_idx: List[Tensor], keep_idx: List[Tensor], coords: Tensor, attn_idx: Optional[Tensor]) -> Tensor:
         features_fine = self.up(features_coarse, features_fine, neighbor_idx, keep_idx)
@@ -59,6 +63,8 @@ class PCTUp(nn.Module):
 
         features_fine = self.attn(features_fine.view(-1, L*N, D)).view(-1, L, N, D)
         features_fine = features_fine.mean(dim=0)
+        setattr(self, "coords", coords.clone())
+        assert self.coords is not None
         return features_fine
 
 
@@ -67,10 +73,8 @@ class ClusterModel(nn.Module):
 
     def __init__(self, d: int, d_in: int, num_coords: int = 3, blocks: List[int] = [1, 1, 1, 1], k: int = 32, **kwargs):
         super().__init__()
-        self.tail = nn.Sequential(
-            nn.Linear(d_in, d),
-            nn.ReLU()
-        )
+        self.tail = MLP(d_in, d, d)
+        self.first_mlp = MLP(d, d, d)
 
         #self.initial_decimate = InitialTransitionDown(d, d, max_points=32000)
 
@@ -91,9 +95,26 @@ class ClusterModel(nn.Module):
         max_d = d * 2 ** len(blocks)
         self.bottom = MLP(max_d, max_d, max_d)
 
+        # first block
+        self.pos_enc = RelativePositionalEncoder(num_coords, d)
+        layer = nn.TransformerEncoderLayer(d, **kwargs)
+        self.attn = nn.TransformerEncoder(layer, 1)
+        self.cluster = KNNCluster(k)
+
 
     def forward(self, coords: Tensor, features: Tensor) -> Tensor:
         features = self.tail(features)
+
+        L, N, D = features.shape
+        C = coords.shape[-1]
+
+        first_attn_idx = self.cluster(coords, coords)
+        features = features[first_attn_idx].view(-1, L, N, D)
+        pos_emb = self.pos_enc(coords, coords[first_attn_idx].view(-1, L, N, C))
+        features = features + pos_emb
+        features = self.attn(features.view(-1, L*N, D)).view(-1, L, N, D)
+        features = features.mean(dim=0)
+        first_features = self.first_mlp(features)
 
         skip_conns: List[List[Tensor]] = []
 
@@ -113,8 +134,8 @@ class ClusterModel(nn.Module):
         skip_conns = list(reversed(skip_conns))
         for i, dec in enumerate(self.decoder):
             coords, fine_features, neighbor_idx, keep_idx, _ = skip_conns[i]
-            attn_idx = skip_conns[i+1][-1] if i < len(skip_conns) - 1 else None
+            attn_idx = skip_conns[i+1][-1] if i < len(skip_conns) - 1 else first_attn_idx
             features = dec(features, fine_features, neighbor_idx, keep_idx, coords, attn_idx)
 
+        features = features + first_features
         return features
-

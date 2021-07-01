@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import matplotlib.pyplot as plt
 import pytest
 from timeit import timeit
 import torch
+from pathlib import Path
 from combustion.nn.modules.transformer.point_transformer import PCTDown, PCTUp, ClusterModel
 
 
@@ -28,6 +30,43 @@ class TestClusterModel:
         model = ClusterModel(D, D_in, C, blocks=[1, 1], k=K, nhead=8)
 
         out = model(coords, features)
+
+    @pytest.mark.ci_skip
+    def test_plot(self):
+        path = Path("/home/tidal/test_imgs/TestClusterModel")
+        if not path.is_dir():
+            return
+
+        L, N, D_in = 1024, 2, 3
+        C = 2
+        K = 16
+        D = 32
+        ratio = 0.25
+        features = torch.randn(L, N, D_in, requires_grad=True)
+        x = torch.rand(L, N, 1, requires_grad=False)
+        y = torch.randn(L, N, 1, requires_grad=False)
+        coords = torch.cat((x, y), dim=-1)
+
+        coords = coords
+        features = features
+        model = ClusterModel(D, D_in, C, blocks=[1, 1, 1], k=K, nhead=4)
+        model(coords, features)
+
+        enc_coords = [l.coords for l in model.encoder]
+        dec_coords = [l.coords for l in model.decoder]
+
+        for i, c in enumerate(enc_coords):
+            name = Path(path, f"enc_{i}.png")
+            plt.scatter(c[..., 0], c[..., 1])
+            plt.savefig(str(name))
+            plt.close()
+
+        for i, c in enumerate(dec_coords):
+            name = Path(path, f"dec_{i}.png")
+            plt.scatter(c[..., 0], c[..., 1])
+            plt.savefig(str(name))
+            plt.close()
+
         assert False
 
 
@@ -49,13 +88,6 @@ class TestClusterModel:
         n = 2
         t = timeit(func, number=n) / n
         assert False
-
-
-
-
-
-
-
 
 
     def test_runtime(self):
