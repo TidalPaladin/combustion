@@ -172,6 +172,8 @@ class PerceiverBlockConfig:
     init_ff: Optional[int] = None
     use_batchnorm: bool = False
     drop_path_rate: float = 0.1
+    num_transformers: int = 1
+    share_weights: bool = False
 
     def instantiate(self) -> nn.Module: 
         if self.dual_latent:
@@ -181,7 +183,7 @@ class PerceiverBlockConfig:
 
     def initializer(self, latent_l: int, input_d: Optional[int] = None) -> nn.Module: 
         input_d = input_d or self.input_d
-        return InitialLatent(self.latent_d, input_d, latent_l, self.init_ff, self.act, self.use_batchnorm)
+        return ConstantLatent(self.latent_d, input_d, latent_l, self.init_ff, self.act, self.use_batchnorm)
 
 
 class PerceiverLayer(nn.Module, BatchNormMixin):
@@ -196,7 +198,9 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         dropout: float = 0.0,
         act: nn.Module = nn.ReLU(),
         use_batchnorm: bool = False,
-        drop_path_rate: float = 0.1
+        drop_path_rate: float = 0.1,
+        num_transformers: int = 1,
+        share_weights: bool = False
     ):
         super().__init__()
         dim_ff = dim_ff or input_d
@@ -206,8 +210,14 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         self.norm_ca1 = nn.LayerNorm(latent_d)
         self.norm_ca2 = nn.LayerNorm(input_d)
 
-        self.latent_transformer = nn.TransformerEncoderLayer(latent_d, nhead_latent, dim_ff, dropout)
-        self.latent_transformer.activation = deepcopy(act)
+        latent_transformer = nn.TransformerEncoderLayer(latent_d, nhead_latent, dim_ff, dropout)
+        latent_transformer.activation = deepcopy(act)
+        if share_weights:
+            self.latent_transformer = nn.Sequential(*[
+                latent_transformer for _ in range(num_transformers)
+            ])
+        else:
+            self.latent_transformer = nn.TransformerEncoder(latent_transformer, num_transformers)
 
         self.ff1 = nn.Sequential(
             MLP(input_d, input_d, dropout, act=deepcopy(act)),
@@ -258,7 +268,19 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
 
     @classmethod
     def from_config(cls, conf: PerceiverBlockConfig) -> "PerceiverLayer": 
-        return cls(conf.latent_d, conf.input_d, conf.dim_ff, conf.nhead_latent, conf.nhead_input, conf.dropout, conf.act, conf.use_batchnorm, conf.drop_path_rate)
+        return cls(
+            conf.latent_d, 
+            conf.input_d, 
+            conf.dim_ff, 
+            conf.nhead_latent, 
+            conf.nhead_input, 
+            conf.dropout, 
+            conf.act, 
+            conf.use_batchnorm, 
+            conf.drop_path_rate,
+            conf.num_transformers,
+            conf.share_weights
+        )
 
 
 class PerceiverDualLatent(nn.Module, BatchNormMixin):
@@ -272,7 +294,9 @@ class PerceiverDualLatent(nn.Module, BatchNormMixin):
         dropout: float = 0.0,
         act: nn.Module = nn.ReLU(),
         use_batchnorm: bool = False,
-        drop_path_rate: float = 0.1
+        drop_path_rate: float = 0.1,
+        num_transformers: int = 1,
+        share_weights: bool = False
     ):
         super().__init__()
         self.cross_attn1 = nn.MultiheadAttention(d1, nhead1, kdim=d2, vdim=d2)
@@ -281,10 +305,21 @@ class PerceiverDualLatent(nn.Module, BatchNormMixin):
         self.norm_ca1 = nn.LayerNorm(d1)
         self.norm_ca2 = nn.LayerNorm(d2)
 
-        self.t1 = nn.TransformerEncoderLayer(d1, nhead1, d1, dropout)
-        self.t1.activation = deepcopy(act)
-        self.t2 = nn.TransformerEncoderLayer(d2, nhead2, d2, dropout)
-        self.t2.activation = deepcopy(act)
+        t1 = nn.TransformerEncoderLayer(d1, nhead1, d1, dropout)
+        t1.activation = deepcopy(act)
+        t2 = nn.TransformerEncoderLayer(d2, nhead2, d2, dropout)
+        t2.activation = deepcopy(act)
+
+        if share_weights:
+            self.t1 = nn.Sequential(*[
+                t1 for _ in range(num_transformers)
+            ])
+            self.t2 = nn.Sequential(*[
+                t2 for _ in range(num_transformers)
+            ])
+        else:
+            self.t1 = nn.TransformerEncoder(t1, num_transformers)
+            self.t2 = nn.TransformerEncoder(t2, num_transformers)
 
         self.drop_path = DropPath(drop_path_rate)
 
@@ -314,7 +349,18 @@ class PerceiverDualLatent(nn.Module, BatchNormMixin):
 
     @classmethod
     def from_config(cls, conf: PerceiverBlockConfig) -> "PerceiverDualLatent": 
-        return cls(conf.latent_d, conf.input_d, conf.nhead_latent, conf.nhead_input, conf.dropout, conf.act, conf.use_batchnorm, conf.drop_path_rate)
+        return cls(
+            conf.latent_d, 
+            conf.input_d, 
+            conf.nhead_latent, 
+            conf.nhead_input, 
+            conf.dropout, 
+            conf.act, 
+            conf.use_batchnorm, 
+            conf.drop_path_rate,
+            conf.num_transformers,
+            conf.share_weights
+        )
 
 
 
@@ -415,11 +461,11 @@ class PerceiverBlock(nn.Module):
 @dataclass
 class PerceiverConfig:
     levels: List[PerceiverBlockConfig] = field(default_factory=lambda: [
-        PerceiverBlockConfig(64, 32, nhead_latent=2, nhead_input=2, act=nn.SiLU()),
+        PerceiverBlockConfig(64, 32, nhead_latent=2, nhead_input=2, act=nn.SiLU(), num_transformers=3, share_weights=False),
         PerceiverBlockConfig(128, 64, nhead_latent=2, nhead_input=2, dual_latent=True, act=nn.SiLU(), init_ff=32),
         PerceiverBlockConfig(256, 128, nhead_latent=4, nhead_input=4, dual_latent=True, act=nn.SiLU(), init_ff=32)
     ])
-    latent_l: List[int] = field(default_factory=lambda: [32, 16, 8])
+    latent_l: List[int] = field(default_factory=lambda: [64, 16, 8])
     repeats: List[int] = field(default_factory=lambda : [3, 2, 2])
     fpn_repeats: int = 0
     init_from_input: bool = False
