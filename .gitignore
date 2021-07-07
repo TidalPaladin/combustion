@@ -140,3 +140,7 @@ coverage.xml
 
 src/combustion/version.py
 node_modules/
+performer.py
+BinaryMNIST
+cifar-10*
+lightning_logs/
