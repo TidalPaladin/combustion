@@ -139,4 +139,6 @@ class UCE(ECE):
             conf = 1 - Entropy.compute_binary_entropy(pred, inplace=False)
         else:
             conf = 1 - Entropy.compute_categorical_entropy(pred, dim=-1, inplace=False)
+        assert (conf >= 0).all()
+        assert (conf <= 1).all()
         return conf

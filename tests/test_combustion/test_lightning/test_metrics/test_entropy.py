@@ -39,9 +39,10 @@ class TestEntropy:
             logits = logits.cuda()
             metric = metric.cuda()
 
-        logits.shape[dim]
+        N = logits.shape[dim]
+        divisor = logits.numel() / N * logits.new_tensor(N).log_()
         p = logits.softmax(dim=dim)
-        expected = (p.log() * p).sum(dim=dim).neg_().sum().div_(logits.numel())
+        expected = (p.log() * p).sum(dim=dim).neg_().sum().div_(divisor)
         entropy = metric(logits)  # type: ignore
         assert torch.allclose(entropy, expected)
 

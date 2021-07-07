@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import torch
 from typing import Any, Callable, Optional
 
 import torch.nn.functional as F
@@ -89,8 +90,10 @@ class Entropy(AverageMeter):
         log_p = F.log_softmax(x, dim=dim)
         C = x.shape[dim]
         assert C > 0
+        with torch.no_grad():
+            divisor = p.new_tensor(C).log_()
 
         if inplace:
-            return log_p.mul_(p).sum(dim=dim).neg_().div_(C)
+            return log_p.mul_(p).sum(dim=dim).neg_().div_(divisor)
         else:
-            return log_p.mul(p).sum(dim=dim).neg().div(C)
+            return log_p.mul(p).sum(dim=dim).neg().div(divisor)
