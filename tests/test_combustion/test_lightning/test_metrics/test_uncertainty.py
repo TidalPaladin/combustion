@@ -129,7 +129,7 @@ class TestUCE:
 
         uce = metric(probs, true)  # type: ignore
         # TODO check this
-        assert torch.allclose(uce, uce.new_tensor(0.0840135))
+        assert torch.allclose(uce, uce.new_tensor(0.5816669))
 
     def test_categorical_classwise(self, cuda):
         probs = torch.tensor(
