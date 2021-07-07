@@ -36,6 +36,7 @@ class Entropy(AverageMeter):
         dist_sync_on_step: bool = False,
         process_group: Optional[Any] = None,
         dist_sync_fn: Callable = None,
+        inplace: bool = True,
     ):
         super().__init__(
             compute_on_step,
@@ -45,16 +46,17 @@ class Entropy(AverageMeter):
         )
         self.dim = int(dim) if dim is not None else None
         self.num_classes: Optional[int] = None
+        self.inplace = inplace
 
     def update(self, preds: Tensor) -> None:
         if self.dim is None:
-            entropy = self.compute_binary_entropy(preds)
+            entropy = self.compute_binary_entropy(preds, self.inplace)
         else:
-            entropy = self.compute_categorical_entropy(preds, dim=self.dim)
+            entropy = self.compute_categorical_entropy(preds, dim=self.dim, inplace=self.inplace)
         super().update(entropy)
 
     @staticmethod
-    def compute_binary_entropy(x: Tensor) -> Tensor:
+    def compute_binary_entropy(x: Tensor, inplace: bool = True) -> Tensor:
         r"""Computes binary entropy pointwise over a tensor.
         Inputs are expected to be unnormalized logits (no Sigmoid applied).
 
@@ -66,10 +68,13 @@ class Entropy(AverageMeter):
         log_p = F.logsigmoid(x)
         p_inv = 1 - p
         log_p_inv = F.logsigmoid(x.neg())
-        return log_p.mul_(p).add_(log_p_inv.mul_(p_inv)).neg_()
+        if inplace:
+            return log_p.mul_(p).add_(log_p_inv.mul_(p_inv)).neg_()
+        else:
+            return log_p.mul(p).add(log_p_inv.mul(p_inv)).neg()
 
     @staticmethod
-    def compute_categorical_entropy(x: Tensor, dim: int = -1) -> Tensor:
+    def compute_categorical_entropy(x: Tensor, dim: int = -1, inplace: bool = True) -> Tensor:
         r"""Computes categorical or binary entropy along a given tensor dimension. Inputs
         are expected to be unnormalized logits (no Softmax or Sigmoid applied).
 
@@ -82,4 +87,10 @@ class Entropy(AverageMeter):
         """
         p = x.softmax(dim=dim)
         log_p = F.log_softmax(x, dim=dim)
-        return log_p.mul_(p).sum(dim=dim).neg_()
+        C = x.shape[dim]
+        assert C > 0
+
+        if inplace:
+            return log_p.mul_(p).sum(dim=dim).neg_().div_(C)
+        else:
+            return log_p.mul(p).sum(dim=dim).neg().div(C)

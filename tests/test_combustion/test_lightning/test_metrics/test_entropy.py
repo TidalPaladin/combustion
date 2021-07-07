@@ -10,7 +10,7 @@ class TestEntropy:
     def test_binary_entropy(self, cuda):
         logits = torch.tensor(
             [
-                [2.0, 1.3, 0.2],
+                [2.0, 1.3, 0.0],
                 [0.7, -1.3, -0.1],
             ]
         )
@@ -39,9 +39,9 @@ class TestEntropy:
             logits = logits.cuda()
             metric = metric.cuda()
 
-        N = logits.shape[dim]
+        logits.shape[dim]
         p = logits.softmax(dim=dim)
-        expected = (p.log() * p).sum(dim=dim).neg_().sum().div_(logits.numel() / N)
+        expected = (p.log() * p).sum(dim=dim).neg_().sum().div_(logits.numel())
         entropy = metric(logits)  # type: ignore
         assert torch.allclose(entropy, expected)
 
