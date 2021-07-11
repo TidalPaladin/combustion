@@ -5,7 +5,7 @@ from .auroc import BoxAUROC
 from .average_precision import BoxAveragePrecision
 from .confidence import BootstrapMixin
 from .entropy import Entropy
-from .uncertainty import ECE, UCE
+from .uncertainty import ECE, UCE, ErrorAtUncertainty
 
 
-__all__ = ["BoxAveragePrecision", "BoxAUROC", "BootstrapMixin", "Entropy", "ECE", "UCE"]
+__all__ = ["BoxAveragePrecision", "BoxAUROC", "BootstrapMixin", "Entropy", "ECE", "UCE", "ErrorAtUncertainty"]

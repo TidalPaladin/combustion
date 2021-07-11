@@ -3,8 +3,10 @@
 
 
 import torch
+import matplotlib.pyplot as plt
 from torch import Tensor
 from torchmetrics import Metric
+from typing import Tuple, Optional
 
 from .entropy import Entropy
 
@@ -12,7 +14,7 @@ from .entropy import Entropy
 @torch.no_grad()
 def assign_to_bin(confidence: Tensor, num_bins: int) -> Tensor:
     thresholds = torch.linspace(0, 1, num_bins + 1, device=confidence.device, dtype=confidence.dtype)[1:]
-    bins = confidence.unsqueeze(-1).lt(thresholds).long().argmax(dim=-1)
+    bins = confidence.unsqueeze(-1).le(thresholds).long().argmax(dim=-1)
     return bins
 
 
@@ -70,6 +72,8 @@ class ECE(Metric):
     def update_binary(self, pred: Tensor, true: Tensor) -> None:
         if self.from_logits:
             pred = pred.sigmoid()
+        else:
+            assert (pred >= 0).all() and (pred <= 1).all()
 
         pred_cls = pred >= self.threshold
         correct = (pred_cls == true).type_as(self.correct)
@@ -87,6 +91,10 @@ class ECE(Metric):
     def update_categorical(self, pred: Tensor, true: Tensor) -> None:
         if self.from_logits:
             pred = pred.softmax(dim=-1)
+        else:
+            s = pred.sum(dim=-1)
+            assert torch.allclose(s, torch.ones_like(s))
+            del s
 
         pred_cls = pred.argmax(dim=-1)
         correct = (pred_cls == true).type_as(self.correct)
@@ -136,9 +144,52 @@ class UCE(ECE):
 
     def _get_confidence(self, pred: Tensor, categorical: bool) -> Tensor:
         if not categorical:
-            conf = 1 - Entropy.compute_binary_entropy(pred, inplace=False)
+            conf = 1 - Entropy.compute_binary_entropy(pred, inplace=False, from_logits=False)
         else:
-            conf = 1 - Entropy.compute_categorical_entropy(pred, dim=-1, inplace=False)
-        assert (conf >= 0).all()
-        assert (conf <= 1).all()
+            conf = 1 - Entropy.compute_categorical_entropy(pred, dim=-1, inplace=False, from_logits=False)
+        #assert (conf >= 0).all()
+        #assert (conf <= 1).all()
         return conf
+
+
+class ErrorAtUncertainty(UCE):
+
+    def compute(self) -> Tuple[Tensor, Tensor, Tensor]:
+        err = 1 - self.correct / self.total.clamp_min(1)
+        entropy = 1 - self.confidence / self.total.clamp_min(1)
+        has_items = self.total.bool()
+
+        err[~has_items] = 0
+        entropy[~has_items] = 0
+
+        if self.classwise:
+            err = err.mean(dim=-1)
+            entropy = entropy.mean(dim=-1)
+            has_items = has_items.any(dim=-1)
+
+        return entropy, err, has_items
+
+    @staticmethod
+    def plot(entropy: Tensor, err: Tensor, ax: Optional[plt.Axes] = None) -> Optional[plt.Figure]:
+        if ax is None:
+            fig, ax = ErrorAtUncertainty.create_fig()
+        else:
+            fig = None
+        #argsort = entropy.argsort()
+        #assert (argsort == torch.arange(entropy.numel(), device=argsort.device)).all()
+        #entropy = entropy[argsort].contiguous()
+        #err = err[argsort].contiguous()
+        ax.plot(entropy.cpu(), err.cpu(), marker="o")
+        return fig
+
+    @staticmethod
+    def create_fig(**kwargs) -> Tuple[plt.Figure, plt.Axes]:
+        fig = plt.figure(**kwargs)
+        ax: plt.Axes = fig.add_subplot(111) # type: ignore
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_xlabel("Uncertainty")
+        ax.set_ylabel("Error Rate")
+        ax.plot([0, 1], [0, 1], "--", color="black", transform=ax.transAxes)
+        ax.grid()
+        return fig, ax

@@ -14,7 +14,7 @@ from torch import Tensor
 from typing import Any, Callable, Optional, Tuple, List, Type
 from math import sqrt
 from functools import partial
-from .fnet import FourierDownsample
+from .fnet import FourierMixer, FNet, QRMixer
 from copy import deepcopy
 
 class SequenceBatchNorm(nn.BatchNorm1d):
@@ -141,8 +141,10 @@ class InitialLatent(nn.Module, BatchNormMixin):
 
 class ConstantLatent(nn.Module, BatchNormMixin):
 
-    def __init__(self, latent_d: int, input_d, latent_l: int, dim_ff: Optional[int] = None, act: nn.Module = nn.ReLU(), use_batchnorm: bool = False, dropout: float = 0.1):
+    def __init__(self, latent_d: int, _, latent_l: int, dim_ff: Optional[int] = None, act: nn.Module = nn.ReLU(), use_batchnorm: bool = False, dropout: float = 0.1):
         super().__init__()
+        self.latent_d = latent_d
+        self.latent_l = latent_l
         self.latent = nn.Parameter(torch.empty(latent_l, latent_d))
         nn.init.xavier_uniform_(self.latent)
 
@@ -151,7 +153,7 @@ class ConstantLatent(nn.Module, BatchNormMixin):
         #    self.use_batchnorm(self)
 
     def extra_repr(self) -> str:
-        s = f"latent_d={self.latent_d}, input_d={self.input_d}, latent_l={self.latent_l}"
+        s = f"latent_d={self.latent_d}, latent_l={self.latent_l}"
         return s
 
     def forward(self, inputs: Tensor) -> Tensor:
@@ -173,7 +175,8 @@ class PerceiverBlockConfig:
     use_batchnorm: bool = False
     drop_path_rate: float = 0.1
     num_transformers: int = 1
-    share_weights: bool = False
+    repetitions: int = 1
+    bandwidth: Optional[float] = 10
 
     def instantiate(self) -> nn.Module: 
         if self.dual_latent:
@@ -184,6 +187,35 @@ class PerceiverBlockConfig:
     def initializer(self, latent_l: int, input_d: Optional[int] = None) -> nn.Module: 
         input_d = input_d or self.input_d
         return ConstantLatent(self.latent_d, input_d, latent_l, self.init_ff, self.act, self.use_batchnorm)
+
+class Partitioner(nn.Module, BatchNormMixin):
+    last_shape: torch.Size
+
+    def __init__(self, num_latents: int, bandwidth: Optional[float]):
+        super().__init__()
+        self.num_latents = num_latents
+        self.bandwidth = bandwidth
+        self.chunk_size = int(num_latents * bandwidth) if bandwidth else None
+
+    def partition(self, inputs: Tensor) -> Tensor:
+        if not self.chunk_size:
+            return inputs
+        L, N, D = inputs.shape
+        self.last_shape = inputs.shape
+
+        L_out = self.chunk_size
+        if L_out > L:
+            return inputs
+        if not (L % L_out == 0):
+            L_out = int(L / round(L / L_out))
+
+        N_out = N * (L // L_out)
+        return inputs.view(L_out, N_out, D).contiguous()
+
+    def unpartition(self, inputs: Tensor) -> Tensor:
+        if not self.chunk_size:
+            return inputs
+        return inputs.view(*self.last_shape)
 
 
 class PerceiverLayer(nn.Module, BatchNormMixin):
@@ -200,31 +232,34 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         use_batchnorm: bool = False,
         drop_path_rate: float = 0.1,
         num_transformers: int = 1,
-        share_weights: bool = False
+        repetitions: int = 3,
+        bandwidth: Optional[float] = None
     ):
         super().__init__()
         dim_ff = dim_ff or input_d
+        self.repetitions = repetitions
+
         self.cross_attn1 = nn.MultiheadAttention(latent_d, nhead_latent, kdim=input_d, vdim=input_d)
         self.cross_attn2 = nn.MultiheadAttention(input_d, nhead_input, kdim=latent_d, vdim=latent_d)
 
         self.norm_ca1 = nn.LayerNorm(latent_d)
         self.norm_ca2 = nn.LayerNorm(input_d)
 
+        #self.mixer = nn.Sequential(
+        #    FNet(input_d, input_d, act=deepcopy(act)),
+        #    FNet(input_d, input_d, act=deepcopy(act))
+        #)
+        #self.mixer = QRMixer(input_d, nhead=1)
+
         latent_transformer = nn.TransformerEncoderLayer(latent_d, nhead_latent, dim_ff, dropout)
         latent_transformer.activation = deepcopy(act)
-        if share_weights:
-            self.latent_transformer = nn.Sequential(*[
-                latent_transformer for _ in range(num_transformers)
-            ])
-        else:
-            self.latent_transformer = nn.TransformerEncoder(latent_transformer, num_transformers)
+        self.latent_transformer = nn.TransformerEncoder(latent_transformer, num_transformers)
 
         self.ff1 = nn.Sequential(
             MLP(input_d, input_d, dropout, act=deepcopy(act)),
             SqueezeExcite(input_d, input_d // 4, act=deepcopy(act))
         )
         self.norm_ff1 = nn.LayerNorm(input_d)
-
 
         self.ff2 = nn.Sequential(
             MLP(input_d, input_d, act=deepcopy(act)),
@@ -245,16 +280,17 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         orig_latent, orig_inputs = latent, inputs
 
         # move forward
+        #inputs = self.mixer(inputs)
         inputs = self.norm_ff1(inputs + self.ff1(inputs))
-        latent = self.latent_transformer(latent)
 
         # cross attention 1
-        latent_attn, _ = self.cross_attn1(latent, inputs, inputs, need_weights=False)
-        latent = self.norm_ca1(latent + latent_attn)
+        for _ in range(self.repetitions):
+            latent_attn, _ = self.cross_attn1(latent, inputs, inputs, need_weights=False)
+            latent = self.norm_ca1(latent + latent_attn)
+            latent = self.latent_transformer(latent)
 
         # move forward
         inputs = self.norm_ff2(inputs + self.ff2(inputs))
-        #latent = self.latent_norm(latent + self.latent_ff(latent))
 
         # cross attention 2
         input_attn, _ = self.cross_attn2(inputs, latent, latent, need_weights=False)
@@ -279,7 +315,7 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
             conf.use_batchnorm, 
             conf.drop_path_rate,
             conf.num_transformers,
-            conf.share_weights
+            conf.repetitions
         )
 
 
@@ -296,9 +332,11 @@ class PerceiverDualLatent(nn.Module, BatchNormMixin):
         use_batchnorm: bool = False,
         drop_path_rate: float = 0.1,
         num_transformers: int = 1,
-        share_weights: bool = False
+        repetitions: int = 1
     ):
         super().__init__()
+        self.repetitions = repetitions
+
         self.cross_attn1 = nn.MultiheadAttention(d1, nhead1, kdim=d2, vdim=d2)
         self.cross_attn2 = nn.MultiheadAttention(d2, nhead2, kdim=d1, vdim=d1)
 
@@ -310,16 +348,8 @@ class PerceiverDualLatent(nn.Module, BatchNormMixin):
         t2 = nn.TransformerEncoderLayer(d2, nhead2, d2, dropout)
         t2.activation = deepcopy(act)
 
-        if share_weights:
-            self.t1 = nn.Sequential(*[
-                t1 for _ in range(num_transformers)
-            ])
-            self.t2 = nn.Sequential(*[
-                t2 for _ in range(num_transformers)
-            ])
-        else:
-            self.t1 = nn.TransformerEncoder(t1, num_transformers)
-            self.t2 = nn.TransformerEncoder(t2, num_transformers)
+        self.t1 = nn.TransformerEncoder(t1, num_transformers)
+        self.t2 = nn.TransformerEncoder(t2, num_transformers)
 
         self.drop_path = DropPath(drop_path_rate)
 
@@ -359,7 +389,7 @@ class PerceiverDualLatent(nn.Module, BatchNormMixin):
             conf.use_batchnorm, 
             conf.drop_path_rate,
             conf.num_transformers,
-            conf.share_weights
+            conf.repetitions
         )
 
 
@@ -424,6 +454,8 @@ class PerceiverBlock(nn.Module):
         self.input_d = conf.input_d
         self.latent_d = conf.latent_d
 
+        #self.latent_partitioner = Partitioner(latent_init.latent_l, bandwidth=conf.bandwidth)
+        #self.input_partitioner = Partitioner(latent_init.latent_l, bandwidth=conf.bandwidth)
         self.initializer = latent_init
         self.layers = nn.ModuleList()
         for _ in range(repeats):
@@ -443,11 +475,16 @@ class PerceiverBlock(nn.Module):
 
     def forward(self, inputs: Tensor, pos_emb: Optional[Tensor] = None, init_inputs: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         if pos_emb is not None:
+            pos_emb = pos_emb.expand_as(inputs).contiguous()
             inputs = inputs + self.pos_emb_linears[0](pos_emb)
 
         init_inputs = init_inputs if init_inputs is not None else inputs
-        latent = self.initializer(init_inputs)
+
         features = inputs
+        #features = self.input_partitioner.partition(features)
+        latent = self.initializer(init_inputs)
+        #if pos_emb is not None:
+        #    pos_emb = self.input_partitioner.partition(pos_emb)
 
         for i, block in enumerate(self.layers):
             latent, features = block(latent, features)
@@ -455,14 +492,20 @@ class PerceiverBlock(nn.Module):
                 linear = self.pos_emb_linears[i+1]
                 features = features + linear(pos_emb)
                 
+        #features = self.input_partitioner.unpartition(features)
+        #N = features.shape[-2]
+        #D = latent.shape[-1]
+        #latent = latent.view(-1, N, D)
+        #import pdb; pdb.set_trace()
+
         return latent, features
 
 
 @dataclass
 class PerceiverConfig:
     levels: List[PerceiverBlockConfig] = field(default_factory=lambda: [
-        PerceiverBlockConfig(64, 32, nhead_latent=2, nhead_input=2, act=nn.SiLU(), num_transformers=3, share_weights=False),
-        PerceiverBlockConfig(128, 64, nhead_latent=2, nhead_input=2, dual_latent=True, act=nn.SiLU(), init_ff=32),
+        PerceiverBlockConfig(64, 32, nhead_latent=2, nhead_input=1, act=nn.SiLU(), num_transformers=1, repetitions=1),
+        PerceiverBlockConfig(128, 64, nhead_latent=2, nhead_input=2, act=nn.SiLU(), init_ff=32, dual_latent=True),
         PerceiverBlockConfig(256, 128, nhead_latent=4, nhead_input=4, dual_latent=True, act=nn.SiLU(), init_ff=32)
     ])
     latent_l: List[int] = field(default_factory=lambda: [64, 16, 8])
@@ -486,7 +529,11 @@ class Perceiver(nn.Module):
             initializer_d = levels[0].input_d if init_from_input else None
             initializer = level.initializer(ll, initializer_d)
             block = PerceiverBlock(level, initializer, repeat)
-            self.blocks.append(block)
+            self.blocks.append(
+                nn.ModuleList(
+                    [block] * 1
+                )
+            )
 
         fpn = nn.ModuleList()
         for _ in range(fpn_repeats):
@@ -503,7 +550,8 @@ class Perceiver(nn.Module):
         for i, block in enumerate(self.blocks):
             emb = pos_emb if i == 0 else None
             initializer_input = orig_input if self.init_from_input else None
-            latent, inputs = block(inputs, emb, initializer_input)
+            for b in block:
+                latent, inputs = b(inputs, emb, initializer_input)
             result.append(inputs)
             inputs = latent
         result.append(latent)
@@ -520,5 +568,6 @@ class Perceiver(nn.Module):
 
     @property
     def num_features(self) -> List[int]:
-        input_d = self.blocks[0].input_d
-        return [input_d] + [x.latent_d for x in self.blocks]
+        input_d = self.blocks[0][0].input_d
+        _ = [input_d] + [x[0].latent_d for x in self.blocks]
+        return _

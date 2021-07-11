@@ -12,24 +12,9 @@ from torch import Tensor
 from typing import Any, Callable, Optional, Tuple, List, Type
 from math import sqrt
 from functools import partial
+from copy import deepcopy
 
-class SqueezeExcite(nn.Module):
-
-    def __init__(self, d: int, d_hidden: int, dropout: float = 0):
-        super().__init__()
-        self.se = nn.Sequential(
-            nn.Linear(d, d_hidden),
-            nn.Dropout(dropout),
-            nn.ReLU(),
-            nn.Linear(d_hidden, d),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, x: Tensor) -> Tensor:
-        L, N, D = x.shape
-        pool = x.mean(dim=0, keepdim=True)
-        weight = self.se(pool)
-        return x * weight
+from .common import SqueezeExcite, SequenceBatchNorm, MLP
 
 
 class FourierMixer(nn.Module):
@@ -96,55 +81,28 @@ class FourierUpsample(FourierMixer):
 
 class FNet(nn.Module):
 
-    def __init__(self, d: int, dim_ff: int, nhead: int = 1, dout: Optional[int] = None, dropout: float = 0.1, norm: str = "ortho", act: nn.Module = nn.SiLU(), use_bn: bool = False):
+    def __init__(self, d: int, dim_ff: int, nhead: int = 1, dropout: float = 0.1, norm: str = "forward", act: nn.Module = nn.SiLU(), use_bn: bool = False):
         super().__init__()
         self.d = d
         self.use_bn = use_bn
-        self.d_out = dout or d
         assert self.d % nhead == 0
         if use_bn:
             dropout = 0
 
-        self.mixer = nn.Sequential(
-            nn.Linear(d, d),
-            FourierMixer(nhead, norm),
-            #WeightedFourierMixer(nhead, norm),
-            nn.Linear(d, d),
-            nn.Dropout(dropout),
-            nn.ReLU()
+        self.mixer = FourierMixer(nhead, norm)
+        self.mixer_norm = SequenceBatchNorm(d) if use_bn else nn.LayerNorm(d)
+
+        self.mlp = nn.Sequential(
+            MLP(d, dim_ff, dropout=dropout, act=act),
+            SqueezeExcite(d, d // 2),
         )
-        self.se = SqueezeExcite(d, d // 2)
-        self.norm1 = nn.BatchNorm1d(d) if use_bn else nn.LayerNorm(d)
-        self.feedforward = nn.Sequential(
-            nn.Linear(d, dim_ff),
-            nn.Dropout(dropout),
-            nn.Linear(dim_ff, self.d_out),
-            nn.Dropout(dropout),
-            act
-        )
-        self.norm2 = nn.BatchNorm1d(self.d_out) if use_bn else nn.LayerNorm(self.d_out)
+        self.mlp_norm = SequenceBatchNorm(d) if use_bn else nn.LayerNorm(d)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = x + self.mixer(x)
-
-        if self.use_bn:
-            x = self.norm1(x.permute(1, 2, 0)).permute(2, 0, 1)
-        else:
-            x = self.norm1(x)
-
-        x = x + self.se(x)
-
-        if self.d_out == self.d:
-            x = x + self.feedforward(x)
-        else:
-            x = self.feedforward(x)
-
-        if self.use_bn:
-            x = self.norm2(x.permute(1, 2, 0)).permute(2, 0, 1)
-        else:
-            x = self.norm2(x)
-
+        x = self.mixer_norm(x + self.mixer(x))
+        x = self.mlp_norm(x + self.mlp(x))
         return x
+
 
 class FNetDownBlock(nn.Module):
 
@@ -279,3 +237,24 @@ class FourierTransformer(FNet):
             x = self.feedforward(x)
         out = self.norm2(x)
         return out
+
+
+class QRMixer(nn.Module):
+
+    def __init__(self, d: int, **kwargs):
+        super().__init__()
+        self.transformer = nn.TransformerEncoderLayer(d, **kwargs)
+        self.transformer.activation = nn.Identity()
+        
+    def forward(self, x: Tensor) -> Tensor:
+        L, N, D = x.shape
+        x = x.permute(1, 2, 0)
+        assert x.shape == (N, D, L)
+        Q, R = torch.linalg.qr(x)
+        Q = self.transformer(Q)
+        x = (Q @ R)
+        assert x.shape == (N, D, L)
+        x = x.permute(2, 0, 1)
+        return x
+
+

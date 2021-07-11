@@ -38,6 +38,7 @@ class Entropy(AverageMeter):
         process_group: Optional[Any] = None,
         dist_sync_fn: Callable = None,
         inplace: bool = True,
+        from_logits: bool = True
     ):
         super().__init__(
             compute_on_step,
@@ -48,16 +49,17 @@ class Entropy(AverageMeter):
         self.dim = int(dim) if dim is not None else None
         self.num_classes: Optional[int] = None
         self.inplace = inplace
+        self.from_logits = from_logits
 
     def update(self, preds: Tensor) -> None:
         if self.dim is None:
-            entropy = self.compute_binary_entropy(preds, self.inplace)
+            entropy = self.compute_binary_entropy(preds, self.inplace, self.from_logits)
         else:
-            entropy = self.compute_categorical_entropy(preds, dim=self.dim, inplace=self.inplace)
+            entropy = self.compute_categorical_entropy(preds, dim=self.dim, inplace=self.inplace, from_logits=self.from_logits)
         super().update(entropy)
 
     @staticmethod
-    def compute_binary_entropy(x: Tensor, inplace: bool = True) -> Tensor:
+    def compute_binary_entropy(x: Tensor, inplace: bool = True, from_logits: bool = True) -> Tensor:
         r"""Computes binary entropy pointwise over a tensor.
         Inputs are expected to be unnormalized logits (no Sigmoid applied).
 
@@ -65,17 +67,23 @@ class Entropy(AverageMeter):
             x (:class:`torch.Tensor`):
                 Tensor to compute binary entropy over
         """
-        p = x.sigmoid()
-        log_p = F.logsigmoid(x)
+        if from_logits:
+            p = x.sigmoid()
+            log_p = F.logsigmoid(x)
+            log_p_inv = F.logsigmoid(x.neg())
+        else:
+            p = x
+            log_p = x.log()
+            log_p_inv = (1 - x).log()
+        
         p_inv = 1 - p
-        log_p_inv = F.logsigmoid(x.neg())
         if inplace:
             return log_p.mul_(p).add_(log_p_inv.mul_(p_inv)).neg_()
         else:
             return log_p.mul(p).add(log_p_inv.mul(p_inv)).neg()
 
     @staticmethod
-    def compute_categorical_entropy(x: Tensor, dim: int = -1, inplace: bool = True) -> Tensor:
+    def compute_categorical_entropy(x: Tensor, dim: int = -1, inplace: bool = True, from_logits: bool = True) -> Tensor:
         r"""Computes categorical or binary entropy along a given tensor dimension. Inputs
         are expected to be unnormalized logits (no Softmax or Sigmoid applied).
 
@@ -86,10 +94,16 @@ class Entropy(AverageMeter):
             dim (int):
                 Dimension to compute entropy over. Only relevant for categorical entropy.
         """
-        p = x.softmax(dim=dim)
-        log_p = F.log_softmax(x, dim=dim)
+        if from_logits:
+            p = x.softmax(dim=dim)
+            log_p = F.log_softmax(x, dim=dim)
+        else:
+            p = x
+            log_p = x.log()
+
         C = x.shape[dim]
         assert C > 0
+
         with torch.no_grad():
             divisor = p.new_tensor(C).log_()
 
