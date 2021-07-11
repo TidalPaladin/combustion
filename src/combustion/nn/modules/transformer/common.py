@@ -94,4 +94,4 @@ class SqueezeExcite(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         weights = self.se(x.mean(dim=0, keepdim=True))
-        return x * weights
+        return x + x * weights
