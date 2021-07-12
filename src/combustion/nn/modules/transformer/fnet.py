@@ -72,7 +72,9 @@ class FourierMixer(nn.Module):
 
     def _forward(self, x: Tensor) -> Tensor:
         L_dim, D_dim = 0, -1
-        x = torch.fft.fft2(x, dim=(D_dim, L_dim), norm=self.norm).contiguous()
+        x = torch.fft.fft(x, dim=D_dim, norm=self.norm)
+        x = torch.fft.fft(x, dim=L_dim, norm=self.norm)
+        #x = torch.fft.fft2(x, dim=(D_dim, L_dim), norm=self.norm).contiguous()
         #x = torch.fft.fft(x, dim=L_dim, norm=self.norm).contiguous()
         return x
 
@@ -108,10 +110,7 @@ class FNet(nn.Module):
         self.mixer = nn.Sequential(
             nn.Linear(d, d),
             FourierMixer(nhead, norm),
-            #WeightedFourierMixer(nhead, norm),
             nn.Linear(d, d),
-            nn.Dropout(dropout),
-            nn.ReLU()
         )
         self.se = SqueezeExcite(d, d // 2)
         self.norm1 = nn.BatchNorm1d(d) if use_bn else nn.LayerNorm(d)
@@ -132,12 +131,13 @@ class FNet(nn.Module):
         else:
             x = self.norm1(x)
 
-        x = x + self.se(x)
 
         if self.d_out == self.d:
             x = x + self.feedforward(x)
         else:
             x = self.feedforward(x)
+
+        x = x + self.se(x)
 
         if self.use_bn:
             x = self.norm2(x.permute(1, 2, 0)).permute(2, 0, 1)
