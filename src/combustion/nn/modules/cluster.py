@@ -251,3 +251,4 @@ class TransitionUp(nn.Module):
         features_fine[neighbor_idx] = updated_features.view(-1, D)
 
         return features_fine
+

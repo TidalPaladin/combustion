@@ -144,3 +144,4 @@ performer.py
 BinaryMNIST
 cifar-10*
 lightning_logs/
+*.ckpt

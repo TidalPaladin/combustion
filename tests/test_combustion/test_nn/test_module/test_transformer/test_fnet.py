@@ -5,6 +5,7 @@ import pytest
 import torch
 from combustion.nn.modules.transformer.fnet import FNet, FourierDownsample, FourierUpsample, FourierMixer, FourierTransformer
 
+
 class TestFourierMixer:
 
     @pytest.mark.parametrize("nhead", [1, 2])
@@ -82,15 +83,3 @@ class TestFourierTransformer:
         l = FourierTransformer(D, 2*D, nhead)
         out = l(x)
         assert out.shape == (L, N, D)
-
-    def test_permutation(self):
-        L, N, D = 8, 1, 4
-        torch.random.manual_seed(42)
-        x = torch.randn(L, N, D)
-        perm = torch.randperm(L)
-        y = x[perm]
-        l = FourierTransformer(D, 2*D, nhead=1)
-        l.eval()
-        out_x = l(x)[perm]
-        out_y = l(y)
-        assert torch.allclose(out_x, out_y, atol=1e-9)

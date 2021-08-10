@@ -7,11 +7,14 @@ import torch.nn.functional as F
 import math
 from abc import ABC, abstractmethod
 from enum import IntEnum, Enum
+from copy import deepcopy
 
 from torch import Tensor
 from typing import Any, Callable, Optional, Tuple, List, Type
 from math import sqrt
 from functools import partial
+
+from .common import MLP
 
 class SqueezeExcite(nn.Module):
 
@@ -54,13 +57,8 @@ class FourierMixer(nn.Module):
         D_head = D // self.nhead
         assert D_head * self.nhead == D
 
-        #if self.nhead != 1:
-        #    x = x.view(L, -1, D_head).contiguous()
 
         x = self._forward(x)
-
-        #if self.nhead != 1:
-        #    x = x.view(-1, N, D).contiguous()
 
         if x.is_complex() and self.real_out:
             x = x.real
@@ -72,8 +70,8 @@ class FourierMixer(nn.Module):
 
     def _forward(self, x: Tensor) -> Tensor:
         L_dim, D_dim = 0, -1
-        x = torch.fft.fft(x, dim=D_dim, norm=self.norm)
-        x = torch.fft.fft(x, dim=L_dim, norm=self.norm)
+        x = torch.fft.fft(x, dim=D_dim, norm="ortho")
+        x = torch.fft.fft(x, dim=L_dim, norm="ortho")
         #x = torch.fft.fft2(x, dim=(D_dim, L_dim), norm=self.norm).contiguous()
         #x = torch.fft.fft(x, dim=L_dim, norm=self.norm).contiguous()
         return x
@@ -98,7 +96,7 @@ class FourierUpsample(FourierMixer):
 
 class FNet(nn.Module):
 
-    def __init__(self, d: int, dim_ff: int, nhead: int = 1, dout: Optional[int] = None, dropout: float = 0.1, norm: str = "ortho", act: nn.Module = nn.SiLU(), use_bn: bool = False):
+    def __init__(self, d: int, dim_ff: int, nhead: int = 1, dout: Optional[int] = None, dropout: float = 0.0, norm: str = "ortho", act: nn.Module = nn.SiLU(), use_bn: bool = False):
         super().__init__()
         self.d = d
         self.use_bn = use_bn
@@ -107,11 +105,15 @@ class FNet(nn.Module):
         if use_bn:
             dropout = 0
 
+        # NOTE: 
+        #    1. Using norm other than "ortho" seems to reduce performance
+        #    2. Adding LayerNorm seems to reduce performance
         self.mixer = nn.Sequential(
             nn.Linear(d, d),
             FourierMixer(nhead, norm),
             nn.Linear(d, d),
         )
+
         self.se = SqueezeExcite(d, d // 2)
         self.norm1 = nn.BatchNorm1d(d) if use_bn else nn.LayerNorm(d)
         self.feedforward = nn.Sequential(
@@ -181,12 +183,9 @@ class FNetUpBlock(nn.Module):
 
 class WeightedFourierMixer(FourierMixer):
 
-    def _forward(self, x: Tensor) -> Tensor:
-        L_dim, D_dim = 0, -1
-        weight = torch.fft.fft(x, dim=L_dim, norm=self.norm).contiguous().real
-        weight = weight.softmax(dim=L_dim)
-        x = x * weight
-        return x
+    def forward(self, x: Tensor) -> Tensor:
+        weights = super().forward(x).sigmoid()
+        return x * weights
 
 class SortedFourierMixer(FourierMixer):
 
@@ -262,20 +261,44 @@ class SortedFourierMixer(FourierMixer):
 
 
 
-class FourierTransformer(FNet):
+class FourierTransformer(nn.Module):
 
-    def __init__(self, d: int, dim_ff: int, nhead: int = 1, dout: Optional[int] = None, dropout: float = 0.1, norm: str = "ortho", act: nn.Module = nn.SiLU(), use_bn: bool = False):
-        super().__init__(d, dim_ff, nhead, dout, dropout, norm, act, use_bn)
-        del(self.mixer)
-        self.norm = norm
-        self.mixer = SortedFourierMixer(d, 128)
+    def __init__(self, d: int, d_mid: int, dropout: float = 0.1, act: nn.Module = nn.SiLU()):
+        super().__init__()
+        self.proj_fft = nn.Linear(d, d_mid)
+        self.weight = nn.Linear(d, d_mid)
+
+        self.linear_r = nn.Linear(d_mid, d_mid)
+        self.norm_r = nn.LayerNorm(d_mid)
+
+        self.linear_i = nn.Linear(d_mid, d_mid)
+        self.norm_i = nn.LayerNorm(d_mid)
+
+        self.mlp = MLP(d_mid, d_mid, d, dropout=dropout, act=deepcopy(act))
+        self.norm = nn.LayerNorm(d)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.norm1(x + self.mixer(x))
-        x = self.feedforward(x)
-        if self.d_out == self.d:
-            x = x + self.feedforward(x)
-        else:
-            x = self.feedforward(x)
-        out = self.norm2(x)
-        return out
+        orig_x = x
+        f = self.proj_fft(x)
+        weight = self.weight(x).softmax(dim=0)
+
+        with torch.cuda.amp.autocast(enabled=False):
+            f = torch.fft.fft(f.float(), dim=-1, norm="ortho")
+
+        i = f.imag.type_as(x)
+        r = f.real.type_as(x)
+        i = self.norm_i(self.linear_i(i))
+        r = self.norm_r(self.linear_r(r))
+
+        itot = i.sum(dim=0, keepdim=True)
+        rtot = r.sum(dim=0, keepdim=True)
+
+        r = r + weight * rtot
+        i = i + weight * itot
+
+        with torch.cuda.amp.autocast(enabled=False):
+            f = torch.complex(r.float(), i.float())
+            x = torch.fft.ifft(f.float(), norm="ortho").real
+        x = x.type_as(orig_x)
+
+        return self.norm(orig_x + self.mlp(x))

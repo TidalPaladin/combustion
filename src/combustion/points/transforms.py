@@ -37,7 +37,7 @@ def rotate(
     rot_x = torch.tensor([[1.0, 0.0, 0.0], [0.0, cos(x), -sin(x)], [0.0, sin(x), cos(x)]], device=coords.device)
     rot_y = torch.tensor([[cos(y), 0.0, sin(y)], [0.0, 1.0, 0.0], [-sin(y), 0.0, cos(y)]], device=coords.device)
     rot_z = torch.tensor([[cos(z), -sin(z), 0.0], [sin(z), cos(z), 0.0], [0.0, 0.0, 1.0]], device=coords.device)
-    rotation_matrix = torch.chain_matmul(rot_z, rot_x, rot_y).unsqueeze_(0).type_as(coords)
+    rotation_matrix = torch.linalg.multi_dot([rot_z, rot_x, rot_y]).unsqueeze_(0).type_as(coords)
     assert rotation_matrix.ndim == 3
     assert rotation_matrix.size() == torch.Size((1, 3, 3))
 

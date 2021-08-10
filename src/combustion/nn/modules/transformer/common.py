@@ -14,13 +14,31 @@ from typing import Any, Callable, Optional, Tuple, List, Type
 from math import sqrt
 from functools import partial
 from copy import deepcopy
+from .powernorm import MaskPowerNorm
 
 class SequenceBatchNorm(nn.BatchNorm1d):
 
     def forward(self, x: Tensor) -> Tensor:
+        orig_x = x
+        N, D = x.shape[-2:]
+        x = x.view(-1, N, D)
         x = x.movedim(0, -1).contiguous()
         x = super().forward(x)
         x = x.movedim(-1, 0).contiguous()
+        x = x.view_as(orig_x).contiguous()
+        return x
+
+
+class SequenceInstanceNorm(nn.InstanceNorm1d):
+
+    def forward(self, x: Tensor) -> Tensor:
+        orig_x = x
+        N, D = x.shape[-2:]
+        x = x.view(-1, N, D)
+        x = x.movedim(0, -1).contiguous()
+        x = super().forward(x)
+        x = x.movedim(-1, 0).contiguous()
+        x = x.view_as(orig_x).contiguous()
         return x
 
 
@@ -41,33 +59,76 @@ class BatchNormMixin:
             else:
                 BatchNormMixin.use_batchnorm(layer)
 
+    @staticmethod
+    def use_instancenorm(module: nn.Module, **kwargs):
+        for name, layer in module.named_children():
+            if hasattr(layer, "dropout") and isinstance(layer.dropout, float):
+                layer.dropout = 0
+            if isinstance(layer, nn.LayerNorm):
+                d = layer.normalized_shape[0]
+                new_layer = SequenceInstanceNorm(d, **kwargs)
+                setattr(module, name, new_layer)
+            elif isinstance(layer, nn.Dropout):
+                new_layer = nn.Identity()
+                setattr(module, name, new_layer)
+            else:
+                BatchNormMixin.use_instancenorm(layer)
+
+    @staticmethod
+    def use_powernorm(module: nn.Module, **kwargs):
+        for name, layer in module.named_children():
+            if hasattr(layer, "dropout") and isinstance(layer.dropout, float):
+                layer.dropout = 0
+            if isinstance(layer, nn.LayerNorm):
+                d = layer.normalized_shape[0]
+                new_layer = MaskPowerNorm(d, **kwargs)
+                setattr(module, name, new_layer)
+            elif isinstance(layer, nn.Dropout):
+                new_layer = nn.Identity()
+                setattr(module, name, new_layer)
+            else:
+                BatchNormMixin.use_powernorm(layer)
+
+    @staticmethod
+    def layernorm_nonaffine(module: nn.Module, **kwargs):
+        for name, layer in module.named_children():
+            if isinstance(layer, nn.LayerNorm):
+                d = layer.normalized_shape[0]
+                new_layer = nn.LayerNorm(d, elementwise_affine=False, **kwargs)
+                setattr(module, name, new_layer)
+            else:
+                BatchNormMixin.layernorm_nonaffine(layer)
+
 
 class DropPath(nn.Module):
     def __init__(self, ratio: float):
         super().__init__()
+        assert ratio >= 0 and ratio < 1.0
         self.ratio = 1.0 - abs(float(ratio))
-        assert self.ratio >= 0 and self.ratio < 1.0
 
-    def forward(self, x: Tensor) -> Tensor:
-        if not self.training or not self.ratio:
-            return x
-
+    def get_mask(self, x: Tensor) -> Tensor:
         L, N, D = x.shape
         with torch.no_grad():
-            mask = self.ratio + torch.rand(N).type_as(x).floor_()
+            mask = torch.rand(N, device=x.device).add_(self.ratio).floor_().bool()
             mask = mask.view(1, N, 1)
-
         assert mask.ndim == x.ndim
         assert mask.shape[1] == N
-        return x / self.ratio * mask
+        return mask.bool()
+
+    def forward(self, x: Tensor) -> Tensor:
+        if not self.training or self.ratio == 1:
+            return x
+        return x * self.get_mask(x)
+
 
 
 class MLP(nn.Module):
-    def __init__(self, d: int, d_hidden: int, dropout: float = 0, act: nn.Module = nn.ReLU()):
+    def __init__(self, d: int, d_hidden: int, d_out: Optional[int] = None, dropout: float = 0, act: nn.Module = nn.ReLU()):
         super().__init__()
+        d_out = d_out or d
         self.l1 = nn.Linear(d, d_hidden)
         self.d1 = nn.Dropout(dropout)
-        self.l2 = nn.Linear(d_hidden, d)
+        self.l2 = nn.Linear(d_hidden, d_out)
         self.d2 = nn.Dropout(dropout)
         self.act = deepcopy(act)
 
@@ -85,6 +146,7 @@ class SqueezeExcite(nn.Module):
 
     def __init__(self, d_in, d_squeeze, act: nn.Module = nn.ReLU()):
         super().__init__()
+        self.d_in = d_in
         self.se = nn.Sequential(
             nn.Linear(d_in, d_squeeze),
             act,

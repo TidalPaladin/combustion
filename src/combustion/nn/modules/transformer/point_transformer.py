@@ -3,10 +3,107 @@
 import torch
 from torch import Tensor
 from typing import Any, Tuple, List, Optional
+from copy import deepcopy
 import torch.nn as nn
 
-from .position import RelativePositionalEncoder
-from ..cluster import TransitionDown, TransitionUp, MLP, KNNCluster
+#from .performer import PerformerLayer, FAVOR
+from .position import RelativeLearnableFourierFeatures, RelativePositionalEncoder
+from ..cluster import TransitionDown, TransitionUp, KNNCluster, FarthestPointsDecimate
+from .common import MLP, SqueezeExcite
+
+class CrossAttention(nn.Module):
+
+    def __init__(self, d: int, nhead: int, dim_ff: Optional[int] = None, dropout: float = 0.1, act: nn.Module = nn.Mish()):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(d, nhead)
+        self.norm1 = nn.LayerNorm(d)
+
+        dim_ff = dim_ff or d
+        self.mlp = MLP(d, dim_ff, dropout=dropout, act=act)
+        self.norm2 = nn.LayerNorm(d)
+
+    def forward(self, tgt: Tensor, src: Tensor) -> Tensor:
+        attn = self.attn(tgt, src, src)[0]
+        tgt = self.norm1(tgt + attn)
+        tgt = self.norm2(tgt + self.mlp(tgt))
+        return tgt
+
+    def duplicate(self) -> "CrossAttention":
+        new = deepcopy(self)
+        new.attn = self.attn
+        new.mlp = self.mlp
+        return new
+
+class KNNTail(nn.Module):
+
+    def __init__(self, d_in: int, d_out: int, k: int, nhead: int = 1, repeats: int = 1, dropout: float = 0, pos_features: int = 128, **kwargs):
+        super().__init__()
+        self.mlp = MLP(d_in, d_out, d_out, dropout=dropout)
+        self.se1 = SqueezeExcite(d_out, d_out // 2)
+        self.norm_mlp = nn.LayerNorm(d_out)
+        self.norm_se = nn.LayerNorm(d_out)
+        self.pos_enc = RelativeLearnableFourierFeatures(3, pos_features, d_out)
+
+        self.cluster = KNNCluster(k)
+        self.norm_mean = nn.LayerNorm(d_out)
+
+        self.mixer = nn.ModuleList([CrossAttention(d_out, nhead, d_out*4, dropout=dropout)]*repeats)
+
+        self.se2 = SqueezeExcite(d_out, d_out // 2)
+        self.se_norm = nn.LayerNorm(d_out)
+
+        self.final_norm = nn.LayerNorm(d_out)
+
+    def forward(self, coords: Tensor, features: Optional[Tensor]=None) -> Tensor:
+        L, N, C = coords.shape
+        attn_idx = self.cluster(coords, coords)
+        pos_emb = self.pos_enc(coords, coords[attn_idx].view(-1, L, N, C))
+
+        if features is None:
+            features = coords
+        assert features is not None
+
+        features = self.norm_mlp(self.mlp(features))
+        features = self.norm_se(features + self.se1(features))
+        L, N, D = features.shape
+
+        orig_features = features
+        f = features[attn_idx].view(-1, L, N, D)
+        f += pos_emb
+        tgt = features.view(-1, L*N, D)
+        src = f.view(-1, L * N, D)
+        for layer in self.mixer:
+            tgt = layer(tgt, src)
+        features = tgt.view(L, N, D)
+        #features = self.se_norm(features + self.se_norm(features))
+        #features = f.view(-1, L, N, D)
+        #features = self.final_norm(orig_features + features.mean(dim=0))
+        assert features.shape == (L, N, D)
+
+        return features
+
+
+class KNNDownsample(nn.Module):
+
+    def __init__(self, d: int, d_out: int, ratio: float = 0.25, **kwargs):
+        super().__init__()
+        self.down = FarthestPointsDecimate(ratio)
+        self.mlp = MLP(d, d_out, d_out, **kwargs)
+        self.norm = nn.LayerNorm(d_out)
+        self.register_buffer("coords", None)
+
+    def forward(self, coords: Tensor, features: Tensor) -> Tuple[Tensor, Tensor]:
+        L1, N, D1 = features.shape
+        C = coords.shape[-1]
+
+        keep_coords = self.down(coords)
+        features = features[keep_coords].view(-1, N, D1)
+        coords = coords[keep_coords].view(-1, N, C)
+
+        features = self.norm(self.mlp(features))
+        return coords, features
+
+
 
 class PCTDown(nn.Module):
 
@@ -139,3 +236,41 @@ class ClusterModel(nn.Module):
 
         features = features + first_features
         return features
+
+#class PerformerDownsample(nn.Module):
+#
+#    def __init__(
+#        self, 
+#        d_in: int,
+#        d_out: int, 
+#        nhead: int, 
+#        dropout: float = 0.1, 
+#        activation: nn.Module = nn.ReLU(),
+#        feature_redraw_interval: int = 1000,
+#        fast: bool = True,
+#        stabilizer: float = 1e-6,
+#        kdim: Optional[int] = None,
+#        vdim: Optional[int] = None,
+#     ):
+#        super().__init__()
+#        self.attn = FAVOR(
+#            d_out, 
+#            nhead, 
+#            fast=fast, 
+#            stabilizer=stabilizer, 
+#            feature_redraw_interval=feature_redraw_interval,
+#            kdim=kdim,
+#            vdim=vdim,
+#        )
+#        self.norm1 = nn.LayerNorm(d_out)
+#        self.mlp = MLP(d_in, d_out, d_out, dropout=dropout, act=activation)
+#        self.norm2 = nn.LayerNorm(d_out)
+#
+#    def forward(self, features: Tensor, keep: Tensor) -> Tensor:
+#        L, N, D = features.shape
+#        Q = features[keep].view(-1, N, D)
+#        K = V = features
+#
+#        features = self.norm1(Q + self.attn(Q, K, V)[0])
+#        features = self.norm2(features + self.mlp(features))
+#        return features

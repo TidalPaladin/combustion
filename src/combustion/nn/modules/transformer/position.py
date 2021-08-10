@@ -4,8 +4,10 @@
 import torch
 import torch.nn as nn
 import math
+from copy import deepcopy
 from torch import Tensor
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Dict, Any
+from .common import SequenceBatchNorm, SequenceInstanceNorm
 
 class AbsolutePositionalEmbedding(nn.Module):
     def __init__(self, dim: int, max_seq_len: int):
@@ -71,38 +73,46 @@ class LearnableFourierFeatures(nn.Module):
         d_in: int, 
         num_features: int, 
         d_out: int, 
-        gamma: float = 1, 
+        d_hidden: Optional[int] = None,
+        dropout: float = 0.0,
+        sigma: Optional[float] = None, 
         init: str = "normal",
-        norm_layer = nn.LayerNorm
+        act: nn.Module = nn.ReLU(),
+        **kwargs
     ):
         super().__init__()
         self.num_features = num_features
-        self.features = nn.Linear(d_in, num_features, bias=False)
-        cat_features = 2 * num_features
-        self.mlp = nn.Sequential(
-            nn.Linear(cat_features, cat_features),
-            nn.ReLU(),
-            nn.Linear(cat_features, d_out),
-            nn.ReLU()
-        )
-        self.norm = norm_layer(d_out)
+        self.features = nn.Linear(d_in, num_features // 2, bias=False)
 
+        d_hidden = d_hidden or d_out
+        self.mlp = nn.Sequential(
+            nn.Linear(num_features, d_hidden),
+            deepcopy(act),
+            nn.Linear(d_hidden, d_out),
+            deepcopy(act),
+            nn.Dropout(dropout),
+        )
+        self.norm = SequenceBatchNorm(d_out)
+
+
+        #sigma = sigma or num_features / (2 * math.pi) ** 0.5
+        sigma = sigma or 1.0
         if init == "ortho":
-            torch.nn.init.orthogonal_(self.features.weight, gamma)
+            torch.nn.init.orthogonal_(self.features.weight, sigma)
         elif init == "normal":
-            torch.nn.init.normal_(self.features.weight, 0, gamma)
+            torch.nn.init.normal_(self.features.weight, 0, sigma)
+        else:
+            raise ValueError(init)
+
+    def weight_decay_dict(self, val: float) -> Dict[str, Any]:
+        return {"params": self.features.parameters(), "weight_decay": val}
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.features(x) 
+        x = self.features(x)
         x = torch.cat([x.cos(), x.sin()], dim=-1)
         x = x / self.num_features ** 0.5
         x = self.mlp(x)
-
-        if isinstance(self.norm, nn.LayerNorm):
-            x = self.norm(x)
-        else:
-            x = self.norm(x.movedim(0, -1)).movedim(-1, 0).contiguous()
-
+        x = self.norm(x)
         return x
 
     @staticmethod
@@ -122,3 +132,56 @@ class LearnableFourierFeatures(nn.Module):
         requires_grad = requires_grad or (proto is not None and proto.requires_grad)
         grid.requires_grad = requires_grad
         return grid
+
+
+class RelativeLearnableFourierFeatures(LearnableFourierFeatures):
+
+    def forward(self, center: Tensor, neighbors: Tensor) -> Tensor:
+        L, N, C = center.shape
+        K, L, N, C = neighbors.shape
+        delta = neighbors - center.view(1, L, N, C)
+        return super().forward(delta)
+
+
+class FourierLinear(nn.Module):
+    def __init__(
+        self, 
+        d_in: int, 
+        num_features: int, 
+        d_out: int, 
+        sigma: Optional[float] = None, 
+        init: Optional[str] = None,
+    ):
+        super().__init__()
+        init = init or ("normal" if d_out != d_in else "ortho")
+        self.num_features = num_features
+        self.features = nn.Linear(d_in, num_features, bias=False)
+        self.out = nn.Linear(2*num_features, d_out)
+
+        #sigma = sigma or num_features / (2 * math.pi) ** 0.5
+        sigma = sigma or 1.0
+        if init == "ortho":
+            torch.nn.init.orthogonal_(self.features.weight, sigma)
+        elif init == "normal":
+            torch.nn.init.normal_(self.features.weight, 0, sigma)
+        else:
+            raise ValueError(init)
+
+    def weight_decay_dict(self, val: float) -> Dict[str, Any]:
+        return {"params": self.features.parameters(), "weight_decay": val}
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.features(x) * (2 * math.pi)
+        x = torch.cat([x.cos(), x.sin()], dim=-1)
+        x = x / self.num_features ** 0.5
+        x = self.out(x)
+        return x
+
+    @staticmethod
+    def use_fourier(module: nn.Module):
+        for name, child in module.named_children():
+            if isinstance(child, nn.Linear):
+                layer = FourierLinear(child.in_features, child.in_features, child.out_features)
+                setattr(module, name, layer)
+            elif not isinstance(child, (LearnableFourierFeatures, nn.MultiheadAttention, FourierLinear)):
+                FourierLinear.use_fourier(child)

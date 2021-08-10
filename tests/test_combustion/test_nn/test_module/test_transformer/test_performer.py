@@ -7,11 +7,12 @@ import torch
 import torch.nn as nn
 from timeit import timeit
 
-from combustion.nn.modules.transformer.performer import FAVOR, PerformerLayer, SoftmaxORF, SoftmaxHyp
+from combustion.nn.modules.transformer.performer import FAVOR, PerformerEncoderLayer, SoftmaxORF, SoftmaxHyp, PointPerformer
 
 
 class TestSoftmaxORF:
 
+    @pytest.mark.skip
     def test_gaussian_orthogonal_matrix(self):
         L, N, E = 100, 2, 10
         torch.random.manual_seed(42)
@@ -28,6 +29,42 @@ class TestSoftmaxORF:
         # test only works when scaling not applied
         #assert torch.allclose(diag, torch.ones_like(diag))
 
+#class TestLogSoftmax:
+#
+#    def test_gaussian_orthogonal_matrix(self):
+#        L, N, E = 100, 2, 10
+#        torch.random.manual_seed(42)
+#        k = LogSoftmax(E, 1)
+#        query = torch.normal(0, 1, (L, N, 1, E))
+#        key = torch.normal(0, 1, (L, N, 1, E))
+#        query_sm = k(query, is_query=True).view(L, N, E)
+#        key_sm = k(key, is_query=False).view(L, N, E)
+#
+#        out = torch.einsum("lne,pne->nlp", query.view(L, N, E), key.view(L, N, E)).div_(math.sqrt(E)).log_softmax(dim=-1)
+#        out2 = torch.einsum("lne,pne->nlp", query_sm, key_sm)
+#        assert False
+#
+#        # test only works when scaling not applied
+#        #assert torch.allclose(diag, torch.ones_like(diag))
+
+class TestSoftmaxSquare:
+
+    def test_gaussian_orthogonal_matrix(self):
+        L, N, E = 100, 2, 10
+        torch.random.manual_seed(42)
+        k = SoftmaxSquare(E, 1)
+        query = torch.normal(0, 1, (L, N, 1, E))
+        key = torch.normal(0, 1, (L, N, 1, E))
+        query_sm = k(query, is_query=True).view(L, N, E)
+        key_sm = k(key, is_query=False).view(L, N, E)
+
+        out = torch.einsum("lne,pne->nlp", query.view(L, N, E), key.view(L, N, E)).div_(math.sqrt(E)).softmax(dim=-1).pow(2)
+        D_inv = torch.einsum("lne,pne->nlp", query_sm, key_sm.sum(dim=0, keepdim=True)).clamp_min(1e-6).reciprocal()
+        out2 = D_inv.pow(2) * torch.einsum("lne,pne->nlp", query_sm, key_sm)
+        assert False
+
+        # test only works when scaling not applied
+        #assert torch.allclose(diag, torch.ones_like(diag))
 
 class TestFavor:
 
@@ -46,51 +83,66 @@ class TestFavor:
         assert isinstance(out, Tensor)
         assert out.shape == (L, N, E)
 
-    def test_stability(self):
+        mean_impurity = FAVOR.compute_model_gini(m)
+
+    def test_forward_cross(self):
+        torch.random.manual_seed(42)
+        E1, nhead = 512, 8
+        E2 = 1024
+        L1, N = 1024, 2
+        L2 = 512
+
+        m = FAVOR(E1, nhead, kdim=E2, vdim=E2)
+        x = torch.rand(L1, N, E1)
+        y = torch.rand(L2, N, E2)
+        out, _ = m(x, y, y)
+        assert isinstance(out, Tensor)
+        assert out.shape == (L1, N, E1)
+
+        mean_impurity = FAVOR.compute_model_gini(m)
+        assert False
+
+    @pytest.mark.parametrize("half", [False, True])
+    def test_stability(self, half):
         torch.random.manual_seed(11)
         E, nhead = 512, 8
         L, N = 1024, 2
 
-        m = FAVOR(E, nhead)
-        x = torch.rand(L, N, E)
-        x.sub_(0.5).mul_(1000)
-        out, _ = m(x, x, x)
+        m = FAVOR(E, nhead,).cuda()
+        x = torch.normal(0, 10, (L, N, E)).cuda()
+        with torch.cuda.amp.autocast(enabled=half):
+            out, _ = m(x, x, x)
+            assert not out.isnan().any()
 
-        x = torch.zeros_like(x)
-        out, _ = m(x, x, x)
-        assert not out.isnan().any()
+            #x = torch.zeros_like(x)
+            #out, _ = m(x, x, x)
+            #assert not out.isnan().any()
 
-    @pytest.mark.cuda_or_skip
     @pytest.mark.parametrize("num_heads", [1, 4, 8])
     @pytest.mark.parametrize("E", [32, 128, 256, 512])
     def test_vs_standard_attn2(self, E, num_heads, capsys):
-        L, N = 1024, 2
+        L, N = 64, 2
+        std = 1
 
         torch.random.manual_seed(11)
         s = nn.MultiheadAttention(E, num_heads)
-        for p in s.parameters():
-            torch.random.manual_seed(11)
-            torch.nn.init.normal_(p, std=1)
         torch.random.manual_seed(42)
-        f = FAVOR(E, num_heads, stabilizer=1e-16)
-        for p in f.parameters():
-            torch.random.manual_seed(11)
-            torch.nn.init.normal_(p, std=1)
-        s = s.cuda()
-        f = f.cuda()
+        f = FAVOR(E, num_heads, stabilizer=1e-5, trainable=False)
 
         f.eval()
         s.eval()
 
-        x = torch.normal(0, 1, (L, N, E)).cuda()
+        x = torch.normal(0, std, (L, N, E))
         out_s, weight_s = s(x, x, x, need_weights=True)
         out_f, weight_f = f(x, x, x, need_weights=True)
-        out_mse = (out_s - out_f).pow(2).mean().item() / out_s.mean().item()
-        weight_mse = (weight_s - weight_f).pow(2).mean().item() / weight_s.mean().item()
+        out_mse = (out_s - out_f).pow(2).mean().item() / out_s.mean().abs().item()
+        weight_mse = (weight_s - weight_f).pow(2).mean().item() / weight_s.mean().abs().item()
         #assert weight_mse < 1e-6
         #assert out_mse < 1e-3
+        maxdelta = (weight_s.max() - weight_f[weight_s == weight_s.max()].mean()).abs().item()
+        mindelta = (weight_s.min() - weight_f[weight_s == weight_s.min()].mean()).abs().item()
         with capsys.disabled():
-            print(f"E={E}, nhead={num_heads}: Weight/Output = {weight_mse:.3E}/{out_mse:.3E}")
+            print(f"E={E}, nhead={num_heads}, std={std}: Weight/Output/Max/Min = {weight_mse:.3E}/{out_mse:.3E}/{maxdelta:.3E}/{mindelta:.3E}")
 
     @pytest.mark.skip
     @pytest.mark.ci_skip
@@ -143,19 +195,47 @@ class TestFavor:
             print(f"Time (L={L}): Baseline={t1}, Performer={t2}")
 
 
-@pytest.mark.skip
 class TestPerformer:
 
+    @pytest.mark.skip
     def test_init(self):
         nhead = 8
         E, R = 512, 128
-        m = PerformerLayer(E, nhead, R)
+        m = PerformerEncoderLayer(E, nhead, R)
 
+    @pytest.mark.skip
     def test_forward(self):
         torch.random.manual_seed(42)
         nhead = 8
         N, E, R, L = 2, 512, 128, 1024
-        m = PerformerLayer(E, nhead, R)
+        m = PerformerEncoderLayer(E, nhead, R)
         x = torch.rand(L, N, E)
         out = m(x)
         assert isinstance(out, Tensor)
+
+    @pytest.mark.cuda_or_skip
+    def test_memory(self):
+        torch.random.manual_seed(42)
+        nhead = 8
+        N, E, L = 2, 2048, 1024
+        m = PerformerEncoderLayer(E, nhead).cuda()
+        x = torch.rand(L, N, E, requires_grad=True).cuda()
+        before = torch.cuda.max_memory_allocated()
+        out = m(x)
+        out.sum().backward()
+        after = torch.cuda.max_memory_allocated()
+
+        mem_mb = (after - before) / 1e6
+        assert False
+
+
+class TestPointPerformer:
+
+    def test_cluster(self):
+        coords = torch.rand(32, 1, 3)
+        coords2 = coords[::4]
+        features = torch.rand(8, 1, 1)
+        out_features = PointPerformer.upsample(features, coords2, coords)
+        assert False
+
+

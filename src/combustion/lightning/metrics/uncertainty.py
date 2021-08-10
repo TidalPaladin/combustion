@@ -66,13 +66,11 @@ class ECE(Metric):
 
     def _get_confidence(self, pred: Tensor, categorical: bool) -> Tensor:
         if not categorical:
-            return pred
-        return pred.amax(dim=-1)
+            return pred.sigmoid() if self.from_logits else pred
+        return pred.amax(dim=-1) if self.from_logits else pred.softmax(dim=-1)
 
     def update_binary(self, pred: Tensor, true: Tensor) -> None:
-        if self.from_logits:
-            pred = pred.sigmoid()
-        else:
+        if not self.from_logits:
             assert (pred >= 0).all() and (pred <= 1).all()
 
         pred_cls = pred >= self.threshold
@@ -89,9 +87,7 @@ class ECE(Metric):
         self.total = self.total + total
 
     def update_categorical(self, pred: Tensor, true: Tensor) -> None:
-        if self.from_logits:
-            pred = pred.softmax(dim=-1)
-        else:
+        if not self.from_logits:
             s = pred.sum(dim=-1)
             assert torch.allclose(s, torch.ones_like(s))
             del s
@@ -144,11 +140,11 @@ class UCE(ECE):
 
     def _get_confidence(self, pred: Tensor, categorical: bool) -> Tensor:
         if not categorical:
-            conf = 1 - Entropy.compute_binary_entropy(pred, inplace=False, from_logits=False)
+            conf = 1 - Entropy.compute_binary_entropy(pred, inplace=False, from_logits=self.from_logits)
         else:
-            conf = 1 - Entropy.compute_categorical_entropy(pred, dim=-1, inplace=False, from_logits=False)
-        #assert (conf >= 0).all()
-        #assert (conf <= 1).all()
+            conf = 1 - Entropy.compute_categorical_entropy(pred, dim=-1, inplace=False, from_logits=self.from_logits)
+        assert (conf >= 0).all()
+        assert (conf <= 1).all()
         return conf
 
 
