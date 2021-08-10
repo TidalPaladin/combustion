@@ -15,7 +15,6 @@ from math import sqrt
 from functools import partial
 from .common import MLP, DropPath
 from .point_transformer import KNNTail, KNNDownsample
-from .experimental import Unattention, SoftmaxSE
 from copy import deepcopy
 
 

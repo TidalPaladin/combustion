@@ -14,7 +14,6 @@ from typing import Any, Callable, Optional, Tuple, List, Type
 from math import sqrt
 from functools import partial
 from copy import deepcopy
-from .powernorm import MaskPowerNorm
 
 class SequenceBatchNorm(nn.BatchNorm1d):
     r"""Batch norm for sequences of shape :math:`(L, N, C)`"""
@@ -75,21 +74,6 @@ class BatchNormMixin:
                 setattr(module, name, new_layer)
             else:
                 BatchNormMixin.use_instancenorm(layer)
-
-    @staticmethod
-    def use_powernorm(module: nn.Module, **kwargs):
-        for name, layer in module.named_children():
-            if hasattr(layer, "dropout") and isinstance(layer.dropout, float):
-                layer.dropout = 0
-            if isinstance(layer, nn.LayerNorm):
-                d = layer.normalized_shape[0]
-                new_layer = MaskPowerNorm(d, **kwargs)
-                setattr(module, name, new_layer)
-            elif isinstance(layer, nn.Dropout):
-                new_layer = nn.Identity()
-                setattr(module, name, new_layer)
-            else:
-                BatchNormMixin.use_powernorm(layer)
 
     @staticmethod
     def layernorm_nonaffine(module: nn.Module, **kwargs):

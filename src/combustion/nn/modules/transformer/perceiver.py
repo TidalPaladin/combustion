@@ -14,7 +14,7 @@ from torch import Tensor
 from typing import Any, Callable, Optional, Tuple, List, Type
 from math import sqrt
 from functools import partial
-from .fnet import FourierDownsample, FNet
+from .fnet import FNet
 from copy import deepcopy
 from .common import MLP, SqueezeExcite, SequenceBatchNorm, SequenceInstanceNorm, BatchNormMixin, DropPath
 

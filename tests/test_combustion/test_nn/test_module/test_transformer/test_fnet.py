@@ -3,7 +3,7 @@
 
 import pytest
 import torch
-from combustion.nn.modules.transformer.fnet import FNet, FourierDownsample, FourierUpsample, FourierMixer, FourierTransformer
+from combustion.nn.modules.transformer.fnet import FNet, FourierMixer, FourierTransformer
 
 
 class TestFourierMixer:
@@ -18,29 +18,6 @@ class TestFourierMixer:
         assert out.shape == (L, N, D)
         assert out.dtype == dtype
 
-class TestFourierDownsample:
-
-    @pytest.mark.parametrize("nhead", [1, 2])
-    @pytest.mark.parametrize("dtype", [torch.float, torch.half])
-    def test_forward(self, nhead, dtype):
-        L, N, D = 512, 2, 64
-        x = torch.randn(L, N, D, dtype=dtype)
-        l = FourierDownsample(nhead)
-        out = l(x)
-        assert out.shape == (L // 2 + 1, N, D)
-        assert out.dtype == dtype
-
-class TestFourierUpsample:
-
-    @pytest.mark.parametrize("nhead", [1, 2])
-    @pytest.mark.parametrize("dtype", [torch.float, torch.half])
-    def test_forward(self, nhead, dtype):
-        L, N, D = 512, 2, 64
-        x = torch.randn(L // 2 + 1, N, D, dtype=dtype)
-        l = FourierUpsample(nhead)
-        out = l(x)
-        assert out.shape == (L, N, D)
-        assert out.dtype == dtype
 
 class TestFNetLayer:
 
