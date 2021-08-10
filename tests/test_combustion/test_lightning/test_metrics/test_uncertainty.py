@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import torch
 import matplotlib.pyplot as plt
 
@@ -222,8 +225,8 @@ class TestUCE:
 
     def test_plot3(self):
         N = 5
-        probs = torch.randn(10000, N) * 30
-        true = torch.randint(0, N, (10000,))
+        probs = torch.randn(1000, N) * 30
+        true = torch.randint(0, N, (1000,))
 
         metric = ErrorAtUncertainty(num_bins=100, from_logits=True, classwise=False, num_classes=N)
         entropy, err, has_items = metric(probs, true)  # type: ignore
@@ -251,4 +254,3 @@ class TestUCE:
         metric = UCE(num_bins=3, from_logits=False, classwise=False, num_classes=N)
         metric.update(probs, true)  # type: ignore
         uce = metric.compute()  # type: ignore
-        assert False

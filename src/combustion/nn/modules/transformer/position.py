@@ -67,6 +67,7 @@ class RelativePositionalEncoder(nn.Module):
             delta = points - center.view(1, L, N, C)
         return self.linear(delta)
 
+
 class LearnableFourierFeatures(nn.Module):
     def __init__(
         self, 
@@ -93,7 +94,6 @@ class LearnableFourierFeatures(nn.Module):
             nn.Dropout(dropout),
         )
         self.norm = SequenceBatchNorm(d_out)
-
 
         #sigma = sigma or num_features / (2 * math.pi) ** 0.5
         sigma = sigma or 1.0

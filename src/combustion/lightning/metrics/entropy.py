@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import torch
 from typing import Any, Callable, Optional
 
+import torch
 import torch.nn.functional as F
 from torch import Tensor
 from torchmetrics import AverageMeter
@@ -55,11 +55,13 @@ class Entropy(AverageMeter):
         if self.dim is None:
             entropy = self.compute_binary_entropy(preds, self.inplace, self.from_logits)
         else:
-            entropy = self.compute_categorical_entropy(preds, dim=self.dim, inplace=self.inplace, from_logits=self.from_logits)
+            entropy = self.compute_categorical_entropy(
+                preds, dim=self.dim, inplace=self.inplace, from_logits=self.from_logits
+            )
         super().update(entropy)
 
     @staticmethod
-    def compute_binary_entropy(x: Tensor, inplace: bool = True, from_logits: bool = True) -> Tensor:
+    def compute_binary_entropy(x: Tensor, inplace: bool = True, from_logits: bool = True, eps: float = 1e6) -> Tensor:
         r"""Computes binary entropy pointwise over a tensor.
         Inputs are expected to be unnormalized logits (no Sigmoid applied).
 
@@ -73,9 +75,9 @@ class Entropy(AverageMeter):
             log_p_inv = F.logsigmoid(x.neg())
         else:
             p = x
-            log_p = x.log()
-            log_p_inv = (1 - x).log()
-        
+            log_p = x.log().clamp_min(-eps)
+            log_p_inv = (1 - x).log().clamp_min(-eps)
+
         p_inv = 1 - p
         if inplace:
             return log_p.mul_(p).add_(log_p_inv.mul_(p_inv)).neg_()
@@ -83,7 +85,7 @@ class Entropy(AverageMeter):
             return log_p.mul(p).add(log_p_inv.mul(p_inv)).neg()
 
     @staticmethod
-    def compute_categorical_entropy(x: Tensor, dim: int = -1, inplace: bool = True, from_logits: bool = True) -> Tensor:
+    def compute_categorical_entropy(x: Tensor, dim: int = -1, inplace: bool = True, from_logits: bool = True, eps: float = 1e6) -> Tensor:
         r"""Computes categorical or binary entropy along a given tensor dimension. Inputs
         are expected to be unnormalized logits (no Softmax or Sigmoid applied).
 
@@ -99,7 +101,7 @@ class Entropy(AverageMeter):
             log_p = F.log_softmax(x, dim=dim)
         else:
             p = x
-            log_p = x.log()
+            log_p = x.log().clamp_min(-eps)
 
         C = x.shape[dim]
         assert C > 0
