@@ -17,6 +17,7 @@ from copy import deepcopy
 from .powernorm import MaskPowerNorm
 
 class SequenceBatchNorm(nn.BatchNorm1d):
+    r"""Batch norm for sequences of shape :math:`(L, N, C)`"""
 
     def forward(self, x: Tensor) -> Tensor:
         orig_x = x
@@ -30,6 +31,7 @@ class SequenceBatchNorm(nn.BatchNorm1d):
 
 
 class SequenceInstanceNorm(nn.InstanceNorm1d):
+    r"""Instance norm for sequences of shape :math:`(L, N, C)`"""
 
     def forward(self, x: Tensor) -> Tensor:
         orig_x = x
@@ -101,6 +103,7 @@ class BatchNormMixin:
 
 
 class DropPath(nn.Module):
+    r"""DropPath, otherwise known as stochastic depth"""
     def __init__(self, ratio: float):
         super().__init__()
         assert ratio >= 0 and ratio < 1.0

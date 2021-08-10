@@ -14,29 +14,11 @@ from typing import Any, Callable, Optional, Tuple, List, Type
 from math import sqrt
 from functools import partial
 
-from .common import MLP
-
-class SqueezeExcite(nn.Module):
-
-    def __init__(self, d: int, d_hidden: int, dropout: float = 0):
-        super().__init__()
-        self.se = nn.Sequential(
-            nn.Linear(d, d_hidden),
-            nn.Dropout(dropout),
-            nn.ReLU(),
-            nn.Linear(d_hidden, d),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, x: Tensor) -> Tensor:
-        L, N, D = x.shape
-        pool = x.mean(dim=0, keepdim=True)
-        weight = self.se(pool)
-        return x * weight
+from .common import MLP, SqueezeExcite
 
 
 class FourierMixer(nn.Module):
-
+    r"""FNet Mixer """
     def __init__(self, nhead: int = 1, norm: str = "ortho", real_out: bool = True):
         super().__init__()
         self.norm = norm
@@ -72,26 +54,9 @@ class FourierMixer(nn.Module):
         L_dim, D_dim = 0, -1
         x = torch.fft.fft(x, dim=D_dim, norm="ortho")
         x = torch.fft.fft(x, dim=L_dim, norm="ortho")
-        #x = torch.fft.fft2(x, dim=(D_dim, L_dim), norm=self.norm).contiguous()
-        #x = torch.fft.fft(x, dim=L_dim, norm=self.norm).contiguous()
         return x
 
 
-class FourierDownsample(FourierMixer):
-
-    def _forward(self, x: Tensor) -> Tensor:
-        L_dim, D_dim = 0, -1
-        L, D = x.shape[L_dim], x.shape[D_dim]
-        x = torch.fft.rfft2(x, dim=(D_dim, L_dim), norm=self.norm)[:L//2].contiguous()
-        return x
-
-
-class FourierUpsample(FourierMixer):
-
-    def _forward(self, x: Tensor) -> Tensor:
-        L_dim, D_dim = 0, -1
-        x = torch.fft.irfft2(x, dim=(D_dim, L_dim), norm=self.norm).contiguous()
-        return x
 
 
 class FNet(nn.Module):
@@ -147,118 +112,6 @@ class FNet(nn.Module):
             x = self.norm2(x)
 
         return x
-
-class FNetDownBlock(nn.Module):
-
-    def __init__(self, d: int, dim_ff: int, repeats: int = 1, nhead: int = 1, dout: Optional[int] = None, dropout: float = 0.1, norm: str = "ortho", act: nn.Module = nn.SiLU(), use_bn: bool = False):
-        super().__init__()
-        self.blocks = nn.Sequential(*[
-            FNet(d, dim_ff, nhead, d, dropout, norm, act, use_bn)
-            for _ in range(repeats -1)
-        ])
-        self.pre_downsample = FNet(d, dim_ff, nhead, d*2, dropout, norm, act, use_bn)
-        self.downsample = FourierDownsample(nhead, norm)
-
-    def forward(self, x: Tensor) -> Tensor:
-        x = self.blocks(x)
-        x = self.pre_downsample(x)
-        return self.downsample(x)
-
-class FNetUpBlock(nn.Module):
-
-    def __init__(self, d: int, dim_ff: int, repeats: int = 1, nhead: int = 1, dout: Optional[int] = None, dropout: float = 0.1, norm: str = "ortho", act: nn.Module = nn.SiLU()):
-        super().__init__()
-        self.blocks = nn.Sequential(*[
-            FNet(d, dim_ff, nhead, d, dropout, norm, act)
-            for _ in range(repeats-1)
-        ])
-        self.pre_upsample = FNet(d, dim_ff, nhead, d // 2, dropout, norm, act,)
-        self.upsample = FourierUpsample(nhead, norm)
-
-    def forward(self, x: Tensor, skip_conn: Tensor) -> Tensor:
-        x = self.blocks(x)
-        x = self.pre_upsample(x)
-        x = self.upsample(x)
-        return x + skip_conn
-
-class WeightedFourierMixer(FourierMixer):
-
-    def forward(self, x: Tensor) -> Tensor:
-        weights = super().forward(x).sigmoid()
-        return x * weights
-
-class SortedFourierMixer(FourierMixer):
-
-    def __init__(self, d: int, num_freqs: int, norm: str = "ortho", real_out: bool = True):
-        super().__init__(1, norm, real_out)
-        self.num_freqs = num_freqs
-        self.out_size = self.num_freqs // 2 + 1
-        D_f = self.num_freqs
-
-        #self.in_proj = nn.Linear(d, 3*d)
-        self.query_proj = nn.Linear(d, d)
-        self.key_proj = nn.Linear(d, d)
-        self.value_proj = nn.Linear(d, d)
-
-        self.spatial = nn.Linear(self.out_size, self.num_freqs)
-        
-        self.query_router = nn.Sequential(
-            nn.Linear(d, D_f),
-        )
-        self.key_router = nn.Sequential(
-            nn.Linear(d, D_f),
-        )
-        self.value_router = nn.Sequential(
-            nn.Linear(d, D_f),
-            nn.Softmax(dim=-1)
-        )
-        self.out_proj = nn.Linear(d, d)
-
-    def forward(self, x: Tensor) -> Tensor:
-        L, N, D = x.shape
-        W = self.num_freqs
-        S = self.out_size
-        L_dim, D_dim = 0, -1
-        orig_x = x
-
-        #Q = self.query_proj(x)
-        #K = self.key_proj(x)
-        #V = self.value_proj(x)
-        #Q, K, V = self.in_proj(x).chunk(3, dim=-1)
-
-        Q = x
-
-        Qf = self.query_router(Q).swapdims(0, 1).div(L)
-        #Kf = self.key_router(K).swapdims(0, 1).div(L)
-        #Vf = self.value_router(V).swapdims(0, 1)
-        assert Qf.shape == (N, L, W)
-        #assert Kf.shape == (N, L, W)
-        #assert Vf.shape == (N, L, W)
-
-        Q_routed = Q.movedim(0, -1).bmm(Qf)
-        #K_routed = K.movedim(0, -1).bmm(Kf)
-        #V_routed = V.movedim(0, -1).bmm(Vf.div(L))
-        assert Q_routed.shape == (N, D, W)
-        #assert K_routed.shape == (N, D, W)
-        #assert V_routed.shape == (N, D, W)
-
-        Q_routed = torch.fft.fft2(Q_routed.float(), dim=(-2, -1), norm="ortho")
-        #K_routed = torch.fft.fft2(K_routed.float(), dim=(-2, -1), norm="ortho")
-        #V_routed = torch.fft.fft2(V_routed.float(), dim=(-2, -1), norm="ortho")
-        attn = Q_routed 
-        assert attn.shape == (N, D, W)
-
-        Qf = torch.fft.fft(Qf.float(), dim=(-1), norm="ortho")
-        #assert Vf.shape == (N, L, W)
-
-        out = attn.bmm(Qf.swapdims(-1, -2)).movedim(-1, 0)
-        assert out.shape == (L, N, D)
-
-        out = out.real.type_as(x)
-        return self.out_proj(out)
-
-
-
 
 
 class FourierTransformer(nn.Module):
