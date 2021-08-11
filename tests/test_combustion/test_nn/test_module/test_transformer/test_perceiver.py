@@ -2,13 +2,12 @@
 # -*- coding: utf-8 -*-
 
 
-import pytest
 import torch
+
 from combustion.nn.modules.transformer.perceiver import PerceiverLayer
 
 
 class TestPerceiverLayer:
-
     def test_forward(self):
         Li, N, Di = 512, 2, 64
         Ll, Dl = 32, 64

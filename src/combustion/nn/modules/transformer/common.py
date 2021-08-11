@@ -1,19 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from copy import deepcopy
+from typing import Optional
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
-from abc import ABC, abstractmethod
-from enum import IntEnum, Enum
-from dataclasses import dataclass, field
-
 from torch import Tensor
-from typing import Any, Callable, Optional, Tuple, List, Type
-from math import sqrt
-from functools import partial
-from copy import deepcopy
+
 
 class SequenceBatchNorm(nn.BatchNorm1d):
     r"""Batch norm for sequences of shape :math:`(L, N, C)`"""
@@ -44,7 +38,6 @@ class SequenceInstanceNorm(nn.InstanceNorm1d):
 
 
 class BatchNormMixin:
-
     @staticmethod
     def use_batchnorm(module: nn.Module, **kwargs):
         for name, layer in module.named_children():
@@ -88,6 +81,7 @@ class BatchNormMixin:
 
 class DropPath(nn.Module):
     r"""DropPath, otherwise known as stochastic depth"""
+
     def __init__(self, ratio: float):
         super().__init__()
         assert ratio >= 0 and ratio < 1.0
@@ -108,9 +102,10 @@ class DropPath(nn.Module):
         return x * self.get_mask(x)
 
 
-
 class MLP(nn.Module):
-    def __init__(self, d: int, d_hidden: int, d_out: Optional[int] = None, dropout: float = 0, act: nn.Module = nn.ReLU()):
+    def __init__(
+        self, d: int, d_hidden: int, d_out: Optional[int] = None, dropout: float = 0, act: nn.Module = nn.ReLU()
+    ):
         super().__init__()
         d_out = d_out or d
         self.l1 = nn.Linear(d, d_hidden)
@@ -130,16 +125,10 @@ class MLP(nn.Module):
 
 
 class SqueezeExcite(nn.Module):
-
     def __init__(self, d_in, d_squeeze, act: nn.Module = nn.ReLU()):
         super().__init__()
         self.d_in = d_in
-        self.se = nn.Sequential(
-            nn.Linear(d_in, d_squeeze),
-            act,
-            nn.Linear(d_squeeze, d_in),
-            nn.Sigmoid()
-        )
+        self.se = nn.Sequential(nn.Linear(d_in, d_squeeze), act, nn.Linear(d_squeeze, d_in), nn.Sigmoid())
 
     def forward(self, x: Tensor) -> Tensor:
         weights = self.se(x.mean(dim=0, keepdim=True))

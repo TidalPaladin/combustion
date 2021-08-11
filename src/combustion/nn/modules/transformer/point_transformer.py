@@ -1,19 +1,22 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import torch
-from torch import Tensor
-from typing import Any, Tuple, List, Optional
 from copy import deepcopy
-import torch.nn as nn
+from typing import List, Optional, Tuple
 
-#from .performer import PerformerLayer, FAVOR
-from .position import RelativeLearnableFourierFeatures, RelativePositionalEncoder
-from ..cluster import TransitionDown, TransitionUp, KNNCluster, FarthestPointsDecimate
+import torch.nn as nn
+from torch import Tensor
+
+from ..cluster import FarthestPointsDecimate, KNNCluster, TransitionDown, TransitionUp
 from .common import MLP, SqueezeExcite
 
-class CrossAttention(nn.Module):
+# from .performer import PerformerLayer, FAVOR
+from .position import RelativeLearnableFourierFeatures, RelativePositionalEncoder
 
-    def __init__(self, d: int, nhead: int, dim_ff: Optional[int] = None, dropout: float = 0.1, act: nn.Module = nn.Mish()):
+
+class CrossAttention(nn.Module):
+    def __init__(
+        self, d: int, nhead: int, dim_ff: Optional[int] = None, dropout: float = 0.1, act: nn.Module = nn.Mish()
+    ):
         super().__init__()
         self.attn = nn.MultiheadAttention(d, nhead)
         self.norm1 = nn.LayerNorm(d)
@@ -34,9 +37,19 @@ class CrossAttention(nn.Module):
         new.mlp = self.mlp
         return new
 
-class KNNTail(nn.Module):
 
-    def __init__(self, d_in: int, d_out: int, k: int, nhead: int = 1, repeats: int = 1, dropout: float = 0, pos_features: int = 128, **kwargs):
+class KNNTail(nn.Module):
+    def __init__(
+        self,
+        d_in: int,
+        d_out: int,
+        k: int,
+        nhead: int = 1,
+        repeats: int = 1,
+        dropout: float = 0,
+        pos_features: int = 128,
+        **kwargs,
+    ):
         super().__init__()
         self.mlp = MLP(d_in, d_out, d_out, dropout=dropout)
         self.se1 = SqueezeExcite(d_out, d_out // 2)
@@ -47,14 +60,14 @@ class KNNTail(nn.Module):
         self.cluster = KNNCluster(k)
         self.norm_mean = nn.LayerNorm(d_out)
 
-        self.mixer = nn.ModuleList([CrossAttention(d_out, nhead, d_out*4, dropout=dropout)]*repeats)
+        self.mixer = nn.ModuleList([CrossAttention(d_out, nhead, d_out * 4, dropout=dropout)] * repeats)
 
         self.se2 = SqueezeExcite(d_out, d_out // 2)
         self.se_norm = nn.LayerNorm(d_out)
 
         self.final_norm = nn.LayerNorm(d_out)
 
-    def forward(self, coords: Tensor, features: Optional[Tensor]=None) -> Tensor:
+    def forward(self, coords: Tensor, features: Optional[Tensor] = None) -> Tensor:
         L, N, C = coords.shape
         attn_idx = self.cluster(coords, coords)
         pos_emb = self.pos_enc(coords, coords[attn_idx].view(-1, L, N, C))
@@ -67,24 +80,22 @@ class KNNTail(nn.Module):
         features = self.norm_se(features + self.se1(features))
         L, N, D = features.shape
 
-        orig_features = features
         f = features[attn_idx].view(-1, L, N, D)
         f += pos_emb
-        tgt = features.view(-1, L*N, D)
+        tgt = features.view(-1, L * N, D)
         src = f.view(-1, L * N, D)
         for layer in self.mixer:
             tgt = layer(tgt, src)
         features = tgt.view(L, N, D)
-        #features = self.se_norm(features + self.se_norm(features))
-        #features = f.view(-1, L, N, D)
-        #features = self.final_norm(orig_features + features.mean(dim=0))
+        # features = self.se_norm(features + self.se_norm(features))
+        # features = f.view(-1, L, N, D)
+        # features = self.final_norm(orig_features + features.mean(dim=0))
         assert features.shape == (L, N, D)
 
         return features
 
 
 class KNNDownsample(nn.Module):
-
     def __init__(self, d: int, d_out: int, ratio: float = 0.25, **kwargs):
         super().__init__()
         self.down = FarthestPointsDecimate(ratio)
@@ -104,15 +115,15 @@ class KNNDownsample(nn.Module):
         return coords, features
 
 
-
 class PCTDown(nn.Module):
-
-    def __init__(self, d: int, k: int, pos_enc: RelativePositionalEncoder, repeats: int = 1, ratio: float = 0.25, **kwargs):
+    def __init__(
+        self, d: int, k: int, pos_enc: RelativePositionalEncoder, repeats: int = 1, ratio: float = 0.25, **kwargs
+    ):
         super().__init__()
         self.pos_enc = pos_enc
-        layer = nn.TransformerEncoderLayer(2*d, **kwargs)
+        layer = nn.TransformerEncoderLayer(2 * d, **kwargs)
         self.attn = nn.TransformerEncoder(layer, repeats)
-        self.down = TransitionDown(d, 2*d, k, ratio, act=nn.SiLU())
+        self.down = TransitionDown(d, 2 * d, k, ratio, act=nn.SiLU())
         self.cluster = KNNCluster(k)
         self.register_buffer("coords", None)
 
@@ -135,18 +146,26 @@ class PCTDown(nn.Module):
         assert self.coords is not None
         return keep_coords, pool_features, neighbor_idx, keep_idx, attn_idx
 
-class PCTUp(nn.Module):
 
+class PCTUp(nn.Module):
     def __init__(self, d: int, k: int, pos_enc: RelativePositionalEncoder, repeats: int = 1, **kwargs):
         super().__init__()
         self.pos_enc = pos_enc
         layer = nn.TransformerEncoderLayer(d, **kwargs)
         self.attn = nn.TransformerEncoder(layer, repeats)
-        self.up = TransitionUp(2*d, d, act=nn.SiLU())
+        self.up = TransitionUp(2 * d, d, act=nn.SiLU())
         self.cluster = KNNCluster(k)
         self.register_buffer("coords", None)
 
-    def forward(self, features_coarse: Tensor, features_fine: Tensor, neighbor_idx: List[Tensor], keep_idx: List[Tensor], coords: Tensor, attn_idx: Optional[Tensor]) -> Tensor:
+    def forward(
+        self,
+        features_coarse: Tensor,
+        features_fine: Tensor,
+        neighbor_idx: List[Tensor],
+        keep_idx: List[Tensor],
+        coords: Tensor,
+        attn_idx: Optional[Tensor],
+    ) -> Tensor:
         features_fine = self.up(features_coarse, features_fine, neighbor_idx, keep_idx)
         L, N, D = features_fine.shape
         C = coords.shape[-1]
@@ -158,32 +177,30 @@ class PCTUp(nn.Module):
         pos_emb = self.pos_enc(coords, coords[attn_idx].view(-1, L, N, C))
         features_fine = features_fine + pos_emb
 
-        features_fine = self.attn(features_fine.view(-1, L*N, D)).view(-1, L, N, D)
+        features_fine = self.attn(features_fine.view(-1, L * N, D)).view(-1, L, N, D)
         features_fine = features_fine.mean(dim=0)
         setattr(self, "coords", coords.clone())
         assert self.coords is not None
         return features_fine
 
 
-
 class ClusterModel(nn.Module):
-
     def __init__(self, d: int, d_in: int, num_coords: int = 3, blocks: List[int] = [1, 1, 1, 1], k: int = 32, **kwargs):
         super().__init__()
         self.tail = MLP(d_in, d, d)
         self.first_mlp = MLP(d, d, d)
 
-        #self.initial_decimate = InitialTransitionDown(d, d, max_points=32000)
+        # self.initial_decimate = InitialTransitionDown(d, d, max_points=32000)
 
         encoder = []
         decoder = []
         for i, repeats in enumerate(blocks):
             d_block = int(d * 2 ** i)
-            pos_enc = RelativePositionalEncoder(num_coords, 2*d_block)
-            block = PCTDown(d_block, k, pos_enc, dim_feedforward=4*d_block, **kwargs)
+            pos_enc = RelativePositionalEncoder(num_coords, 2 * d_block)
+            block = PCTDown(d_block, k, pos_enc, dim_feedforward=4 * d_block, **kwargs)
             encoder.append(block)
             pos_enc = RelativePositionalEncoder(num_coords, d_block)
-            block = PCTUp(d_block, k, pos_enc, dim_feedforward=2*d_block, **kwargs)
+            block = PCTUp(d_block, k, pos_enc, dim_feedforward=2 * d_block, **kwargs)
             decoder.append(block)
 
         self.encoder = nn.ModuleList(encoder)
@@ -198,7 +215,6 @@ class ClusterModel(nn.Module):
         self.attn = nn.TransformerEncoder(layer, 1)
         self.cluster = KNNCluster(k)
 
-
     def forward(self, coords: Tensor, features: Tensor) -> Tensor:
         features = self.tail(features)
 
@@ -209,7 +225,7 @@ class ClusterModel(nn.Module):
         features = features[first_attn_idx].view(-1, L, N, D)
         pos_emb = self.pos_enc(coords, coords[first_attn_idx].view(-1, L, N, C))
         features = features + pos_emb
-        features = self.attn(features.view(-1, L*N, D)).view(-1, L, N, D)
+        features = self.attn(features.view(-1, L * N, D)).view(-1, L, N, D)
         features = features.mean(dim=0)
         first_features = self.first_mlp(features)
 
@@ -220,9 +236,7 @@ class ClusterModel(nn.Module):
 
         for i, enc in enumerate(self.encoder):
             keep_coords, coarse_features, neighbor_idx, keep_idx, attn_idx = enc(coords, features)
-            skip_conns.append(
-                [coords, features, neighbor_idx, keep_idx, attn_idx]
-            )
+            skip_conns.append([coords, features, neighbor_idx, keep_idx, attn_idx])
             features = coarse_features
             coords = keep_coords
 
@@ -231,20 +245,21 @@ class ClusterModel(nn.Module):
         skip_conns = list(reversed(skip_conns))
         for i, dec in enumerate(self.decoder):
             coords, fine_features, neighbor_idx, keep_idx, _ = skip_conns[i]
-            attn_idx = skip_conns[i+1][-1] if i < len(skip_conns) - 1 else first_attn_idx
+            attn_idx = skip_conns[i + 1][-1] if i < len(skip_conns) - 1 else first_attn_idx
             features = dec(features, fine_features, neighbor_idx, keep_idx, coords, attn_idx)
 
         features = features + first_features
         return features
 
-#class PerformerDownsample(nn.Module):
+
+# class PerformerDownsample(nn.Module):
 #
 #    def __init__(
-#        self, 
+#        self,
 #        d_in: int,
-#        d_out: int, 
-#        nhead: int, 
-#        dropout: float = 0.1, 
+#        d_out: int,
+#        nhead: int,
+#        dropout: float = 0.1,
 #        activation: nn.Module = nn.ReLU(),
 #        feature_redraw_interval: int = 1000,
 #        fast: bool = True,
@@ -254,10 +269,10 @@ class ClusterModel(nn.Module):
 #     ):
 #        super().__init__()
 #        self.attn = FAVOR(
-#            d_out, 
-#            nhead, 
-#            fast=fast, 
-#            stabilizer=stabilizer, 
+#            d_out,
+#            nhead,
+#            fast=fast,
+#            stabilizer=stabilizer,
 #            feature_redraw_interval=feature_redraw_interval,
 #            kdim=kdim,
 #            vdim=vdim,

@@ -3,11 +3,11 @@
 
 import pytest
 import torch
+
 from combustion.nn.modules.transformer.fnet import FNet, FourierMixer, FourierTransformer
 
 
 class TestFourierMixer:
-
     @pytest.mark.parametrize("nhead", [1, 2])
     @pytest.mark.parametrize("dtype", [torch.float, torch.half])
     def test_forward(self, nhead, dtype):
@@ -20,12 +20,11 @@ class TestFourierMixer:
 
 
 class TestFNetLayer:
-
     @pytest.mark.parametrize("nhead", [1, 2])
     def test_forward(self, nhead):
         L, N, D = 512, 2, 64
         x = torch.randn(L, N, D)
-        l = FNet(D, 2*D, nhead)
+        l = FNet(D, 2 * D, nhead)
         out = l(x)
         assert out.shape == (L, N, D)
         assert False
@@ -35,11 +34,11 @@ class TestFNetLayer:
         L, N, D = 512, 2, 64
         x = torch.randn(L, N, D)
         l0 = FNet(D, D, nhead)
-        l1 = FNet(D, 2*D, nhead, dout=2*D)
+        l1 = FNet(D, 2 * D, nhead, dout=2 * D)
         l2 = FourierDownsample(nhead)
-        l3 = FNet(2*D, 2*D, nhead)
+        l3 = FNet(2 * D, 2 * D, nhead)
         l4 = FourierUpsample(nhead)
-        l5 = FNet(2*D, D, nhead, dout=D)
+        l5 = FNet(2 * D, D, nhead, dout=D)
 
         t0 = l0(x)
         t1 = l1(t0)
@@ -51,12 +50,12 @@ class TestFNetLayer:
 
         assert out.shape == (L, N, D)
 
-class TestFourierTransformer:
 
+class TestFourierTransformer:
     @pytest.mark.parametrize("nhead", [1, 2])
     def test_forward(self, nhead):
         L, N, D = 512, 2, 64
         x = torch.randn(L, N, D)
-        l = FourierTransformer(D, 2*D, nhead)
+        l = FourierTransformer(D, 2 * D, nhead)
         out = l(x)
         assert out.shape == (L, N, D)

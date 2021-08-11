@@ -6,10 +6,8 @@ from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
 import torch
-import matplotlib.pyplot as plt
 from torch import Tensor
 from torchmetrics import Metric
-from typing import Tuple, Optional
 
 from .entropy import Entropy
 

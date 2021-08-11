@@ -26,8 +26,6 @@ else:
         raise ImportError("Operation requires torch_scatter, please install it with `pip install combustion[points]`")
 
 
-
-
 __all__ = [
     "center",
     "Rotate",

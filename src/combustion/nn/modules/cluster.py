@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import torch
-from torch import Tensor
-from typing import Any, Tuple, List, Optional
-import torch.nn as nn
 from abc import ABC, abstractmethod
+from typing import Any, List, Optional, Tuple
 
-from .transformer.position import RelativePositionalEncoder
+import torch
+import torch.nn as nn
+from torch import Tensor
+
 
 try:
     import torch_cluster as tc
@@ -22,19 +22,12 @@ except ImportError:
 
 def flatten_batch(x: Tensor) -> Tuple[Tensor, Tensor]:
     N, L, C = x.shape
-    batch_idx = (
-        torch.arange(N, device=x.device)
-        .view(N, 1)
-        .expand(N, L)
-        .contiguous()
-        .view(-1)
-    )
+    batch_idx = torch.arange(N, device=x.device).view(N, 1).expand(N, L).contiguous().view(-1)
     x = x.contiguous().view(-1, C).contiguous()
     return x, batch_idx
 
 
 class Decimate(nn.Module, ABC):
-
     def __init__(self, ratio: float = 0.25, max_points: Optional[int] = None):
         super().__init__()
         self.ratio = ratio
@@ -53,8 +46,8 @@ class Decimate(nn.Module, ABC):
         else:
             assert tc is not None
 
-class Cluster(nn.Module, ABC):
 
+class Cluster(nn.Module, ABC):
     def __init__(self, k: int):
         super().__init__()
         self.k = k
@@ -70,8 +63,8 @@ class Cluster(nn.Module, ABC):
         else:
             assert tc is not None
 
-class RandomDecimate(Decimate):
 
+class RandomDecimate(Decimate):
     def __init__(self, ratio: float = 0.25, max_points: Optional[int] = None, seed: int = 42):
         super().__init__(ratio, max_points)
         self.seed = seed
@@ -86,17 +79,13 @@ class RandomDecimate(Decimate):
             with torch.random.fork_rng(devices=[coords.device]):
                 torch.random.manual_seed(self.seed)
                 keep = torch.randperm(L, device=coords.device)[:K]
-                keep = torch.meshgrid(
-                    keep, 
-                    torch.arange(N, device=coords.device)
-                )
+                keep = torch.meshgrid(keep, torch.arange(N, device=coords.device))
                 keep = [x.contiguous().view(-1) for x in keep]
 
         return keep
 
 
 class FarthestPointsDecimate(Decimate):
-
     def __init__(self, ratio: float = 0.25, max_points: Optional[int] = None):
         super().__init__(ratio, max_points)
 
@@ -104,9 +93,9 @@ class FarthestPointsDecimate(Decimate):
         super().forward(coords)
         L, N, C = coords.shape
 
-        ratio = self.ratio
+        self.ratio
         if self.max_points is not None:
-            ratio = self.max_points / L
+            self.max_points / L
 
         with torch.no_grad():
             # torch cluster requires batch_idx to be sorted, so permute before flattening
@@ -118,18 +107,14 @@ class FarthestPointsDecimate(Decimate):
             keep = keep.view(N, -1).swapdims(0, 1).fmod_(L)
             K = keep.shape[0]
 
-            indices = torch.meshgrid(
-                torch.arange(K, device=coords.device), 
-                torch.arange(N, device=coords.device)
-            )
+            indices = torch.meshgrid(torch.arange(K, device=coords.device), torch.arange(N, device=coords.device))
             indices = [keep.contiguous().view(-1), indices[-1].contiguous().view(-1)]
 
         return indices
 
 
 class KNNCluster(Cluster):
-
-    def __init__(self, k: int, cosine: bool = False, num_workers: int = 8, cpu_threshold = 4096):
+    def __init__(self, k: int, cosine: bool = False, num_workers: int = 8, cpu_threshold=4096):
         super().__init__(k)
         self.cosine = cosine
         self.num_workers = num_workers
@@ -168,9 +153,9 @@ class KNNCluster(Cluster):
             clusters = clusters.view(N, L2, K).permute(-1, 1, 0).fmod_(L2)
             assert tuple(clusters.shape) == (K, L2, N)
             indices = torch.meshgrid(
-                torch.arange(K, device=coords2.device), 
-                torch.arange(L2, device=coords2.device), 
-                torch.arange(N, device=coords2.device)
+                torch.arange(K, device=coords2.device),
+                torch.arange(L2, device=coords2.device),
+                torch.arange(N, device=coords2.device),
             )
             indices = [clusters.contiguous().view(-1), indices[-1].contiguous().view(-1)]
             assert len(indices[0]) == L2 * N * K
@@ -196,11 +181,18 @@ class MLP(nn.Module):
 
 
 class TransitionDown(nn.Module):
-
-    def __init__(self, dim: int, dim_out: int, k: int, ratio: float = 0.25, act: nn.Module = nn.ReLU(), max_points: Optional[int] = None):
+    def __init__(
+        self,
+        dim: int,
+        dim_out: int,
+        k: int,
+        ratio: float = 0.25,
+        act: nn.Module = nn.ReLU(),
+        max_points: Optional[int] = None,
+    ):
         super().__init__()
-        #self.decimate =  RandomDecimate(ratio)
-        self.decimate =  RandomDecimate(ratio, max_points=max_points)
+        # self.decimate =  RandomDecimate(ratio)
+        self.decimate = RandomDecimate(ratio, max_points=max_points)
         self.cluster = KNNCluster(k)
         self.mlp = MLP(dim, dim_out, dim_out, act=act)
 
@@ -230,13 +222,14 @@ class TransitionDown(nn.Module):
 
 
 class TransitionUp(nn.Module):
-
     def __init__(self, dim_coarse: int, dim_fine: int, act: nn.Module = nn.ReLU()):
         super().__init__()
         self.mlp_coarse = MLP(dim_coarse, dim_fine, dim_fine, act=act)
         self.mlp_fine = MLP(dim_fine, dim_fine, dim_fine, act=act)
 
-    def forward(self, features_coarse: Tensor, features_fine: Tensor, neighbor_idx: List[Tensor], keep_idx: List[Tensor]) -> Tensor:
+    def forward(
+        self, features_coarse: Tensor, features_fine: Tensor, neighbor_idx: List[Tensor], keep_idx: List[Tensor]
+    ) -> Tensor:
         Lc, N, Dc = features_coarse.shape
         Lf, N, Df = features_fine.shape
 
@@ -251,4 +244,3 @@ class TransitionUp(nn.Module):
         features_fine[neighbor_idx] = updated_features.view(-1, D)
 
         return features_fine
-

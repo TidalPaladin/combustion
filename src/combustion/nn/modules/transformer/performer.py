@@ -1,21 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import random
+from abc import ABC, abstractmethod
+from copy import deepcopy
+from enum import Enum
+from typing import Dict, List, Optional, Tuple, Type, Union
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-import random
-from abc import ABC, abstractmethod
-from enum import IntEnum, Enum
-
 from torch import Tensor
-from typing import Any, Callable, Optional, Tuple, List, Type, Union, Dict 
-from math import sqrt
-from functools import partial
+
 from .common import MLP, DropPath
-from .point_transformer import KNNTail, KNNDownsample
-from copy import deepcopy
 
 
 class OrthoScaling(Enum):
@@ -24,8 +21,8 @@ class OrthoScaling(Enum):
     NONE = 2
 
 
-def make_orthogonal(mat: Tensor, uniform_q = True) -> Tensor:
-    r"""Forces a matrix of random features to be orthogonal via Gram-Schmidt renormalization 
+def make_orthogonal(mat: Tensor, uniform_q=True) -> Tensor:
+    r"""Forces a matrix of random features to be orthogonal via Gram-Schmidt renormalization
     (QR decomposition). This process will maintain unbiasedness when ``mat``
     contains random features sampled from an isotropic distribution.
 
@@ -35,7 +32,7 @@ def make_orthogonal(mat: Tensor, uniform_q = True) -> Tensor:
 
         uniform_q:
             If ``True``, ensure that orthogonal matrix :math:`Q` is unqiue.
-            
+
     """
     mat = mat.transpose(-2, -1)
 
@@ -49,10 +46,11 @@ def make_orthogonal(mat: Tensor, uniform_q = True) -> Tensor:
         q = q.mul(d.sign())
     return q.transpose(-2, -1)
 
+
 @torch.no_grad()
 def gaussian_orthogonal_random_matrix(
-    size: int, 
-    uniform_q = True, 
+    size: int,
+    uniform_q=True,
     scaling: OrthoScaling = OrthoScaling.NORM,
     **kwargs
 ) -> Tensor:
@@ -61,7 +59,7 @@ def gaussian_orthogonal_random_matrix(
 
     The matrix is created by:
         1. Sampling values from a standard normal distribution
-        2. Forcing these features to be orthogonal via QR decomposition 
+        2. Forcing these features to be orthogonal via QR decomposition
            (Gram-Schmidt renormalization)
         3. (Possibly) forcing the orthogonal matrix to be unique
         4. Applying scaling
@@ -69,7 +67,7 @@ def gaussian_orthogonal_random_matrix(
     Args:
         rows:
             Number of rows in the created matrix
-            
+
         cols:
             Number of columns in the created matrix
 
@@ -115,7 +113,7 @@ class KernelORF(nn.Module, ABC):
             If true, normalize input data using :math:`\sqrt{d}` normalization.
 
         uniform_q:
-            If true, ensure ORF matrix is unique 
+            If true, ensure ORF matrix is unique
 
         scaling:
             Scaling applied to ORF
@@ -132,10 +130,10 @@ class KernelORF(nn.Module, ABC):
     redraw_step: Tensor
 
     def __init__(
-        self, 
-        d: int, 
-        num_heads: int, 
-        kernel_eps: float = 1e-6, 
+        self,
+        d: int,
+        num_heads: int,
+        kernel_eps: float = 1e-6,
         normalize: bool = True,
         uniform_q: bool = True,
         scaling: OrthoScaling = OrthoScaling.CONSTANT,
@@ -180,7 +178,7 @@ class KernelORF(nn.Module, ABC):
         normalizer = (E ** -0.25) if self.normalize else 1
         data = data * normalizer
 
-        R = projection.shape[-2]
+        projection.shape[-2]
         projection = projection.view(1, *projection.shape).expand(N, -1, -1, -1)
         data = data.movedim(0, -2)
         assert projection.shape == (N, H, E, E)
@@ -215,9 +213,9 @@ class KernelORF(nn.Module, ABC):
         matrices: List[Tensor] = []
         for _ in range(self.num_heads):
             mat = gaussian_orthogonal_random_matrix(
-                self.num_features, 
-                self.uniform_q, 
-                self.scaling, 
+                self.num_features,
+                self.uniform_q,
+                self.scaling,
                 **kwargs
             )
             matrices.append(mat)
@@ -232,24 +230,25 @@ class KernelORF(nn.Module, ABC):
     @staticmethod
     def _projection_redraw_hook(module: "KernelORF", *args, **kwargs) -> None:
         if not module.training or not module.feature_redraw_interval:
-            return 
+            return
 
         module.redraw_step.add_(1)
         if module.redraw_step >= module.feature_redraw_interval:
             module.redraw_projection_matrix()
             module.redraw_step.fill_(0)
 
+
 class SoftmaxORF(KernelORF):
 
     def kernel_function(self, data: Tensor, projection: Tensor, is_query: bool) -> Tensor:
         N, H, L, E = data.shape
         projection = projection.swapdims(-1, -2)
-        N, H, L, E = projection.shape # (N, R, L)
+        N, H, L, E = projection.shape  # (N, R, L)
         E_dim = -1
         L_dim = -2
 
-        normalizer = E ** -0.25
-        ratio = (E ** -0.5) # 1 / root(m) normalization from FAVOR
+        E ** -0.25
+        ratio = (E ** -0.5)  # 1 / root(m) normalization from FAVOR
 
         # h(x) = exp(-||x||**2 / 2)
         h = (
@@ -270,15 +269,16 @@ class SoftmaxORF(KernelORF):
         result = ratio * torch.exp(delta - diff)
         return result.swapdims(-1, -2)
 
+
 class SoftmaxHyp(KernelORF):
 
     def kernel_function(self, data: Tensor, projection: Tensor, is_query: bool) -> Tensor:
         N, E, L = data.shape
-        _, R, _ = projection.shape # (N, R, L)
+        _, R, _ = projection.shape  # (N, R, L)
         E_dim = -2
         L_dim = -1
 
-        ratio = ((2*R) ** -0.5) # 1 / root(2m) normalization 
+        ratio = ((2 * R) ** -0.5)  # 1 / root(2m) normalization
 
         # h(x) = exp(-||x||**2 / 2)
         h = (
@@ -302,10 +302,10 @@ class SoftmaxHyp(KernelORF):
 
 # non-causal linear attention
 def linear_attention(
-    q: Tensor, 
-    k: Tensor, 
-    v: Tensor, 
-    fast: bool = True, 
+    q: Tensor,
+    k: Tensor,
+    v: Tensor,
+    fast: bool = True,
     return_weights: int = 0,
     dropout: float = 0.0,
     stabilizer: float = 1e-6
@@ -365,17 +365,17 @@ class FAVOR(nn.MultiheadAttention):
     provable accuracy at a linear (as opposed to quadratic) complexity.
 
     .. note:
-        The required number of random features ``proj_dim`` to maintain a certain error 
+        The required number of random features ``proj_dim`` to maintain a certain error
         level grows with embedding size :math:`d` as :math:`d\log d`.
     """
     projection_matrix: Optional[Tensor]
-    
+
     def __init__(
-        self, 
-        embed_dim: int, 
-        num_heads: int, 
-        dropout: float = 0., 
-        bias: bool = True, 
+        self,
+        embed_dim: int,
+        num_heads: int,
+        dropout: float = 0.,
+        bias: bool = True,
         add_zero_attn: bool = False,
         fast: bool = True,
         kernel_fn: Type[KernelORF] = SoftmaxORF,
@@ -386,11 +386,11 @@ class FAVOR(nn.MultiheadAttention):
         **kwargs
     ) -> None:
         super(FAVOR, self).__init__(
-            embed_dim, 
-            num_heads, 
-            dropout, 
-            bias, 
-            False, 
+            embed_dim,
+            num_heads,
+            dropout,
+            bias,
+            False,
             add_zero_attn,
             kdim,
             vdim
@@ -405,10 +405,10 @@ class FAVOR(nn.MultiheadAttention):
         self.register_buffer("last_attn", None)
 
     def forward(
-        self, 
-        query: Tensor, 
-        key: Tensor, 
-        value: Tensor, 
+        self,
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
         need_weights: bool = False,
         fast: Optional[bool] = None,
         **kwargs
@@ -418,10 +418,10 @@ class FAVOR(nn.MultiheadAttention):
         # apply initial mapping
         L, N, E = query.shape
         H = self.num_heads
-        E_mh = self.head_dim
+        self.head_dim
         #needs_favor = L >= self.head_dim
 
-        # NOTE: explicitly call MHSA forward to get exact results when not using FAVOR. 
+        # NOTE: explicitly call MHSA forward to get exact results when not using FAVOR.
         # MHSA seems to use a C++ implementation and will only agree with pure torch implementation
         # within some (pretty good) level of precision
         if not fast:
@@ -431,7 +431,8 @@ class FAVOR(nn.MultiheadAttention):
             Q, K, V = self._in_projection_packed(query, key, value, self.in_proj_weight, self.in_proj_bias)
         else:
             b_q, b_k, b_v = self.in_proj_bias.chunk(3)
-            Q, K, V = self._in_projection(query, key, value, self.q_proj_weight, self.k_proj_weight, self.v_proj_weight, b_q, b_k, b_v)
+            Q, K, V = self._in_projection(query, key, value, self.q_proj_weight,
+                                          self.k_proj_weight, self.v_proj_weight, b_q, b_k, b_v)
 
         # multi-head split
         Lq, N, Dq = Q.shape
@@ -516,7 +517,7 @@ class FAVOR(nn.MultiheadAttention):
         Lq, N, H, Dq = Q.shape
         Lk, N, H, Dk = K.shape
 
-        # We must compute: 
+        # We must compute:
         #   trace[(Q @ Kt) @ (Q @ Kt).T]
         #   = trace[Q @ (Kt @ K) @ Qt]
         #   = trace[Qt @ Q @ Kt @ K]
@@ -568,7 +569,7 @@ class FAVOR(nn.MultiheadAttention):
         if k is v:
             if q is k:
                 # self-attention
-                return F.linear(q, w, b).chunk(3, dim=-1) # type: ignore
+                return F.linear(q, w, b).chunk(3, dim=-1)  # type: ignore
             else:
                 # encoder-decoder attention
                 w_q, w_kv = w.split([E, E * 2])
@@ -576,14 +577,14 @@ class FAVOR(nn.MultiheadAttention):
                     b_q = b_kv = None
                 else:
                     b_q, b_kv = b.split([E, E * 2])
-                return (F.linear(q, w_q, b_q),) + F.linear(k, w_kv, b_kv).chunk(2, dim=-1) # type: ignore
+                return (F.linear(q, w_q, b_q),) + F.linear(k, w_kv, b_kv).chunk(2, dim=-1)  # type: ignore
         else:
             w_q, w_k, w_v = w.chunk(3)
             if b is None:
                 b_q = b_k = b_v = None
             else:
                 b_q, b_k, b_v = b.chunk(3)
-            return F.linear(q, w_q, b_q), F.linear(k, w_k, b_k), F.linear(v, w_v, b_v) # type: ignore
+            return F.linear(q, w_q, b_q), F.linear(k, w_k, b_k), F.linear(v, w_v, b_v)  # type: ignore
 
     @staticmethod
     def _in_projection(
@@ -626,14 +627,15 @@ class FAVOR(nn.MultiheadAttention):
                 child.fast = False
             else:
                 FAVOR.disable_favor(child)
-                
+
+
 class PerformerEncoderLayer(nn.TransformerEncoderLayer):
     def __init__(
-        self, 
-        d_model: int, 
-        nhead: int, 
-        dim_feedforward: Optional[int] = None, 
-        dropout: float = 0.1, 
+        self,
+        d_model: int,
+        nhead: int,
+        dim_feedforward: Optional[int] = None,
+        dropout: float = 0.1,
         activation: Union[str, nn.Module] = nn.ReLU(),
         feature_redraw_interval: int = 1000,
         fast: bool = True,
@@ -641,22 +643,22 @@ class PerformerEncoderLayer(nn.TransformerEncoderLayer):
         kdim: Optional[int] = None,
         vdim: Optional[int] = None,
         **kwargs
-     ):
+    ):
         dim_feedforward = dim_feedforward or d_model
         act = "relu" if isinstance(activation, nn.Module) else activation
         super(PerformerEncoderLayer, self).__init__(
-            d_model, 
-            nhead, 
-            dim_feedforward, 
-            dropout, 
+            d_model,
+            nhead,
+            dim_feedforward,
+            dropout,
             act,
             **kwargs
         )
         self.self_attn = FAVOR(
-            d_model, 
-            nhead, 
-            fast=fast, 
-            stabilizer=stabilizer, 
+            d_model,
+            nhead,
+            fast=fast,
+            stabilizer=stabilizer,
             feature_redraw_interval=feature_redraw_interval,
             kernel_eps=0,
             kdim=kdim,
@@ -672,13 +674,14 @@ class PerformerEncoderLayer(nn.TransformerEncoderLayer):
         new_layer.linear2 = self.linear2
         return new_layer
 
+
 class PerformerDecoderLayer(nn.TransformerDecoderLayer):
     def __init__(
-        self, 
-        d_model: int, 
-        nhead: int, 
-        dim_feedforward: Optional[int] = None, 
-        dropout: float = 0.1, 
+        self,
+        d_model: int,
+        nhead: int,
+        dim_feedforward: Optional[int] = None,
+        dropout: float = 0.1,
         activation: Union[str, nn.Module] = nn.ReLU(),
         feature_redraw_interval: int = 1000,
         fast: bool = True,
@@ -686,30 +689,30 @@ class PerformerDecoderLayer(nn.TransformerDecoderLayer):
         kdim: Optional[int] = None,
         vdim: Optional[int] = None,
         **kwargs
-     ):
+    ):
         dim_feedforward = dim_feedforward or d_model
         act = "relu" if isinstance(activation, nn.Module) else activation
         super(PerformerDecoderLayer, self).__init__(
-            d_model, 
-            nhead, 
-            dim_feedforward, 
-            dropout, 
+            d_model,
+            nhead,
+            dim_feedforward,
+            dropout,
             act,
             **kwargs
         )
         self.self_attn = FAVOR(
-            d_model, 
-            nhead, 
-            fast=fast, 
-            stabilizer=stabilizer, 
+            d_model,
+            nhead,
+            fast=fast,
+            stabilizer=stabilizer,
             feature_redraw_interval=feature_redraw_interval,
             kernel_eps=0,
         )
         self.multihead_attn = FAVOR(
-            d_model, 
-            nhead, 
-            fast=fast, 
-            stabilizer=stabilizer, 
+            d_model,
+            nhead,
+            fast=fast,
+            stabilizer=stabilizer,
             feature_redraw_interval=feature_redraw_interval,
             kernel_eps=0,
             kdim=kdim,
@@ -722,22 +725,22 @@ class PerformerDecoderLayer(nn.TransformerDecoderLayer):
 class FixedAttention(nn.TransformerDecoderLayer):
 
     def __init__(
-        self, 
-        d_model: int, 
-        nhead: int, 
-        dim_feedforward: Optional[int] = None, 
-        dropout: float = 0.0, 
-        attn_dropout: float = 0.33, 
+        self,
+        d_model: int,
+        nhead: int,
+        dim_feedforward: Optional[int] = None,
+        dropout: float = 0.0,
+        attn_dropout: float = 0.33,
         activation: Union[str, nn.Module] = nn.ReLU(),
         track_attn: bool = False
-     ):
+    ):
         dim_feedforward = dim_feedforward or d_model
         act = "relu" if isinstance(activation, nn.Module) else activation
         super().__init__(
-            d_model, 
-            nhead, 
-            dim_feedforward, 
-            dropout, 
+            d_model,
+            nhead,
+            dim_feedforward,
+            dropout,
             activation=act,
         )
         self.track_weights = track_attn
@@ -765,7 +768,8 @@ class FixedAttention(nn.TransformerDecoderLayer):
 
 
 class PerformerBlock(nn.Module):
-    def __init__(self, d: int, mlp_repeats: int, nhead: int, dim_ff: Optional[int] = None, dropout: float = 0.0, activation: nn.Module = nn.ReLU(), drop_path: float = 0.1, **kwargs):
+    def __init__(self, d: int, mlp_repeats: int, nhead: int,
+                 dim_ff: Optional[int] = None, dropout: float = 0.0, activation: nn.Module = nn.ReLU(), drop_path: float = 0.1, **kwargs):
         super().__init__()
         self.d_in = d
         self.nhead = nhead
@@ -793,20 +797,27 @@ class PerformerBlock(nn.Module):
         return new_layer
 
 
-
 class PerformerDownsample(nn.TransformerDecoder):
 
     def __init__(
-        self, 
+        self,
         d_in: int,
-        d_out: int, 
-        nhead: int, 
+        d_out: int,
+        nhead: int,
         num_layers: int = 1,
         dropout: float = 0.1,
         activation: nn.Module = nn.ReLU(),
         **kwargs
-     ):
-        decoder = PerformerDecoderLayer(d_out, nhead, d_out, dropout=dropout, activation=activation, kdim=d_in, vdim=d_in, **kwargs)
+    ):
+        decoder = PerformerDecoderLayer(
+            d_out,
+            nhead,
+            d_out,
+            dropout=dropout,
+            activation=activation,
+            kdim=d_in,
+            vdim=d_in,
+            **kwargs)
         super().__init__(decoder, num_layers)
         self.d_in = d_in
         self.d_out = d_out
@@ -824,16 +835,24 @@ class PerformerDownsample(nn.TransformerDecoder):
 class PerformerUpsample(nn.TransformerDecoder):
 
     def __init__(
-        self, 
+        self,
         d_in: int,
-        d_out: int, 
-        nhead: int, 
+        d_out: int,
+        nhead: int,
         num_layers: int = 1,
         dropout: float = 0.1,
         activation: nn.Module = nn.ReLU(),
         **kwargs
-     ):
-        decoder = PerformerDecoderLayer(d_out, nhead, d_out, dropout=dropout, activation=activation, kdim=d_in, vdim=d_in, **kwargs)
+    ):
+        decoder = PerformerDecoderLayer(
+            d_out,
+            nhead,
+            d_out,
+            dropout=dropout,
+            activation=activation,
+            kdim=d_in,
+            vdim=d_in,
+            **kwargs)
         super().__init__(decoder, num_layers)
         self.d_in = d_in
         self.d_out = d_out
@@ -842,17 +861,16 @@ class PerformerUpsample(nn.TransformerDecoder):
         return super().forward(tgt, memory)
 
 
-
 class PerformerFPNBlock(nn.Module):
 
     def __init__(
-        self, 
+        self,
         d: int,
         nhead: int,
         d_low: Optional[int],
         d_high: Optional[int],
         **kwargs
-     ):
+    ):
         super().__init__()
         if d_low is not None:
             self.downsample = PerformerDecoderLayer(d, nhead, d, kdim=d_low, vdim=d_low, **kwargs)
@@ -875,13 +893,13 @@ class PerformerFPNBlock(nn.Module):
 class PerformerFPN(nn.Module):
 
     def __init__(
-        self, 
+        self,
         d: List[int],
         nhead: int,
         dropout: float = 0,
         drop_path: float = 0.1,
         **kwargs
-     ):
+    ):
         super().__init__()
         self.drop_path = DropPath(drop_path)
         self.blocks = nn.ModuleList()
@@ -889,12 +907,12 @@ class PerformerFPN(nn.Module):
             if i == 0:
                 d_low = None
             else:
-                d_low = d[i-1]
+                d_low = d[i - 1]
 
             if i == len(d) - 1:
                 d_high = None
             else:
-                d_high = d[i+1]
+                d_high = d[i + 1]
 
             layer = PerformerFPNBlock(_d, nhead, d_low, d_high, dropout=dropout, **kwargs)
             self.blocks.append(layer)
@@ -906,7 +924,7 @@ class PerformerFPN(nn.Module):
             if i == 0:
                 down = None
             else:
-                down = features[i-1]
+                down = features[i - 1]
 
             if i == len(features) - 1:
                 up = None
@@ -920,7 +938,8 @@ class PerformerFPN(nn.Module):
 
 
 class VisionPerformer(nn.Module):
-    def __init__(self, blocks: List[PerformerBlock], repeats: List[int], fpn_repeats: int = 0, act: nn.Module = nn.Mish(), share_weights: bool = False):
+    def __init__(self, blocks: List[PerformerBlock], repeats: List[int],
+                 fpn_repeats: int = 0, act: nn.Module = nn.Mish(), share_weights: bool = False):
         super().__init__()
 
         self.levels = nn.ModuleList()
@@ -934,7 +953,7 @@ class VisionPerformer(nn.Module):
                     level.append(deepcopy(b))
             self.levels.append(nn.ModuleList(level))
 
-            d_next = blocks[i+1].d_in if i+1 < len(blocks) else None
+            d_next = blocks[i + 1].d_in if i + 1 < len(blocks) else None
             if d_next is None:
                 continue
             down = PerformerDownsample(b.d_in, d_next, b.nhead, activation=act)
@@ -947,13 +966,13 @@ class VisionPerformer(nn.Module):
             self.bifpn.append(layer)
 
     def forward(self, features: Tensor, *args, **kwargs) -> List[Tensor]:
-        N = features.shape[1]
+        features.shape[1]
         H, W = kwargs["H"], kwargs["W"]
-        pos_enc = kwargs.get("pos_enc", None)
+        kwargs.get("pos_enc", None)
         fpn = []
         for i, l in enumerate(self.levels):
             for block in l:
-                #if pos_enc is not None:
+                # if pos_enc is not None:
                 #    features = features + pos_enc #+ F.dropout(pos_enc, 0.1, training=self.training)
                 features = block(features)
             fpn.append(features)
@@ -981,7 +1000,7 @@ class VisionPerformer(nn.Module):
 class PointPerformer(VisionPerformer):
 
     def forward(self, features: Tensor, *args, **kwargs) -> List[Tensor]:
-        N = features.shape[1]
+        features.shape[1]
         fpn = []
         for i, l in enumerate(self.levels):
             for block in l:
@@ -999,7 +1018,7 @@ class PointPerformer(VisionPerformer):
 
     def downsample(self, features: Tensor, *args, **kwargs) -> Tensor:
         L, N, D = features.shape
-        keep = torch.randperm(L)[:L//4]
+        keep = torch.randperm(L)[:L // 4]
         return keep
 
     @staticmethod
@@ -1029,7 +1048,6 @@ class PartialTrainingMixin:
         for param in self.parameters():
             trainable = random.random() >= p
             param.requires_grad = trainable
-
 
     def unfreeze_params(self) -> None:
         for name, param in self.original_trainable.parameters():

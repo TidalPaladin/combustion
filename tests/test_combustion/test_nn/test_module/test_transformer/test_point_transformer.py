@@ -1,23 +1,23 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from pathlib import Path
+from timeit import timeit
+
 import matplotlib.pyplot as plt
 import pytest
-from timeit import timeit
 import torch
-from pathlib import Path
-from combustion.nn.modules.transformer.point_transformer import PCTDown, PCTUp, ClusterModel
+
+from combustion.nn.modules.transformer.point_transformer import ClusterModel
 
 
 class TestClusterModel:
-
     @pytest.mark.parametrize("L", [1024, 1000])
     def test_forward(self, L):
         N, D_in = 2, 3
         C = 3
         K = 8
         D = 32
-        ratio = 0.25
         features = torch.rand(L, N, D_in)
         coords = torch.rand(L, N, C)
 
@@ -29,7 +29,7 @@ class TestClusterModel:
 
         model = ClusterModel(D, D_in, C, blocks=[1, 1], k=K, nhead=8)
 
-        out = model(coords, features)
+        model(coords, features)
 
     @pytest.mark.ci_skip
     def test_plot(self):
@@ -41,7 +41,6 @@ class TestClusterModel:
         C = 2
         K = 16
         D = 32
-        ratio = 0.25
         features = torch.randn(L, N, D_in, requires_grad=True)
         x = torch.rand(L, N, 1, requires_grad=False)
         y = torch.randn(L, N, 1, requires_grad=False)
@@ -69,13 +68,11 @@ class TestClusterModel:
 
         assert False
 
-
     def test_runtime_basic(self):
         L, N, D_in = 8192, 2, 3
         C = 3
         K = 16
         D = 32
-        ratio = 0.25
         features = torch.rand(L, N, D_in, requires_grad=True)
         coords = torch.rand(L, N, C, requires_grad=True)
 
@@ -85,17 +82,16 @@ class TestClusterModel:
 
         def func():
             model(coords, features)
+
         n = 2
         t = timeit(func, number=n) / n
         assert False
-
 
     def test_runtime(self):
         L, N, D_in = 2048, 2, 3
         C = 3
         K = 32
         D = 32
-        ratio = 0.25
         features = torch.rand(L, N, D_in)
         coords = torch.rand(L, N, C)
 
@@ -107,7 +103,7 @@ class TestClusterModel:
                 torch.profiler.ProfilerActivity.CPU,
                 torch.profiler.ProfilerActivity.CUDA,
             ],
-            record_shapes=True
+            record_shapes=True,
         ) as p:
             model(coords, features)
 
@@ -116,8 +112,3 @@ class TestClusterModel:
         print(x)
         print(y)
         assert False
-
-
-
-
-

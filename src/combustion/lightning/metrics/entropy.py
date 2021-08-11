@@ -38,7 +38,7 @@ class Entropy(AverageMeter):
         process_group: Optional[Any] = None,
         dist_sync_fn: Callable = None,
         inplace: bool = True,
-        from_logits: bool = True
+        from_logits: bool = True,
     ):
         super().__init__(
             compute_on_step,
@@ -85,7 +85,9 @@ class Entropy(AverageMeter):
             return log_p.mul(p).add(log_p_inv.mul(p_inv)).neg()
 
     @staticmethod
-    def compute_categorical_entropy(x: Tensor, dim: int = -1, inplace: bool = True, from_logits: bool = True, eps: float = 1e6) -> Tensor:
+    def compute_categorical_entropy(
+        x: Tensor, dim: int = -1, inplace: bool = True, from_logits: bool = True, eps: float = 1e6
+    ) -> Tensor:
         r"""Computes categorical or binary entropy along a given tensor dimension. Inputs
         are expected to be unnormalized logits (no Softmax or Sigmoid applied).
 

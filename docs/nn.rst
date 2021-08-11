@@ -154,6 +154,18 @@ Focal Loss
     :members:
 
 
+Transformer Layers
+----------------------------------
+.. autoclass:: combustion.nn.modules.transformer.PerceiverLayer
+    :members:
+
+.. autoclass:: combustion.nn.modules.transformer.LearnableFourierFeatures
+    :members:
+
+.. autoclass:: combustion.nn.modules.transformer.RelativeLearnableFourierFeatures
+    :members:
+
+
 Utilities
 ----------------------------------
 

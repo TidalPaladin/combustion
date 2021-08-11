@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import torch
-import pytest
-from timeit import timeit
 import time
+from timeit import timeit
+
+import pytest
+import torch
 
 from combustion.nn.modules.cluster import KNNCluster, TransitionDown, TransitionUp
 
-class TestKNNCluster:
 
+class TestKNNCluster:
     def test_cluster_graph(self):
         L, N, D = 5, 2, 3
         K = 3
@@ -62,8 +63,8 @@ class TestKNNCluster:
         assert t < 0.25
         assert False
 
-class TestTransitionDown:
 
+class TestTransitionDown:
     def test_cluster(self):
         L, N, D = 5, 2, 3
         K = 4
@@ -75,12 +76,12 @@ class TestTransitionDown:
         features[:, 0, :].add_(1)
         features[:, 1, :].sub_(1)
 
-        l = TransitionDown(D, 2*D, K, 0.5)
-        out = l(coords, features)
+        l = TransitionDown(D, 2 * D, K, 0.5)
+        l(coords, features)
         assert False
 
-class TestTransitionUp:
 
+class TestTransitionUp:
     def test_cluster(self):
         L, N, D = 5, 2, 3
         K = 4
@@ -92,10 +93,13 @@ class TestTransitionUp:
         features[:, 0, :].add_(1)
         features[:, 1, :].sub_(1)
 
-        l = TransitionDown(D, 2*D, K, 0.5)
+        l = TransitionDown(D, 2 * D, K, 0.5)
         keep_coords, coarse, neighbor_idx, keep_idx = l(coords, features)
-        l2 = TransitionUp(2*D, D, )
-        final_features = l2(coarse, features, neighbor_idx, keep_idx)
+        l2 = TransitionUp(
+            2 * D,
+            D,
+        )
+        l2(coarse, features, neighbor_idx, keep_idx)
 
     @pytest.mark.ci_skip
     @pytest.mark.cuda_or_skip
@@ -105,12 +109,16 @@ class TestTransitionUp:
         coords = torch.rand(L, N, 3, requires_grad=True).cuda()
         features = torch.rand(L, N, D, requires_grad=True).cuda()
 
-        l = TransitionDown(D, 2*D, K, 0.25).cuda()
-        l2 = TransitionUp(2*D, D, ).cuda()
+        l = TransitionDown(D, 2 * D, K, 0.25).cuda()
+        l2 = TransitionUp(
+            2 * D,
+            D,
+        ).cuda()
 
         def func():
             keep_coords, coarse, neighbor_idx, keep_idx = l(coords, features)
-            final_features = l2(coarse, features, neighbor_idx, keep_idx)
+            l2(coarse, features, neighbor_idx, keep_idx)
+
         n = 2
         t = timeit(func, number=n) / n
         assert False

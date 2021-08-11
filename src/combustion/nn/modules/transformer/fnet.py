@@ -1,24 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from copy import deepcopy
+from typing import Optional
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
-from abc import ABC, abstractmethod
-from enum import IntEnum, Enum
-from copy import deepcopy
-
 from torch import Tensor
-from typing import Any, Callable, Optional, Tuple, List, Type
-from math import sqrt
-from functools import partial
 
 from .common import MLP, SqueezeExcite
 
 
 class FourierMixer(nn.Module):
     r"""FNet Mixer """
+
     def __init__(self, nhead: int = 1, norm: str = "ortho", real_out: bool = True):
         super().__init__()
         self.norm = norm
@@ -39,7 +34,6 @@ class FourierMixer(nn.Module):
         D_head = D // self.nhead
         assert D_head * self.nhead == D
 
-
         x = self._forward(x)
 
         if x.is_complex() and self.real_out:
@@ -57,11 +51,18 @@ class FourierMixer(nn.Module):
         return x
 
 
-
-
 class FNet(nn.Module):
-
-    def __init__(self, d: int, dim_ff: int, nhead: int = 1, dout: Optional[int] = None, dropout: float = 0.0, norm: str = "ortho", act: nn.Module = nn.SiLU(), use_bn: bool = False):
+    def __init__(
+        self,
+        d: int,
+        dim_ff: int,
+        nhead: int = 1,
+        dout: Optional[int] = None,
+        dropout: float = 0.0,
+        norm: str = "ortho",
+        act: nn.Module = nn.SiLU(),
+        use_bn: bool = False,
+    ):
         super().__init__()
         self.d = d
         self.use_bn = use_bn
@@ -70,7 +71,7 @@ class FNet(nn.Module):
         if use_bn:
             dropout = 0
 
-        # NOTE: 
+        # NOTE:
         #    1. Using norm other than "ortho" seems to reduce performance
         #    2. Adding LayerNorm seems to reduce performance
         self.mixer = nn.Sequential(
@@ -82,11 +83,7 @@ class FNet(nn.Module):
         self.se = SqueezeExcite(d, d // 2)
         self.norm1 = nn.BatchNorm1d(d) if use_bn else nn.LayerNorm(d)
         self.feedforward = nn.Sequential(
-            nn.Linear(d, dim_ff),
-            nn.Dropout(dropout),
-            nn.Linear(dim_ff, self.d_out),
-            nn.Dropout(dropout),
-            act
+            nn.Linear(d, dim_ff), nn.Dropout(dropout), nn.Linear(dim_ff, self.d_out), nn.Dropout(dropout), act
         )
         self.norm2 = nn.BatchNorm1d(self.d_out) if use_bn else nn.LayerNorm(self.d_out)
 
@@ -97,7 +94,6 @@ class FNet(nn.Module):
             x = self.norm1(x.permute(1, 2, 0)).permute(2, 0, 1)
         else:
             x = self.norm1(x)
-
 
         if self.d_out == self.d:
             x = x + self.feedforward(x)
@@ -115,7 +111,6 @@ class FNet(nn.Module):
 
 
 class FourierTransformer(nn.Module):
-
     def __init__(self, d: int, d_mid: int, dropout: float = 0.1, act: nn.Module = nn.SiLU()):
         super().__init__()
         self.proj_fft = nn.Linear(d, d_mid)
