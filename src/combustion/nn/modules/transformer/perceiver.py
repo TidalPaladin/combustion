@@ -59,6 +59,9 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         dropout:
             Dropout rate for all MLP / feedforward layers
 
+        attn_dropout:
+            Dropout applied to the cross-attention matrices
+
         act:
             Activation for all MLP / feedforward layers
 
@@ -96,6 +99,7 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         nhead_latent: int = 1,
         nhead_input: int = 1,
         dropout: float = 0.0,
+        attn_dropout: float = 0.0,
         act: nn.Module = nn.Mish(),
         use_batchnorm: bool = False,
         drop_path_rate: float = 0.1,
@@ -121,10 +125,17 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
             nhead_latent,
             kdim=input_d,
             vdim=input_d,
+            dropout=attn_dropout,
         )
         self.norm_ca1 = nn.LayerNorm(latent_d)
 
-        self.cross_attn2 = nn.MultiheadAttention(input_d, nhead_input, kdim=latent_d, vdim=latent_d)
+        self.cross_attn2 = nn.MultiheadAttention(
+            input_d, 
+            nhead_input, 
+            kdim=latent_d, 
+            vdim=latent_d, 
+            dropout=attn_dropout
+        )
         self.norm_ca2 = nn.LayerNorm(input_d)
 
         # latent transformer blocks
@@ -146,10 +157,16 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
             self.use_batchnorm(self)
 
     def forward(self, inputs: Tensor, latent: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+        Li, N, Di = inputs.shape
         latent = self.get_latent(inputs, latent)
+        Ll, N, Dl = latent.shape
         orig_inputs, orig_latent = inputs, latent
+
+        # Get attention mask (defaults to None)
         attn_mask = self.get_mask(inputs, latent)
+        assert attn_mask is None or attn_mask.shape == (N, Ll, Li)
         attn_mask_T = attn_mask.transpose(-1, -2) if attn_mask is not None else None
+        assert attn_mask_T is None or attn_mask.shape == (N, Li, Ll)
 
         # Cross attention 1; input -> latent
         need_weights = self.track_weights or self.track_entropy
