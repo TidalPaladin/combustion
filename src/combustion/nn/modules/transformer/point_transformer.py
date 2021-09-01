@@ -12,6 +12,8 @@ from .common import MLP, SqueezeExcite
 # from .performer import PerformerLayer, FAVOR
 from .position import RelativeLearnableFourierFeatures, RelativePositionalEncoder
 
+Index = List[Tensor]
+
 
 class CrossAttention(nn.Module):
     def __init__(
@@ -41,56 +43,48 @@ class CrossAttention(nn.Module):
 class KNNTail(nn.Module):
     def __init__(
         self,
-        d_in: int,
         d_out: int,
         k: int,
         nhead: int = 1,
         repeats: int = 1,
         dropout: float = 0,
-        pos_features: int = 128,
         **kwargs,
     ):
         super().__init__()
-        self.mlp = MLP(d_in, d_out, d_out, dropout=dropout)
-        self.se1 = SqueezeExcite(d_out, d_out // 2)
-        self.norm_mlp = nn.LayerNorm(d_out)
-        self.norm_se = nn.LayerNorm(d_out)
-        self.pos_enc = RelativeLearnableFourierFeatures(3, pos_features, d_out)
-
+        self.pos_enc = RelativePositionalEncoder(3, d_out, dropout=dropout, act=nn.Mish())
         self.cluster = KNNCluster(k)
-        self.norm_mean = nn.LayerNorm(d_out)
+        self.mixer = nn.ModuleList([CrossAttention(d_out, nhead, d_out * 4, dropout=dropout) for _ in range(repeats)])
 
-        self.mixer = nn.ModuleList([CrossAttention(d_out, nhead, d_out * 4, dropout=dropout)] * repeats)
+    def forward(self, coords: Tensor, features: Tensor, attn_idx: Optional[Index] = None) -> Tensor:
+        Lc, Nc, C = coords.shape
+        Lf, Nf, D = features.shape
+        assert Lc == Lf
+        assert Nc == Nf
+        L = Lf
+        N = Nf
 
-        self.se2 = SqueezeExcite(d_out, d_out // 2)
-        self.se_norm = nn.LayerNorm(d_out)
+        # index for KNN neighborhood
+        attn_idx = attn_idx or self.cluster(coords, coords)
+        assert isinstance(attn_idx, list)
+        assert len(attn_idx) == 2
+        self.last_attn = attn_idx
 
-        self.final_norm = nn.LayerNorm(d_out)
+        # build neighborhoods
+        rel_pos_emb = self.pos_enc(coords, coords[attn_idx].view(-1, L, N, C))
 
-    def forward(self, coords: Tensor, features: Optional[Tensor] = None) -> Tensor:
-        L, N, C = coords.shape
-        attn_idx = self.cluster(coords, coords)
-        pos_emb = self.pos_enc(coords, coords[attn_idx].view(-1, L, N, C))
-
-        if features is None:
-            features = coords
-        assert features is not None
-
-        features = self.norm_mlp(self.mlp(features))
-        features = self.norm_se(features + self.se1(features))
-        L, N, D = features.shape
-
-        f = features[attn_idx].view(-1, L, N, D)
-        f += pos_emb
-        tgt = features.view(-1, L * N, D)
-        src = f.view(-1, L * N, D)
+        # attention between query point and it's neighborhood
         for layer in self.mixer:
+            rel_features = features[attn_idx].view(-1, L, N, D)
+            Kp, _, _, _ = rel_pos_emb.shape
+            Kf, _, _, _ = rel_features.shape
+            assert Kp == Kf
+            rel_features += rel_pos_emb
+
+            tgt = features.view(-1, L * N, D)
+            src = rel_features.view(-1, L * N, D)
             tgt = layer(tgt, src)
-        features = tgt.view(L, N, D)
-        # features = self.se_norm(features + self.se_norm(features))
-        # features = f.view(-1, L, N, D)
-        # features = self.final_norm(orig_features + features.mean(dim=0))
-        assert features.shape == (L, N, D)
+
+            features = tgt.view(L, N, D)
 
         return features
 
@@ -103,17 +97,110 @@ class KNNDownsample(nn.Module):
         self.norm = nn.LayerNorm(d_out)
         self.register_buffer("coords", None)
 
-    def forward(self, coords: Tensor, features: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, coords: Tensor, features: Tensor, keep_coords: Optional[Index] = None) -> Tuple[Tensor, Tensor]:
         L1, N, D1 = features.shape
         C = coords.shape[-1]
 
-        keep_coords = self.down(coords)
+        keep_coords = keep_coords or self.down(coords)
+        self.last_keep_coords = keep_coords
         features = features[keep_coords].view(-1, N, D1)
         coords = coords[keep_coords].view(-1, N, C)
 
         features = self.norm(self.mlp(features))
         return coords, features
 
+
+class KNNEncoder(nn.Module):
+    def __init__(
+        self,
+        d_in: int,
+        k: int,
+        repeats: List[int],
+        ratio: float = 0.25,
+        nhead: int = 1,
+        dropout: float = 0,
+        pos_features: int = 128,
+        **kwargs,
+    ):
+        super().__init__()
+        self.attention = nn.ModuleList()
+        self.down = nn.ModuleList()
+
+        d = d_in
+        for r in repeats:
+            attn = KNNTail(d, k, nhead, r, dropout=dropout, **kwargs)
+            down = KNNDownsample(d, 2*d, ratio, **kwargs)
+            self.attention.append(attn)
+            self.down.append(down)
+            d *= 2
+
+    def forward(
+        self, 
+        coords: Tensor, 
+        features: Tensor, 
+        attn_idx: Optional[List[Index]] = None,
+        keep_coords: Optional[List[Index]] = None
+    ) -> List[Tensor]:
+        assert attn_idx is None or len(attn_idx) == len(self.attention)
+        assert keep_coords is None or len(keep_coords) == len(self.attention)
+
+        self.last_attn: List[Tensor] = []
+        self.last_keep_coords: List[Tensor] = []
+
+        out_features: List[Tensor] = []
+        out_coords: List[Tensor] = []
+        for attn, down in zip(self.attention, self.down):
+            features = attn(coords, features, attn_idx)
+            out_features.append(features)
+            out_coords.append(coords)
+            self.last_attn.append(attn.last_attn)
+            coords, features = down(coords, features, keep_coords)
+            self.last_keep_coords.append(down.last_keep_coords)
+        out_features.append(features)
+        out_coords.append(coords)
+        return out_features, out_coords
+
+class KNNDecoder(nn.Module):
+    def __init__(
+        self,
+        d_in: int,
+        k: int,
+        repeats: List[int],
+        ratio: float = 0.25,
+        nhead: int = 1,
+        dropout: float = 0,
+        pos_features: int = 128,
+        **kwargs,
+    ):
+        super().__init__()
+        self.attention = nn.ModuleList()
+        self.down = nn.ModuleList()
+
+        d = d_in
+        for r in repeats:
+            attn = KNNTail(d, k, nhead, r, dropout=dropout, **kwargs)
+            down = KNNDownsample(d, 2*d, ratio, **kwargs)
+            self.attention.append(attn)
+            self.down.append(down)
+            d *= 2
+
+    def forward(
+        self, 
+        coords: Tensor, 
+        features: Tensor, 
+        attn_idx: Optional[List[Index]] = None,
+        keep_coords: Optional[List[Index]] = None
+    ) -> List[Tensor]:
+        assert attn_idx is None or len(attn_idx) == len(self.attention)
+        assert keep_coords is None or len(keep_coords) == len(self.attention)
+
+        out: List[Tensor] = []
+        for attn, down in zip(self.attention, self.down):
+            features = attn(coords, features, attn_idx)
+            out.append(features)
+            coords, features = down(coords, features, keep_coords)
+        out.append(features)
+        return out
 
 class PCTDown(nn.Module):
     def __init__(

@@ -336,6 +336,7 @@ def categorical_focal_loss(
     label_smoothing: Optional[float] = None,
     reduction: str = "mean",
     normalize: bool = False,
+    weights: Optional[Tensor] = None
 ):
     r"""Computes the categorical Focal Loss between input and target. This is a multi-class
     loss function.

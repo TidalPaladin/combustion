@@ -3,7 +3,6 @@
 
 
 from .callbacks import CountMACs, TorchScriptCallback
-from .mixins import HydraMixin
 
 
-__all__ = ["HydraMixin", "TorchScriptCallback", "CountMACs"]
+__all__ = ["TorchScriptCallback", "CountMACs"]

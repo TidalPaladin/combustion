@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from .common import SequenceBatchNorm
+from .common import SequenceBatchNorm, MLP
 
 
 class AbsolutePositionalEmbedding(nn.Module):
@@ -52,11 +52,12 @@ class PositionalEncoder(nn.Module):
 
 
 class RelativePositionalEncoder(nn.Module):
-    def __init__(self, num_coords: int, d_model: int):
+    def __init__(self, num_coords: int, d_out: int, **kwargs):
         super().__init__()
-        self.d_model = d_model
+        self.mlp = MLP(num_coords, d_out, d_out, **kwargs)
+        self.norm = nn.LayerNorm(d_out)
+        self.d_out = d_out
         self.num_coords = num_coords
-        self.linear = nn.Sequential(nn.Linear(num_coords, d_model), nn.ReLU())
 
     def forward(self, center: Tensor, points: Tensor) -> Tensor:
         L, N, C = center.shape
@@ -64,7 +65,8 @@ class RelativePositionalEncoder(nn.Module):
         assert C == self.num_coords
         with torch.no_grad():
             delta = points - center.view(1, L, N, C)
-        return self.linear(delta)
+        out = self.norm(self.mlp(delta))
+        return out
 
 
 class LearnableFourierFeatures(nn.Module):
@@ -117,7 +119,7 @@ class LearnableFourierFeatures(nn.Module):
         dropout: float = 0.0,
         gamma: float = 1.0,
         act: nn.Module = nn.ReLU(),
-        norm_layer: Type[nn.Module] = SequenceBatchNorm,
+        norm_layer: Type[nn.Module] = nn.LayerNorm,
         **kwargs,
     ):
         super().__init__()
@@ -125,18 +127,17 @@ class LearnableFourierFeatures(nn.Module):
         self.features = nn.Linear(d_in, num_features // 2, bias=False)
 
         d_hidden = d_hidden or d_out
-        self.mlp = nn.Sequential(
-            nn.Linear(num_features, d_hidden),
-            deepcopy(act),
-            nn.Linear(d_hidden, d_out),
-            deepcopy(act),
-            nn.Dropout(dropout),
-        )
+        self.mlp = MLP(num_features, d_hidden, d_out, dropout=dropout, act=act)
         self.norm = norm_layer(d_out, **kwargs) # type: ignore
         torch.nn.init.normal_(self.features.weight, 0, gamma ** -2.0)
 
-    def weight_decay_dict(self, val: float) -> Dict[str, Any]:
-        return {"params": self.features.parameters(), "weight_decay": val}
+    @property
+    def trainable(self) -> bool:
+        return self.features.weight.requires_grad
+
+    @trainable.setter
+    def trainable(self, state: bool):
+        self.features.weight.requires_grad = state
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.features(x)
@@ -147,7 +148,13 @@ class LearnableFourierFeatures(nn.Module):
         return x
 
     @staticmethod
-    def from_grid(dims: Iterable[int], proto: Optional[Tensor] = None, requires_grad: bool = True, **kwargs) -> Tensor:
+    def from_grid(
+        dims: Iterable[int], 
+        proto: Optional[Tensor] = None, 
+        requires_grad: bool = True, 
+        normalize: bool = True,
+        **kwargs
+    ) -> Tensor:
         if proto is not None:
             device = proto.device
             dtype = proto.dtype
@@ -158,11 +165,42 @@ class LearnableFourierFeatures(nn.Module):
         with torch.no_grad():
             lens = tuple(torch.arange(d, **kwargs) for d in dims)
             grid = torch.stack(torch.meshgrid(*lens), dim=0)
+
+            if normalize:
+                C = grid.shape[0]
+                grid = grid.float()
+                scale = grid.view(C, -1).amax(dim=-1).view(C, *((1,) * (grid.ndim - 1)))
+                grid.div_(scale).sub_(0.5).mul_(2)
+
             grid = grid.movedim(0, -1).view(-1, 1, len(lens))
 
         requires_grad = requires_grad or (proto is not None and proto.requires_grad)
         grid.requires_grad = requires_grad
         return grid
+
+    #def visualize(self, grid: Tensor, mlp: bool = True):
+    #    try:
+    #        import matplotlib.pyplot as plt
+    #    except Exception:
+    #        print("Visualization requires matploitlib")
+    #        raise
+
+    #    if grid.ndim > 3:
+    #        raise ValueError(f"Invalid ndim {grid.ndim}")
+
+    #    fig = plt.figure()
+    #    rows, cols = 2, 3
+
+
+
+    #    plt.subplot(2, 3, 1)
+    #    plt.plot(t, s1)
+    #    plt.subplot(212)
+    #    plt.plot(t, 2*s1)
+
+  
+
+
 
 
 class RelativeLearnableFourierFeatures(LearnableFourierFeatures):

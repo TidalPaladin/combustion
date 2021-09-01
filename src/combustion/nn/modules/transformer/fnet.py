@@ -61,52 +61,23 @@ class FNet(nn.Module):
         dropout: float = 0.0,
         norm: str = "ortho",
         act: nn.Module = nn.SiLU(),
-        use_bn: bool = False,
     ):
         super().__init__()
         self.d = d
-        self.use_bn = use_bn
         self.d_out = dout or d
         assert self.d % nhead == 0
-        if use_bn:
-            dropout = 0
 
         # NOTE:
         #    1. Using norm other than "ortho" seems to reduce performance
         #    2. Adding LayerNorm seems to reduce performance
-        self.mixer = nn.Sequential(
-            nn.Linear(d, d),
-            FourierMixer(nhead, norm),
-            nn.Linear(d, d),
-        )
-
-        self.se = SqueezeExcite(d, d // 2)
-        self.norm1 = nn.BatchNorm1d(d) if use_bn else nn.LayerNorm(d)
-        self.feedforward = nn.Sequential(
-            nn.Linear(d, dim_ff), nn.Dropout(dropout), nn.Linear(dim_ff, self.d_out), nn.Dropout(dropout), act
-        )
-        self.norm2 = nn.BatchNorm1d(self.d_out) if use_bn else nn.LayerNorm(self.d_out)
+        self.mixer = FourierMixer(nhead, norm)
+        self.norm1 = nn.LayerNorm(d)
+        self.feedforward = MLP(d, dim_ff, self.d_out, act=act, dropout=dropout)
+        self.norm2 = nn.LayerNorm(self.d_out)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = x + self.mixer(x)
-
-        if self.use_bn:
-            x = self.norm1(x.permute(1, 2, 0)).permute(2, 0, 1)
-        else:
-            x = self.norm1(x)
-
-        if self.d_out == self.d:
-            x = x + self.feedforward(x)
-        else:
-            x = self.feedforward(x)
-
-        x = x + self.se(x)
-
-        if self.use_bn:
-            x = self.norm2(x.permute(1, 2, 0)).permute(2, 0, 1)
-        else:
-            x = self.norm2(x)
-
+        x = self.norm1(x + self.mixer(x))
+        x = self.norm2(x + self.feedforward(x))
         return x
 
 

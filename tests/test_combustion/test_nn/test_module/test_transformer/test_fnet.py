@@ -27,28 +27,6 @@ class TestFNetLayer:
         l = FNet(D, 2 * D, nhead)
         out = l(x)
         assert out.shape == (L, N, D)
-        assert False
-
-    @pytest.mark.parametrize("nhead", [1, 2])
-    def test_down_up(self, nhead):
-        L, N, D = 512, 2, 64
-        x = torch.randn(L, N, D)
-        l0 = FNet(D, D, nhead)
-        l1 = FNet(D, 2 * D, nhead, dout=2 * D)
-        l2 = FourierDownsample(nhead)
-        l3 = FNet(2 * D, 2 * D, nhead)
-        l4 = FourierUpsample(nhead)
-        l5 = FNet(2 * D, D, nhead, dout=D)
-
-        t0 = l0(x)
-        t1 = l1(t0)
-        down = l2(t1)
-        down = l3(down)
-        up = l4(down)
-        final = l5(up)
-        out = t0 + final
-
-        assert out.shape == (L, N, D)
 
 
 class TestFourierTransformer:
