@@ -6,13 +6,12 @@ from typing import List, Optional, Tuple
 import torch.nn as nn
 from torch import Tensor
 
-from ..cluster import FarthestPointsDecimate, KNNCluster, TransitionDown, TransitionUp
-from .common import MLP, SqueezeExcite
+from ....util import MISSING
+from ..cluster import FarthestPointsDecimate, Indices, KNNCluster, NearestCluster, TransitionDown, TransitionUp
+from .common import MLP
 
 # from .performer import PerformerLayer, FAVOR
-from .position import RelativeLearnableFourierFeatures, RelativePositionalEncoder
-
-Index = List[Tensor]
+from .position import RelativePositionalEncoder
 
 
 class CrossAttention(nn.Module):
@@ -44,41 +43,34 @@ class KNNTail(nn.Module):
     def __init__(
         self,
         d_out: int,
-        k: int,
         nhead: int = 1,
         repeats: int = 1,
         dropout: float = 0,
         **kwargs,
     ):
         super().__init__()
-        self.pos_enc = RelativePositionalEncoder(3, d_out, dropout=dropout, act=nn.Mish())
-        self.cluster = KNNCluster(k)
+        # self.pos_enc = RelativePositionalEncoder(3, d_out, dropout=dropout, act=nn.Mish())
+        self.d_out = d_out
         self.mixer = nn.ModuleList([CrossAttention(d_out, nhead, d_out * 4, dropout=dropout) for _ in range(repeats)])
 
-    def forward(self, coords: Tensor, features: Tensor, attn_idx: Optional[Index] = None) -> Tensor:
-        Lc, Nc, C = coords.shape
+    def forward(self, features: Tensor, indices: Indices) -> Tensor:
+        # Lc, Nc, C = coords.shape
         Lf, Nf, D = features.shape
-        assert Lc == Lf
-        assert Nc == Nf
+        # assert Lc == Lf
+        # assert Nc == Nf
         L = Lf
         N = Nf
 
-        # index for KNN neighborhood
-        attn_idx = attn_idx or self.cluster(coords, coords)
-        assert isinstance(attn_idx, list)
-        assert len(attn_idx) == 2
-        self.last_attn = attn_idx
-
         # build neighborhoods
-        rel_pos_emb = self.pos_enc(coords, coords[attn_idx].view(-1, L, N, C))
+        # rel_pos_emb = self.pos_enc(coords, indices.apply_knn(coords))
 
         # attention between query point and it's neighborhood
         for layer in self.mixer:
-            rel_features = features[attn_idx].view(-1, L, N, D)
-            Kp, _, _, _ = rel_pos_emb.shape
+            rel_features = indices.apply_knn(features)
+            # Kp, _, _, _ = rel_pos_emb.shape
             Kf, _, _, _ = rel_features.shape
-            assert Kp == Kf
-            rel_features += rel_pos_emb
+            # assert Kp == Kf
+            # rel_features += rel_pos_emb
 
             tgt = features.view(-1, L * N, D)
             src = rel_features.view(-1, L * N, D)
@@ -90,117 +82,148 @@ class KNNTail(nn.Module):
 
 
 class KNNDownsample(nn.Module):
-    def __init__(self, d: int, d_out: int, ratio: float = 0.25, **kwargs):
+    def __init__(self, d: int, d_out: int, **kwargs):
         super().__init__()
-        self.down = FarthestPointsDecimate(ratio)
         self.mlp = MLP(d, d_out, d_out, **kwargs)
         self.norm = nn.LayerNorm(d_out)
-        self.register_buffer("coords", None)
 
-    def forward(self, coords: Tensor, features: Tensor, keep_coords: Optional[Index] = None) -> Tuple[Tensor, Tensor]:
+    def forward(self, features: Tensor, indices: Indices) -> Tensor:
         L1, N, D1 = features.shape
-        C = coords.shape[-1]
-
-        keep_coords = keep_coords or self.down(coords)
-        self.last_keep_coords = keep_coords
-        features = features[keep_coords].view(-1, N, D1)
-        coords = coords[keep_coords].view(-1, N, C)
-
+        features = indices.apply_downsample(features)
         features = self.norm(self.mlp(features))
-        return coords, features
+        return features
+
+
+class KNNUpsample(nn.Module):
+    def __init__(self, d: int, d_out: int, **kwargs):
+        super().__init__()
+        self.mlp = MLP(d, d_out, d_out, **kwargs)
+        self.norm = nn.LayerNorm(d_out)
+
+    def forward(self, down_features: Tensor, up_features: Tensor, indices: Indices) -> Tensor:
+        assert indices.upsample is not MISSING
+        Ld, N, Dd = down_features.shape
+        Lu, N, Du = up_features.shape
+
+        # match down channels with up channels
+        down_features = self.mlp(down_features)
+        assert down_features.shape[-1] == Du
+
+        # upsample + add
+        up_features = up_features + indices.apply_upsample(down_features)
+
+        return up_features
 
 
 class KNNEncoder(nn.Module):
     def __init__(
         self,
         d_in: int,
-        k: int,
         repeats: List[int],
-        ratio: float = 0.25,
         nhead: int = 1,
         dropout: float = 0,
-        pos_features: int = 128,
+        upsample: bool = False,
         **kwargs,
     ):
         super().__init__()
         self.attention = nn.ModuleList()
         self.down = nn.ModuleList()
+        self.upsample = upsample
 
         d = d_in
         for r in repeats:
-            attn = KNNTail(d, k, nhead, r, dropout=dropout, **kwargs)
-            down = KNNDownsample(d, 2*d, ratio, **kwargs)
+            attn = KNNTail(d, nhead, r, dropout=dropout, **kwargs)
+            down = KNNDownsample(d, 2 * d, **kwargs)
             self.attention.append(attn)
             self.down.append(down)
             d *= 2
 
-    def forward(
-        self, 
-        coords: Tensor, 
-        features: Tensor, 
-        attn_idx: Optional[List[Index]] = None,
-        keep_coords: Optional[List[Index]] = None
-    ) -> List[Tensor]:
-        assert attn_idx is None or len(attn_idx) == len(self.attention)
-        assert keep_coords is None or len(keep_coords) == len(self.attention)
+    @property
+    def num_levels(self) -> int:
+        return len(self.attention)
 
-        self.last_attn: List[Tensor] = []
-        self.last_keep_coords: List[Tensor] = []
+    @property
+    def num_channels(self) -> List[int]:
+        return [x.d_out for x in self.attention]
 
+    def forward(self, features: Tensor, indices: List[Indices]) -> List[Tensor]:
+        assert len(indices) == self.num_levels
         out_features: List[Tensor] = []
-        out_coords: List[Tensor] = []
-        for attn, down in zip(self.attention, self.down):
-            features = attn(coords, features, attn_idx)
+        for idx, attn, down in zip(indices, self.attention, self.down):
+            features = attn(features, idx)
             out_features.append(features)
-            out_coords.append(coords)
-            self.last_attn.append(attn.last_attn)
-            coords, features = down(coords, features, keep_coords)
-            self.last_keep_coords.append(down.last_keep_coords)
+            features = down(features, idx)
         out_features.append(features)
-        out_coords.append(coords)
-        return out_features, out_coords
+        return out_features
+
 
 class KNNDecoder(nn.Module):
     def __init__(
         self,
         d_in: int,
-        k: int,
         repeats: List[int],
-        ratio: float = 0.25,
         nhead: int = 1,
         dropout: float = 0,
-        pos_features: int = 128,
         **kwargs,
     ):
         super().__init__()
         self.attention = nn.ModuleList()
-        self.down = nn.ModuleList()
+        self.up = nn.ModuleList()
 
         d = d_in
         for r in repeats:
-            attn = KNNTail(d, k, nhead, r, dropout=dropout, **kwargs)
-            down = KNNDownsample(d, 2*d, ratio, **kwargs)
+            up = KNNUpsample(2 * d, d, **kwargs)
+            attn = KNNTail(d, nhead, r, dropout=dropout, **kwargs)
+            self.up.append(up)
             self.attention.append(attn)
-            self.down.append(down)
             d *= 2
 
-    def forward(
-        self, 
-        coords: Tensor, 
-        features: Tensor, 
-        attn_idx: Optional[List[Index]] = None,
-        keep_coords: Optional[List[Index]] = None
-    ) -> List[Tensor]:
-        assert attn_idx is None or len(attn_idx) == len(self.attention)
-        assert keep_coords is None or len(keep_coords) == len(self.attention)
+    @property
+    def num_levels(self) -> int:
+        return len(self.attention)
 
-        out: List[Tensor] = []
-        for attn, down in zip(self.attention, self.down):
-            features = attn(coords, features, attn_idx)
-            out.append(features)
-            coords, features = down(coords, features, keep_coords)
-        out.append(features)
-        return out
+    def forward(self, features: List[Tensor], indices: List[Indices]) -> List[Tensor]:
+        for i in range(self.num_levels):
+            upsample = self.up[-(i + 1)]
+            attn = self.attention[-(i + 1)]
+            idx = indices[-(i + 1)]
+            down_features = features[-(i + 1)]
+            up_features = features[-(i + 2)]
+
+            up_features = upsample(down_features, up_features, idx)
+            up_features = attn(up_features, idx)
+            features[-(i + 2)] = up_features
+
+        return features
+
+
+class PointTransformer(nn.Module):
+    def __init__(self, d: int, repeats: List[int], nhead: int = 1, dropout: float = 0, act: nn.Module = nn.Mish()):
+        super().__init__()
+        self.encoder = KNNEncoder(d, repeats, nhead, dropout, act=act)
+        # d_lowest = self.encoder.num_channels[-1] * 2
+        # self.lowest = KNNTail(d_lowest, nhead, 3, dropout, act=act)
+        self.decoder = KNNDecoder(d, repeats, nhead, dropout, act=act)
+
+    def get_indices(self, coords: Tensor, k: int, ratio: float = 0.25) -> List[Indices]:
+        knn = KNNCluster(k)
+        down = FarthestPointsDecimate(ratio)
+        up = NearestCluster()
+        indices: List[Indices] = []
+
+        for _ in range(self.encoder.num_levels):
+            idx = Indices.create(coords, knn, down, up)
+            indices.append(idx)
+            coords = idx.apply_downsample(coords)
+
+        return indices
+
+    def forward(self, features: Tensor, indices: List[Indices]) -> Tensor:
+        fpn = self.encoder(features, indices)
+        # fpn[-1] = self.lowest(fpn[-1])
+        fpn = self.decoder(fpn, indices)
+        return fpn[0]
+
 
 class PCTDown(nn.Module):
     def __init__(

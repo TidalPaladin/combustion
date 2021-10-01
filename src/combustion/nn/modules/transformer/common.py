@@ -2,13 +2,12 @@
 # -*- coding: utf-8 -*-
 
 from copy import deepcopy
-from typing import Optional
 from math import log, pi
+from typing import Iterable, Optional
 
 import torch
 import torch.nn as nn
 from torch import Tensor
-from typing import Iterable
 
 
 class SequenceBatchNorm(nn.BatchNorm1d):
@@ -109,16 +108,15 @@ class DropPath(nn.Module):
             return dropped
 
 
-
 class MLP(nn.Module):
     def __init__(
-        self, 
-        d: int, 
-        d_hidden: int, 
-        d_out: Optional[int] = None, 
-        dropout: float = 0, 
+        self,
+        d: int,
+        d_hidden: int,
+        d_out: Optional[int] = None,
+        dropout: float = 0,
         act: nn.Module = nn.ReLU(),
-        se_ratio: Optional[int] = None
+        se_ratio: Optional[int] = None,
     ):
         super().__init__()
         d_out = d_out or d
@@ -148,7 +146,9 @@ class SqueezeExcite(nn.Module):
     def __init__(self, d_in, d_squeeze, act: nn.Module = nn.ReLU(), final_act: nn.Module = nn.Mish()):
         super().__init__()
         self.d_in = d_in
-        self.se = nn.Sequential(nn.Linear(d_in, d_squeeze), deepcopy(act), nn.Linear(d_squeeze, d_in), deepcopy(final_act))
+        self.se = nn.Sequential(
+            nn.Linear(d_in, d_squeeze), deepcopy(act), nn.Linear(d_squeeze, d_in), deepcopy(final_act)
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         weights = self.se(x.mean(dim=0, keepdim=True))
@@ -162,7 +162,7 @@ class FourierEncoder(nn.Module):
         self.max_freq = max_freq
         self.out_dim = out_dim
         upper_bound = log(max_freq / 2) / log(base)
-        self.register_buffer("scales", torch.logspace(1., upper_bound, num_bands, base=base))
+        self.register_buffer("scales", torch.logspace(1.0, upper_bound, num_bands, base=base))
 
     def extra_repr(self) -> str:
         return f"max_freq={self.max_freq}, num_bands={self.num_bands}"
@@ -181,11 +181,11 @@ class FourierEncoder(nn.Module):
 
     @staticmethod
     def from_grid(
-        dims: Iterable[int], 
-        proto: Optional[Tensor] = None, 
-        requires_grad: bool = True, 
+        dims: Iterable[int],
+        proto: Optional[Tensor] = None,
+        requires_grad: bool = True,
         normalize: bool = True,
-        **kwargs
+        **kwargs,
     ) -> Tensor:
         if proto is not None:
             device = proto.device

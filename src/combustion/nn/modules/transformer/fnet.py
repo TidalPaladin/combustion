@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from .common import MLP, SqueezeExcite
+from .common import MLP
 
 
 class FourierMixer(nn.Module):

@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from dataclasses import dataclass, replace
 from copy import deepcopy
-from typing import Optional, Tuple, Iterator, Dict, Union
+from dataclasses import dataclass, replace
+from typing import Dict, Iterator, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 
 from .common import MLP, BatchNormMixin, DropPath, SequenceBatchNorm
-from .fnet import FNet
 
 
 def duplicate(layer: nn.TransformerEncoderLayer) -> nn.TransformerEncoderLayer:
@@ -24,7 +23,7 @@ def duplicate(layer: nn.TransformerEncoderLayer) -> nn.TransformerEncoderLayer:
 
 def entropy(x: Tensor, eps: float = 1e-2, dim: int = -1) -> Tensor:
     p = x
-    log_p = x.log().clamp_min(-1/eps)
+    log_p = x.log().clamp_min(-1 / eps)
 
     C = x.shape[dim]
     assert C > 0
@@ -33,6 +32,7 @@ def entropy(x: Tensor, eps: float = 1e-2, dim: int = -1) -> Tensor:
         divisor = p.new_tensor(C).log_()
 
     return log_p.mul(p).sum(dim=dim).neg().div(divisor).clamp(min=0, max=1)
+
 
 @dataclass
 class PerceiverLayerConfig:
@@ -133,12 +133,12 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
 
         num_transformers:
             Number of latent transformer repeats in per transformer block. Transformers repeats within a block share
-            weighs (iterative attention), aside from normalization layers which are unique to each repeat. 
+            weighs (iterative attention), aside from normalization layers which are unique to each repeat.
             See `BAIR`_ for justification.
 
         num_transformer_blocks:
-            Number of unique blocks of latent transformer repeats in the layer. 
-            This balances expensive input/latent cross-attends versus cheap latent/latent self-attends. 
+            Number of unique blocks of latent transformer repeats in the layer.
+            This balances expensive input/latent cross-attends versus cheap latent/latent self-attends.
 
     Returns:
         Tuple of ``(transformed_inputs, transformed_latent)``
@@ -172,7 +172,7 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         track_entropy: bool = False,
         track_weights: bool = False,
         feedforward_inputs: bool = True,
-        se_ratio: Optional[int] = None
+        se_ratio: Optional[int] = None,
     ):
         super().__init__()
         input_ff = input_ff or input_d
@@ -198,11 +198,7 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
 
         # input -> latent cross attention
         self.cross_attn2 = nn.MultiheadAttention(
-            input_d, 
-            nhead_input, 
-            kdim=latent_d, 
-            vdim=latent_d, 
-            dropout=attn_dropout
+            input_d, nhead_input, kdim=latent_d, vdim=latent_d, dropout=attn_dropout
         )
         self.norm_ca2 = nn.LayerNorm(input_d)
 
@@ -242,7 +238,9 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
 
         # Cross attention 1; input -> latent
         need_weights = self.track_weights or self.track_entropy
-        latent_attn, self.latent_w = self.cross_attn1(latent, inputs, inputs, need_weights=need_weights, attn_mask=attn_mask)
+        latent_attn, self.latent_w = self.cross_attn1(
+            latent, inputs, inputs, need_weights=need_weights, attn_mask=attn_mask
+        )
         latent = self.norm_ca1(latent + latent_attn)
 
         # Update

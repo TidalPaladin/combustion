@@ -2,14 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import math
-from copy import deepcopy
-from typing import Any, Dict, Iterable, Optional, Type
+from typing import Iterable, Optional, Type
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 
-from .common import SequenceBatchNorm, MLP
+from .common import MLP
 
 
 class AbsolutePositionalEmbedding(nn.Module):
@@ -128,7 +127,7 @@ class LearnableFourierFeatures(nn.Module):
 
         d_hidden = d_hidden or d_out
         self.mlp = MLP(num_features, d_hidden, d_out, dropout=dropout, act=act)
-        self.norm = norm_layer(d_out, **kwargs) # type: ignore
+        self.norm = norm_layer(d_out, **kwargs)  # type: ignore
         torch.nn.init.normal_(self.features.weight, 0, gamma ** -2.0)
 
     @property
@@ -149,11 +148,11 @@ class LearnableFourierFeatures(nn.Module):
 
     @staticmethod
     def from_grid(
-        dims: Iterable[int], 
-        proto: Optional[Tensor] = None, 
-        requires_grad: bool = True, 
+        dims: Iterable[int],
+        proto: Optional[Tensor] = None,
+        requires_grad: bool = True,
         normalize: bool = True,
-        **kwargs
+        **kwargs,
     ) -> Tensor:
         if proto is not None:
             device = proto.device
@@ -178,7 +177,7 @@ class LearnableFourierFeatures(nn.Module):
         grid.requires_grad = requires_grad
         return grid
 
-    #def visualize(self, grid: Tensor, mlp: bool = True):
+    # def visualize(self, grid: Tensor, mlp: bool = True):
     #    try:
     #        import matplotlib.pyplot as plt
     #    except Exception:
@@ -191,16 +190,10 @@ class LearnableFourierFeatures(nn.Module):
     #    fig = plt.figure()
     #    rows, cols = 2, 3
 
-
-
     #    plt.subplot(2, 3, 1)
     #    plt.plot(t, s1)
     #    plt.subplot(212)
     #    plt.plot(t, 2*s1)
-
-  
-
-
 
 
 class RelativeLearnableFourierFeatures(LearnableFourierFeatures):
@@ -218,3 +211,30 @@ class RelativeLearnableFourierFeatures(LearnableFourierFeatures):
         K, L, N, C = neighbors.shape
         delta = neighbors - center.view(1, L, N, C)
         return super().forward(delta)
+
+
+class FourierLogspace(nn.Module):
+    def __init__(self, d_in: int, d_out: int, max_freq: float, num_bands: int, **kwargs):
+        super().__init__()
+        base = 2
+        self.scales = torch.logspace(1.0, math.log(max_freq / 2) / math.log(base), num_bands, base=base)
+        d_mlp = self.scales.numel() * d_in * 2
+        dim_ff = max(d_mlp, d_in)
+        self.mlp = MLP(d_mlp, dim_ff, d_out, **kwargs)
+
+    def forward(self, x: Tensor) -> Tensor:
+        L, N, C = x.shape
+        x = x.unsqueeze(-1)
+        x = x * self.scales * math.pi
+        x = torch.cat([x.sin(), x.cos()], dim=-1)
+        x = x.view(L, N, -1)
+        x = self.mlp(x)
+        return x
+
+
+class RelativeFourierLogspace(FourierLogspace):
+    def forward(self, center: Tensor, neighbors: Tensor) -> Tensor:
+        L, N, C = center.shape
+        K, L, N, C = neighbors.shape
+        delta = neighbors - center.view(1, L, N, C)
+        return super().forward(delta.view(-1, N, C)).view(K, L, N, C)

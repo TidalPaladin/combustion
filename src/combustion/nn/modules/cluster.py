@@ -2,11 +2,14 @@
 # -*- coding: utf-8 -*-
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 from torch import Tensor
+
+from ...util import MISSING
 
 
 try:
@@ -161,6 +164,131 @@ class KNNCluster(Cluster):
             assert len(indices[0]) == L2 * N * K
 
         return indices
+
+
+class NearestCluster(Cluster):
+    def __init__(self, num_workers: int = 8, cpu_threshold=4096):
+        super().__init__(k=1)
+        self.num_workers = num_workers
+
+    def forward(self, coords1: Tensor, coords2: Tensor) -> List[Tensor]:
+        if tc is None:
+            raise ImportError(f"{self.__class__.__name__} requires torch-cluster")
+        else:
+            assert tc is not None
+
+        L1, N, C = coords1.shape
+        L2, N, C = coords2.shape
+        self.k
+        graph_knn = coords1 is coords2
+
+        with torch.no_grad():
+            coords1 = coords1.swapdims(0, 1)
+            coords1, batch_idx1 = flatten_batch(coords1)
+
+            if graph_knn:
+                coords2 = coords1
+                batch_idx2 = batch_idx1
+            else:
+                coords2 = coords2.swapdims(0, 1)
+                coords2, batch_idx2 = flatten_batch(coords2)
+
+            clusters = tc.nearest(coords2, coords1, batch_idx2, batch_idx1)
+
+            # turn clusters into a set of indices into `features` or `coords`
+            clusters = clusters.view(N, L2).T.fmod_(L1)
+            assert tuple(clusters.shape) == (L2, N)
+            indices = torch.meshgrid(
+                torch.arange(L2, device=coords2.device),
+                torch.arange(N, device=coords2.device),
+            )
+            indices = [clusters.contiguous().view(-1), indices[-1].contiguous().view(-1)]
+            assert len(indices[0]) == L2 * N
+
+        return indices
+
+
+@dataclass
+class Indices:
+    knn: List[Tensor] = MISSING
+    downsample: List[Tensor] = MISSING
+    upsample: List[Tensor] = MISSING
+
+    def __repr__(self) -> str:
+        s = f"{self.__class__.__name__}("
+        for name in self.__dataclass_fields__.keys():
+            field = getattr(self, name)
+            if isinstance(field, list) and len(field) and isinstance(field[0], Tensor):
+                field_repr = self._tensor_list_repr(field)
+            else:
+                field_repr = repr(field)
+            s += f"{name}={field_repr}, "
+        s = s[:-2]
+        s += ")"
+        return s
+
+    def apply_knn(self, x: Tensor) -> Tensor:
+        self._check_attr("knn")
+        L, N, D = x.shape
+        x = x[self.knn].view(-1, L, N, D).contiguous()
+        return x
+
+    def apply_downsample(self, x: Tensor) -> Tensor:
+        self._check_attr("downsample")
+        L, N, D = x.shape
+        x = x[self.downsample].view(-1, N, D).contiguous()
+        return x
+
+    def apply_upsample(self, x: Tensor) -> Tensor:
+        self._check_attr("upsample")
+        L, N, D = x.shape
+        x = x[self.upsample].view(-1, N, D).contiguous()
+        return x
+
+    def _check_attr(self, attr: str) -> None:
+        attr_val = getattr(self, attr)
+        if attr_val is MISSING:
+            raise AttributeError(f"{attr} is MISSING")
+        if len(attr_val) != 2:
+            raise ValueError(f"Expected {attr} to be a length-2 list, found length-{len(attr_val)}")
+
+    @staticmethod
+    def _tensor_list_repr(l: List[Tensor]) -> str:
+        num_items = len(l)
+        item_size = l[0].numel()
+        return f"({num_items}, {item_size})"
+
+    @classmethod
+    def create(
+        cls,
+        coords: Tensor,
+        knn: Optional[KNNCluster] = None,
+        down: Optional[Decimate] = None,
+        up: Optional[NearestCluster] = None,
+    ) -> "Indices":
+        knn_idx = knn(coords, coords) if knn is not None else MISSING
+        down_idx = down(coords) if down is not None else MISSING
+        if down is not None and up is not None:
+            indices = cls(knn=knn_idx, downsample=down_idx)
+            down_coords = indices.apply_downsample(coords)
+            nearest_idx = up(down_coords, coords)
+            indices.upsample = nearest_idx
+        else:
+            indices = cls(knn=knn_idx, downsample=down_idx)
+        return indices
+
+    @staticmethod
+    def unbatch_indices(idx: Tensor, dim: int = 1) -> List[Tensor]:
+        assert idx.ndim == 2
+        N = idx.shape[dim]
+
+        batch = torch.arange(N, dtype=idx.dtype, device=idx.device).unsqueeze(0).movedim(-1, dim).expand_as(idx)
+        idx = idx.flatten()
+        batch = batch.flatten()
+
+        result = [idx, idx]
+        result[dim] = batch
+        return result
 
 
 class MLP(nn.Module):
