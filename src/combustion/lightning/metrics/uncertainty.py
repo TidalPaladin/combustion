@@ -91,8 +91,11 @@ class ECE(Metric):
 
     def _get_confidence(self, pred: Tensor, categorical: bool) -> Tensor:
         if not categorical:
-            return pred
-        return pred.amax(dim=-1)
+            conf = pred.sigmoid() if self.from_logits else pred
+        else:
+            conf = pred.amax(dim=-1) if self.from_logits else pred.softmax(dim=-1)
+        conf = conf.clamp(min=0, max=1)
+        return conf
 
     def update_binary(self, pred: Tensor, true: Tensor) -> None:
         if self.from_logits:
@@ -208,8 +211,7 @@ class UCE(ECE):
             conf = 1 - Entropy.compute_binary_entropy(pred, inplace=False, from_logits=False)
         else:
             conf = 1 - Entropy.compute_categorical_entropy(pred, dim=-1, inplace=False, from_logits=False)
-        # assert (conf >= 0).all()
-        # assert (conf <= 1).all()
+        conf = conf.clamp(min=0, max=1)
         return conf
 
 
