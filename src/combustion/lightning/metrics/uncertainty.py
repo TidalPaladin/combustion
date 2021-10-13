@@ -112,8 +112,8 @@ class ECE(Metric):
         idx, tot = bins.unique(return_counts=True)
         total[idx] = tot.type_as(total)
 
-        self.correct = self.correct.scatter_add(0, bins.view(-1), correct.view(-1))
-        self.confidence = self.confidence.scatter_add(0, bins.view(-1), confidence.view(-1))
+        self.correct = self._scatter_add(self.correct, bins, correct)
+        self.confidence = self._scatter_add(self.confidence, bins, confidence)
         self.total = self.total + total
 
     def update_categorical(self, pred: Tensor, true: Tensor) -> None:
@@ -134,15 +134,21 @@ class ECE(Metric):
         idx, tot = bins.unique(return_counts=True)
         total.view(-1)[idx] = tot.type_as(total)
 
-        self.correct = self.correct.view(-1).scatter_add(0, bins.view(-1), correct.view(-1)).view_as(self.correct)
-        self.confidence = (
-            self.confidence.view(-1).scatter_add(0, bins.view(-1), confidence.view(-1)).view_as(self.confidence)
-        )
+        self.correct = self._scatter_add(self.correct, bins, correct)
+        self.confidence = self._scatter_add(self.confidence, bins, confidence)
         self.total = self.total + total
 
     @property
     def is_differentiable(self) -> bool:
         return False
+
+    @staticmethod
+    def _scatter_add(src: Tensor, idx: Tensor, vals: Tensor) -> Tensor:
+        return (
+            src.view(1, -1)
+            .scatter_add(0, idx.view(-1), vals.view(-1))
+            .view_as(src)
+        )
 
 
 class UCE(ECE):
