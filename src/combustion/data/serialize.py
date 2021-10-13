@@ -185,11 +185,13 @@ class TorchDataset(SerializeMixin):
         path: Union[str, Path],
         length_override: Optional[int] = None,
         pattern: str = "*.pth",
+        transform: Optional[Callable] = None,
     ):
         super().__init__()
         self.path = Path(path)
         self.pattern = pattern
         self.files = sorted(list(Path(self.path).glob(self.pattern)))
+        self.transform = transform
         if length_override is not None:
             length_override = int(length_override)
             if length_override <= 0:
@@ -219,6 +221,11 @@ class TorchDataset(SerializeMixin):
             return self.length_override
         else:
             return len(self.files)
+
+    def apply_transform(self, example) -> Any:
+        if self.transform is None:
+            return example
+        return self.transform(*example)
 
 
 __all__ = ["save_torch", "SerializeMixin", "TorchDataset"]

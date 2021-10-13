@@ -214,18 +214,34 @@ class RelativeLearnableFourierFeatures(LearnableFourierFeatures):
 
 
 class FourierLogspace(nn.Module):
-    def __init__(self, d_in: int, d_out: int, max_freq: float, num_bands: int, **kwargs):
+    scales: Tensor
+
+    def __init__(
+        self, 
+        d_in: int, 
+        d_out: int, 
+        max_freq: float, 
+        num_bands: int, 
+        zero_one_norm: bool = True,
+        base: int = 2,
+        **kwargs
+    ):
         super().__init__()
-        base = 2
-        self.scales = torch.logspace(1.0, math.log(max_freq / 2) / math.log(base), num_bands, base=base)
+        start = 0
+        stop = math.log(max_freq / 2) / math.log(2)
+        self.register_buffer("scales", math.pi * torch.logspace(start, stop, num_bands, base=base))
         d_mlp = self.scales.numel() * d_in * 2
         dim_ff = max(d_mlp, d_in)
         self.mlp = MLP(d_mlp, dim_ff, d_out, **kwargs)
 
+    @property
+    def num_bands(self) -> int:
+        return self.scales.numel()
+
     def forward(self, x: Tensor) -> Tensor:
         L, N, C = x.shape
         x = x.unsqueeze(-1)
-        x = x * self.scales * math.pi
+        x = x * self.scales
         x = torch.cat([x.sin(), x.cos()], dim=-1)
         x = x.view(L, N, -1)
         x = self.mlp(x)
