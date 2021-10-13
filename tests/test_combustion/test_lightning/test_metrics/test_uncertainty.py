@@ -105,7 +105,7 @@ class TestUCE:
 
         uce = metric(logits, true)  # type: ignore
         # TODO check this
-        assert torch.allclose(uce, torch.tensor(0.4248734))
+        assert torch.allclose(uce, torch.tensor(0.5376680))
 
     def test_categorical(self, cuda):
         probs = torch.tensor(
