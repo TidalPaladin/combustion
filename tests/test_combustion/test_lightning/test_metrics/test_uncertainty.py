@@ -170,6 +170,8 @@ class TestUCE:
         # TODO check this
         assert torch.allclose(uce, expected)
 
+
+class TestErrorAtUncertainty:
     def test_plot(self, cuda):
         probs = torch.tensor(
             [
@@ -231,24 +233,3 @@ class TestUCE:
         entropy = entropy[has_items]
         sorted_entropy = entropy.sort(descending=True).values
         assert (entropy == sorted_entropy).all()
-
-    def test_reset(self):
-        probs = torch.tensor(
-            [
-                [0.25, 0.2, 0.22, 0.18, 0.15],
-                [0.16, 0.06, 0.50, 0.07, 0.21],
-                [0.06, 0.03, 0.8, 0.07, 0.04],
-                [0.02, 0.03, 0.01, 0.04, 0.9],
-                [0.4, 0.15, 0.16, 0.14, 0.15],
-                [0.15, 0.28, 0.18, 0.17, 0.22],
-                [0.07, 0.8, 0.03, 0.06, 0.04],
-                [0.1, 0.05, 0.03, 0.75, 0.07],
-                [0.25, 0.22, 0.05, 0.3, 0.18],
-                [0.12, 0.09, 0.02, 0.17, 0.6],
-            ]
-        )
-        true = torch.tensor([0, 2, 3, 4, 2, 0, 1, 3, 3, 2])
-        N = 5
-        metric = UCE(num_bins=3, from_logits=False, classwise=False, num_classes=N)
-        metric.update(probs, true)  # type: ignore
-        uce = metric.compute()  # type: ignore
