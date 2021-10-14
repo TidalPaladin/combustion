@@ -119,7 +119,8 @@ class MLP(nn.Module):
         se_ratio: Optional[int] = None,
     ):
         super().__init__()
-        d_out = d_out or d
+        self.d_out = d_out = d_out or d
+        self.d_in = d
         self.l1 = nn.Linear(d, d_hidden)
         self.d1 = nn.Dropout(dropout)
         self.l2 = nn.Linear(d_hidden, d_out)

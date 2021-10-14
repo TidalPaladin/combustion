@@ -235,6 +235,10 @@ class FourierLogspace(nn.Module):
         self.mlp = MLP(d_mlp, dim_ff, d_out, **kwargs)
 
     @property
+    def d_out(self) -> int:
+        return self.mlp.d_out
+
+    @property
     def num_bands(self) -> int:
         return self.scales.numel()
 
