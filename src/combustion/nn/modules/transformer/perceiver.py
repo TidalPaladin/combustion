@@ -225,6 +225,9 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         self.input_w = None
 
     def forward(self, inputs: Tensor, latent: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+        assert isinstance(inputs, Tensor)
+        assert latent is None or isinstance(latent, Tensor)
+
         Li, N, Di = inputs.shape
         latent = self.get_latent(inputs, latent)
         Ll, N, Dl = latent.shape
@@ -267,7 +270,7 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
     def get_latent(self, inputs: Tensor, latent: Optional[Tensor]) -> Tensor:
         if latent is not None:
             assert latent.ndim == 3
-            assert latent.shape[1] == inputs.shape[1], f"{input.shape} vs {latent.shape}"
+            assert latent.shape[1] == inputs.shape[1], f"{inputs.shape} vs {latent.shape}"
             return latent
         else:
             if self.latent is None:
