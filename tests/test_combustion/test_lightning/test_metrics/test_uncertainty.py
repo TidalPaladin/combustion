@@ -196,8 +196,8 @@ class TestErrorAtUncertainty:
             metric = metric.cuda()
             true = true.cuda()
 
-        entropy, err, has_items = metric(probs, true)  # type: ignore
-        fig = metric.plot(entropy[has_items], err[has_items])
+        entropy, err, has_items = metric(probs, true)
+        fig = metric.plot(entropy[has_items], err[has_items])  # type: ignore
         dest = Path("/home/tidal/test_imgs")
         if dest.is_dir():
             dest = Path(dest, "TestUCE")
@@ -215,8 +215,8 @@ class TestErrorAtUncertainty:
             metric = metric.cuda()
             true = true.cuda()
 
-        entropy, err, has_items = metric(probs, true)  # type: ignore
-        fig = metric.plot(entropy[has_items], err[has_items])
+        entropy, err, has_items = metric(probs, true)
+        fig = metric.plot(entropy[has_items], err[has_items])  # type: ignore
         dest = Path("/home/tidal/test_imgs")
         if dest.is_dir():
             dest = Path(dest, "TestUCE2")
