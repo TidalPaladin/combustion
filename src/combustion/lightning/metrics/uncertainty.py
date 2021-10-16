@@ -89,57 +89,100 @@ class ECE(Metric):
         ece = (accuracy - confidence).abs().mul(weights).sum(dim=0).mean(dim=0)
         return ece
 
-    def _get_confidence(self, pred: Tensor, categorical: bool) -> Tensor:
+    @classmethod
+    def _get_confidence(cls, pred: Tensor, categorical: bool, from_logits: bool) -> Tensor:
+        if from_logits:
+            pred = cls._logits_to_probs(pred, categorical=categorical)
         if not categorical:
-            return pred
-        return pred.amax(dim=-1)
+            conf = pred
+        else:
+            conf = pred.amax(dim=-1)
+        conf = conf.clamp(min=0, max=1)
+        return conf
+
+    @staticmethod
+    def _logits_to_probs(logits: Tensor, categorical: bool) -> Tensor:
+        if not categorical:
+            probs = logits.sigmoid()
+        else:
+            probs = logits.softmax(dim=-1)
+        return probs
+
+    @staticmethod
+    def _validate_probs(probs: Tensor, categorical: bool):
+        if categorical:
+            s = probs.sum(dim=-1)
+            assert torch.allclose(s, torch.ones_like(s)), "categorical probabilities should sum to 1"
+        else:
+            assert (probs >= 0).all() and (probs <= 1).all()
 
     def update_binary(self, pred: Tensor, true: Tensor) -> None:
+        # handle input logits/probs
         if self.from_logits:
-            pred = pred.sigmoid()
+            logits = pred
+            pred = self._logits_to_probs(logits, categorical=False)
         else:
-            assert (pred >= 0).all() and (pred <= 1).all()
+            logits = None
+        self._validate_probs(pred, categorical=False)
 
+        # try to compute confidence from logits where possible, since it can be more numerically stable
+        src = logits if logits is not None else pred
+        confidence = self._get_confidence(src, categorical=False, from_logits=src is logits)
+        assert confidence.shape == pred.shape
+
+        # compute predicted class / correctness
         pred_cls = pred >= self.threshold
         correct = (pred_cls == true).type_as(self.correct)
-        confidence = self._get_confidence(pred, categorical=False)
+
+        # assign each prediction to a bin based on confidence level
         bins = assign_to_bin(confidence, self.num_bins).long()
 
+        # compute mean confidence and mean error rate for each bin
         total = torch.zeros_like(self.total)
         idx, tot = bins.unique(return_counts=True)
         total[idx] = tot.type_as(total)
-
-        self.correct = self.correct.scatter_add(0, bins.view(-1), correct.view(-1))
-        self.confidence = self.confidence.scatter_add(0, bins.view(-1), confidence.view(-1))
+        self.correct = self._scatter_add(self.correct, bins, correct)
+        self.confidence = self._scatter_add(self.confidence, bins, confidence)
         self.total = self.total + total
 
     def update_categorical(self, pred: Tensor, true: Tensor) -> None:
+        # handle input logits/probs
         if self.from_logits:
-            pred = pred.softmax(dim=-1)
+            logits = pred
+            pred = self._logits_to_probs(logits, categorical=True)
         else:
-            s = pred.sum(dim=-1)
-            assert torch.allclose(s, torch.ones_like(s))
-            del s
+            logits = None
+        self._validate_probs(pred, categorical=True)
 
+        # try to compute confidence from logits where possible, since it can be more numerically stable
+        src = logits if logits is not None else pred
+        confidence = self._get_confidence(src, categorical=True, from_logits=src is logits)
+        assert confidence.ndim == pred.ndim - 1
+        assert confidence.shape == pred.shape[:-1]
+
+        # compute predicted class / correctness
         pred_cls = pred.argmax(dim=-1)
         correct = (pred_cls == true).type_as(self.correct)
-        confidence = self._get_confidence(pred, categorical=True)
+
+        # assign each prediction to a bin based on confidence level
         bins = assign_to_bin(confidence, self.num_bins).long()
         bins = bins * self.num_classes + true if self.classwise else bins
 
+        # compute mean confidence and mean error rate for each bin
         total = torch.zeros_like(self.total)
         idx, tot = bins.unique(return_counts=True)
         total.view(-1)[idx] = tot.type_as(total)
-
-        self.correct = self.correct.view(-1).scatter_add(0, bins.view(-1), correct.view(-1)).view_as(self.correct)
-        self.confidence = (
-            self.confidence.view(-1).scatter_add(0, bins.view(-1), confidence.view(-1)).view_as(self.confidence)
-        )
+        self.correct = self._scatter_add(self.correct, bins, correct)
+        self.confidence = self._scatter_add(self.confidence, bins, confidence)
         self.total = self.total + total
 
     @property
     def is_differentiable(self) -> bool:
         return False
+
+    @staticmethod
+    def _scatter_add(src: Tensor, idx: Tensor, vals: Tensor) -> Tensor:
+        return src.view(-1).scatter_add(-1, idx.view(-1), vals.view(-1)).view_as(src)
 
 
 class UCE(ECE):
@@ -203,13 +246,12 @@ class UCE(ECE):
         uce = (err - entropy).abs().mul(weights).sum(dim=0).mean(dim=0)
         return uce
 
-    def _get_confidence(self, pred: Tensor, categorical: bool) -> Tensor:
+    def _get_confidence(self, pred: Tensor, categorical: bool, from_logits: bool) -> Tensor:
         if not categorical:
-            conf = 1 - Entropy.compute_binary_entropy(pred, inplace=False, from_logits=False)
+            conf = 1 - Entropy.compute_binary_entropy(pred, inplace=False, from_logits=from_logits)
         else:
-            conf = 1 - Entropy.compute_categorical_entropy(pred, dim=-1, inplace=False, from_logits=False)
-        # assert (conf >= 0).all()
-        # assert (conf <= 1).all()
+            conf = 1 - Entropy.compute_categorical_entropy(pred, dim=-1, inplace=False, from_logits=from_logits)
+        conf = conf.clamp(min=0, max=1)
         return conf
 
 

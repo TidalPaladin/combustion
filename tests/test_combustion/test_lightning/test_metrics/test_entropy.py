@@ -1,12 +1,51 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
+import pytest
 import torch
 
 from combustion.lightning.metrics import Entropy
 
 
 class TestEntropy:
+    @pytest.mark.parametrize(
+        "inp,logits,out",
+        [
+            pytest.param(0.0, False, 0.0),
+            pytest.param(1.0, False, 0.0),
+            pytest.param(0.5, False, 1.0),
+            pytest.param(0.0, True, 1.0),
+            pytest.param(0.0, True, 1.0),
+        ],
+    )
+    def test_binary_entropy_basics(self, inp, logits, out, cuda):
+        x = torch.tensor(inp)
+        expected = torch.tensor(out)
+        if cuda:
+            x = x.cuda()
+            expected = expected.cuda()
+        actual = Entropy.compute_binary_entropy(x, from_logits=logits)
+        assert torch.allclose(actual, expected)
+
+    @pytest.mark.parametrize(
+        "inp,logits,out",
+        [
+            pytest.param([0.0, 1.0], False, 0.0),
+            pytest.param([1.0, 0.0], False, 0.0),
+            pytest.param([0.5, 0.5], False, 1.0),
+            pytest.param([0.0, 0.0], True, 1.0),
+            pytest.param([0.0, 0.0], True, 1.0),
+            pytest.param([0.5, 0.5], False, 1.0),
+        ],
+    )
+    def test_categorical_entropy_basics(self, inp, logits, out, cuda):
+        x = torch.tensor(inp)
+        expected = torch.tensor(out)
+        if cuda:
+            x = x.cuda()
+            expected = expected.cuda()
+        actual = Entropy.compute_categorical_entropy(x, from_logits=logits)
+        assert torch.allclose(actual, expected)
+
     def test_binary_entropy(self, cuda):
         logits = torch.tensor(
             [
@@ -20,7 +59,8 @@ class TestEntropy:
             metric = metric.cuda()
 
         p = logits.sigmoid()
-        expected = (p.log() * p + (1 - p).log() * (1 - p)).sum().div_(logits.numel()).neg_()
+        divisor = logits.new_tensor(2).log_()
+        expected = (p.log() * p + (1 - p).log() * (1 - p)).sum().div_(logits.numel()).neg_().div_(divisor)
 
         entropy = metric(logits)  # type: ignore
         assert torch.allclose(entropy, expected)

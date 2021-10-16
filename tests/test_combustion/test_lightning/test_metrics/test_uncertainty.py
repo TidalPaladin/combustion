@@ -15,15 +15,14 @@ class TestECE:
     def test_binary_ece_real(self, cuda):
         probs = torch.tensor([0.61, 0.39, 0.31, 0.76, 0.22, 0.59, 0.92, 0.83, 0.57, 0.41])
         true = torch.tensor([1, 1, 0, 1, 1, 1, 0, 1, 1, 0])
-        logits = probs.logit()
 
-        metric = ECE(num_bins=3, from_logits=True)
+        metric = ECE(num_bins=3, from_logits=False)
         if cuda:
-            logits = logits.cuda()
+            probs = probs.cuda()
             metric = metric.cuda()
             true = true.cuda()
 
-        ece = metric(logits, true)  # type: ignore
+        ece = metric(probs, true)  # type: ignore
         assert ece == 0.241
 
     # https://jamesmccaffrey.wordpress.com/2021/01/22/how-to-calculate-expected-calibration-error-for-multi-class-classification/
@@ -95,17 +94,16 @@ class TestUCE:
     def test_binary(self, cuda):
         probs = torch.tensor([0.61, 0.39, 0.31, 0.76, 0.22, 0.59, 0.92, 0.83, 0.57, 0.41])
         true = torch.tensor([1, 1, 0, 1, 1, 1, 0, 1, 1, 0])
-        logits = probs.logit()
 
-        metric = UCE(num_bins=3, from_logits=True)
+        metric = UCE(num_bins=3, from_logits=False)
         if cuda:
-            logits = logits.cuda()
+            probs = probs.cuda()
             metric = metric.cuda()
             true = true.cuda()
 
-        uce = metric(logits, true)  # type: ignore
+        uce = metric(probs, true)  # type: ignore
         # TODO check this
-        assert torch.allclose(uce, torch.tensor(0.4248734))
+        assert torch.allclose(uce, torch.tensor(0.5376680))
 
     def test_categorical(self, cuda):
         probs = torch.tensor(
@@ -172,6 +170,8 @@ class TestUCE:
         # TODO check this
         assert torch.allclose(uce, expected)
 
+
+class TestErrorAtUncertainty:
     def test_plot(self, cuda):
         probs = torch.tensor(
             [
@@ -196,8 +196,8 @@ class TestUCE:
             metric = metric.cuda()
             true = true.cuda()
 
-        entropy, err, has_items = metric(probs, true)  # type: ignore
-        fig = metric.plot(entropy[has_items], err[has_items])
+        entropy, err, has_items = metric(probs, true)
+        fig = metric.plot(entropy[has_items], err[has_items])  # type: ignore
         dest = Path("/home/tidal/test_imgs")
         if dest.is_dir():
             dest = Path(dest, "TestUCE")
@@ -215,10 +215,21 @@ class TestUCE:
             metric = metric.cuda()
             true = true.cuda()
 
-        entropy, err, has_items = metric(probs, true)  # type: ignore
-        fig = metric.plot(entropy[has_items], err[has_items])
+        entropy, err, has_items = metric(probs, true)
+        fig = metric.plot(entropy[has_items], err[has_items])  # type: ignore
         dest = Path("/home/tidal/test_imgs")
         if dest.is_dir():
             dest = Path(dest, "TestUCE2")
             fig.savefig(dest)
             plt.close(fig)
+
+    def test_plot3(self):
+        N = 5
+        probs = torch.randn(1000, N) * 30
+        true = torch.randint(0, N, (1000,))
+
+        metric = ErrorAtUncertainty(num_bins=100, from_logits=True, classwise=False, num_classes=N)
+        entropy, err, has_items = metric(probs, true)  # type: ignore
+        entropy = entropy[has_items]
+        sorted_entropy = entropy.sort(descending=True).values
+        assert (entropy == sorted_entropy).all()
