@@ -34,6 +34,40 @@ def entropy(x: Tensor, eps: float = 1e-2, dim: int = -1) -> Tensor:
     return log_p.mul(p).sum(dim=dim).neg().div(divisor).clamp(min=0, max=1)
 
 
+class Partitioner(nn.Module):
+
+    def __init__(self, partitions: int):
+        super().__init__()
+        self.partitions = partitions
+
+    def forward(self, x: Tensor) -> Tensor:
+        L, N, D = x.shape
+        if L % self.partitions != 0:
+            raise ValueError(f"Input size {L} must be divisible by partition count {self.partitions}")
+        partition_size = L // self.partitions
+        return x.view(partition_size, -1, D)
+
+
+class ImagePartitioner(nn.Module):
+
+    def __init__(self, partitions: int):
+        super().__init__()
+        self.partitions = partitions
+
+    def forward(self, x: Tensor) -> Tensor:
+        N, C, H, W = x.shape
+        L = H*W
+        if L % self.partitions != 0:
+            raise ValueError(f"Input size {L} must be divisible by partition count {self.partitions}")
+        partition_size = L // self.partitions
+
+        partition_h = int(partition_size * H / W)
+        partition_w = int(partition_size * W / H)
+
+        result = x.movedim(1, -1).view(-1, partition_h, partition_w, C).movedim(-1, 1)
+        return result
+
+
 @dataclass
 class PerceiverLayerConfig:
     latent_d: int
@@ -171,14 +205,20 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         num_transformer_blocks: int = 1,
         track_entropy: bool = False,
         track_weights: bool = False,
-        feedforward_inputs: bool = True,
+        feedforward_inputs: bool = False,
         se_ratio: Optional[int] = None,
+        partitions: Optional[int] = None,
     ):
         super().__init__()
         input_ff = input_ff or input_d
         latent_ff = latent_ff or latent_d
         self.track_entropy = track_entropy
         self.track_weights = track_weights
+        self.partitions = partitions
+
+        self.input_d = input_d
+        self.latent_d = latent_d
+        self.latent_l = latent_l
 
         if latent_l is not None:
             self.latent = nn.Parameter(torch.empty(latent_l, latent_d))
@@ -232,6 +272,9 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         latent = self.get_latent(inputs, latent)
         Ll, N, Dl = latent.shape
         orig_inputs, orig_latent = inputs, latent
+
+        assert Di == self.input_d, f"{Di} vs {self.input_d}"
+        assert Dl == self.latent_d, f"{Dl} vs {self.latent_d}"
 
         # Get attention mask (defaults to None)
         attn_mask = self.get_mask(inputs, latent)
@@ -376,8 +419,11 @@ class PerceiverLayer(nn.Module, BatchNormMixin):
         ent = torch.linalg.vector_norm(ent, dim=0, ord=ord) / num_layers
         return ent.mean()
 
-    def duplicate(self) -> "PerceiverLayer":
+    def duplicate(self, share_weights: bool = False) -> "PerceiverLayer":
         new = deepcopy(self)
+        if not share_weights:
+            return new
+
         # don't duplicate these layers
         shared = ["cross_attn1", "cross_attn2", "latent_transformer", "ff1", "ff2", "latent"]
 

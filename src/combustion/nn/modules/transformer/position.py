@@ -2,13 +2,119 @@
 # -*- coding: utf-8 -*-
 
 import math
-from typing import Iterable, Optional, Type
+from typing import Iterable, Optional, Type, Tuple, Any
+from abc import abstractmethod
 
 import torch
 import torch.nn as nn
 from torch import Tensor
 
 from .common import MLP
+
+class PositionEncoder(nn.Module):
+    r"""Base class for positional encodings"""
+
+    def __init__(self):
+        super().__init__()
+
+    def relative_forward(self, x: Tensor, neighbors: Tensor) -> Tensor:
+        r"""Computes the positional encoding using relative distances between coordinates in
+        ``x`` and coordinates in ``neighbors``.
+
+        Shapes:
+            * ``x`` - :math:`(L, N, C)`
+            * ``neighbors`` - :math:`(K, L, N, C)` where :math:`K` is the neighborhood of relative coordinates
+              for a given coordinate in ``x``.
+            * Output - :math:`(K, L, N, C)`
+        """
+        L, N, C = x.shape
+        K, L, N, C = neighbors.shape
+        delta = neighbors - x.view(1, L, N, C)
+        return self(delta.view(-1, N, C)).view(K, L, N, C)
+
+    def from_grid(
+        self,
+        dims: Iterable[int],
+        batch_size: int = 1,
+        proto: Optional[Tensor] = None,
+        *args,
+        **kwargs,
+    ):
+        r"""Creates positional encodings for a coordinate space with lengths given in ``dims``.
+
+        Args:
+            dims:
+                Forwarded to :func:`create_grid`
+
+            batch_size:
+                Batch size, for matching the coordinate grid against a batch of vectors that need
+                positional encoding.
+
+            proto:
+                Forwarded to :func:`create_grid`
+
+        Keyword Args:
+            Forwarded to :func:`create_grid`
+
+        Shapes:
+            * Output - :math:`(L, N, D)` where :math:`D` is the embedding size, :math:`L` is ``product(dims)``,
+              and :math:`N` is ``batch_size``.
+        """
+        grid = self.create_grid(dims, proto, *args, **kwargs)
+        pos_enc = self(grid).expand(-1, batch_size, -1)
+        return pos_enc
+
+    @staticmethod
+    def create_grid(
+        dims: Iterable[int],
+        proto: Optional[Tensor] = None,
+        requires_grad: bool = True,
+        normalize: bool = True,
+        **kwargs,
+    ) -> Tensor:
+        r"""Create a grid of coordinate values given the size of each dimension.
+
+        Args:
+            dims:
+                The length of each dimension
+
+            proto:
+                If provided, a source tensor with which to match device / requires_grad
+
+            requires_grad:
+                Optional override for requires_grad
+
+            normalize:
+                If true, normalize coordinate values on the range :math:`\[-1, 1\]`
+
+        Keyword Args:
+            ``"device"`` or ``"dtype"``, used to set properties of the created grid tensor
+
+        Shapes:
+            * Output - :math:`(L, 1, C)` where :math:`C` is ``len(dims)`` and :math:`L` is ``product(dims)``
+        """
+        if proto is not None:
+            device = proto.device
+            dtype = proto.dtype
+            _kwargs = {"device": device, "dtype": dtype}
+            _kwargs.update(kwargs)
+            kwargs = _kwargs
+
+        with torch.no_grad():
+            lens = tuple(torch.arange(d, **kwargs) for d in dims)
+            grid = torch.stack(torch.meshgrid(*lens, indexing="ij"), dim=0)
+
+            if normalize:
+                C = grid.shape[0]
+                grid = grid.float()
+                scale = grid.view(C, -1).amax(dim=-1).view(C, *((1,) * (grid.ndim - 1)))
+                grid.div_(scale).sub_(0.5).mul_(2)
+
+            grid = grid.movedim(0, -1).view(-1, 1, len(lens))
+
+        requires_grad = requires_grad or (proto is not None and proto.requires_grad)
+        grid.requires_grad = requires_grad
+        return grid
 
 
 class AbsolutePositionalEmbedding(nn.Module):
@@ -68,7 +174,7 @@ class RelativePositionalEncoder(nn.Module):
         return out
 
 
-class LearnableFourierFeatures(nn.Module):
+class LearnableFourierFeatures(PositionEncoder):
     r"""Implements Learnable Fourier Features as described in `Learnable Fourier Features`_. LFF is a
     positional encoding mechanism based on random fourier features.
 
@@ -118,7 +224,7 @@ class LearnableFourierFeatures(nn.Module):
         dropout: float = 0.0,
         gamma: float = 1.0,
         act: nn.Module = nn.ReLU(),
-        norm_layer: Type[nn.Module] = nn.LayerNorm,
+        norm_layer: Type[nn.Module] = nn.Identity,
         **kwargs,
     ):
         super().__init__()
@@ -146,54 +252,6 @@ class LearnableFourierFeatures(nn.Module):
         x = self.norm(x)
         return x
 
-    @staticmethod
-    def from_grid(
-        dims: Iterable[int],
-        proto: Optional[Tensor] = None,
-        requires_grad: bool = True,
-        normalize: bool = True,
-        **kwargs,
-    ) -> Tensor:
-        if proto is not None:
-            device = proto.device
-            dtype = proto.dtype
-            _kwargs = {"device": device, "dtype": dtype}
-            _kwargs.update(kwargs)
-            kwargs = _kwargs
-
-        with torch.no_grad():
-            lens = tuple(torch.arange(d, **kwargs) for d in dims)
-            grid = torch.stack(torch.meshgrid(*lens), dim=0)
-
-            if normalize:
-                C = grid.shape[0]
-                grid = grid.float()
-                scale = grid.view(C, -1).amax(dim=-1).view(C, *((1,) * (grid.ndim - 1)))
-                grid.div_(scale).sub_(0.5).mul_(2)
-
-            grid = grid.movedim(0, -1).view(-1, 1, len(lens))
-
-        requires_grad = requires_grad or (proto is not None and proto.requires_grad)
-        grid.requires_grad = requires_grad
-        return grid
-
-    # def visualize(self, grid: Tensor, mlp: bool = True):
-    #    try:
-    #        import matplotlib.pyplot as plt
-    #    except Exception:
-    #        print("Visualization requires matploitlib")
-    #        raise
-
-    #    if grid.ndim > 3:
-    #        raise ValueError(f"Invalid ndim {grid.ndim}")
-
-    #    fig = plt.figure()
-    #    rows, cols = 2, 3
-
-    #    plt.subplot(2, 3, 1)
-    #    plt.plot(t, s1)
-    #    plt.subplot(212)
-    #    plt.plot(t, 2*s1)
 
 
 class RelativeLearnableFourierFeatures(LearnableFourierFeatures):
@@ -213,7 +271,7 @@ class RelativeLearnableFourierFeatures(LearnableFourierFeatures):
         return super().forward(delta)
 
 
-class FourierLogspace(nn.Module):
+class FourierLogspace(PositionEncoder):
     scales: Tensor
 
     def __init__(
@@ -227,7 +285,7 @@ class FourierLogspace(nn.Module):
         **kwargs
     ):
         super().__init__()
-        start = 0
+        start = 0 if zero_one_norm else -1
         stop = math.log(max_freq / 2) / math.log(2)
         self.register_buffer("scales", math.pi * torch.logspace(start, stop, num_bands, base=base))
         d_mlp = self.scales.numel() * d_in * 2
@@ -258,3 +316,29 @@ class RelativeFourierLogspace(FourierLogspace):
         K, L, N, C = neighbors.shape
         delta = neighbors - center.view(1, L, N, C)
         return super().forward(delta.view(-1, N, C)).view(K, L, N, C)
+
+
+
+class LocalAttention(nn.Module):
+    r"""Base class for positional encodings"""
+
+    def __init__(self, wrapped: nn.Module, distance: float = 1, norm: Any = 2):
+        super().__init__()
+        self.distance = distance
+        self.norm = norm
+        self.wrapped = wrapped
+
+    def forward(self, x: Tensor, size: Tuple[int, int]) -> Tensor:
+        L, N, D = x.shape
+        mask = self.get_mask(size, x).logical_not_()
+        assert mask.any()
+        return self.wrapped(x, mask)
+
+    @torch.no_grad()
+    def get_mask(self, size: Tuple[int, int], proto: Optional[Tensor] = None):
+        grid = PositionEncoder.create_grid(size, proto, normalize=False)
+        L, _, C = grid.shape
+        delta = (grid.view(L, 1, C) - grid.view(1, L, C)).norm(p=self.norm, dim=-1)
+        assert delta.shape == (L, L)
+        mask = delta <= self.distance
+        return mask.view(L, L)

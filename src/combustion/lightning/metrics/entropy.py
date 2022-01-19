@@ -6,7 +6,7 @@ from typing import Any, Callable, Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from torchmetrics import AverageMeter
+from torchmetrics import MeanMetric as AverageMeter
 
 
 class Entropy(AverageMeter):

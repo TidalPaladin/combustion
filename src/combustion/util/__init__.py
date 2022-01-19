@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .compute import percent_change, percent_error_change
+from .compute import percent_change, percent_error_change, slice_along_dim
 from .decorators import input, output
 from .mask_to_polygon import mask_to_box, mask_to_edges, mask_to_instances, mask_to_polygon
 from .plot import alpha_blend, apply_colormap
@@ -54,4 +54,5 @@ __all__ = [
     "triple",
     "replace_tuple",
     "MISSING",
+    "slice_along_dim",
 ]

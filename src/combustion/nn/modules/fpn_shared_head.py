@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import math
 from copy import deepcopy
 from typing import Any, List, Optional, Tuple
 
@@ -47,10 +48,15 @@ class _SharedDecoder(nn.Sequential):
         final_activation: nn.Module = nn.Identity(),
         num_groups: int = 32,
         gn_epsilon: float = 1e-5,
+        weight: float = 0.01,
+        bias: float = 0.0,
+        log_scale: bool = False,
+        dropout: float = 0,
     ):
         self.scaled = bool(scaled)
         self.strides = strides
         self.num_groups = min(in_channels, num_groups)
+        self.log_scale = log_scale
 
         super().__init__()
         for i in range(num_convs):
@@ -62,19 +68,21 @@ class _SharedDecoder(nn.Sequential):
             prefix = "final_conv_" if is_last_repeat else f"conv_{i}_"
             dw = self.Conv(in_channels, in_channels, 3, padding=1, groups=in_channels, bias=False)
             pw = self.Conv(in_channels, out, 1, bias=is_last_repeat)
-            torch.nn.init.normal_(dw.weight, std=0.01)
-            torch.nn.init.normal_(pw.weight, std=0.01)
 
             self.add_module(f"{prefix}dw", dw)
+            if is_last_repeat and dropout:
+                self.add_module(f"{prefix}dropout", nn.Dropout2d(p=dropout))
+
             self.add_module(f"{prefix}pw", pw)
 
             # bn + act
             if not is_last_repeat:
                 gn = nn.GroupNorm(self.num_groups, out, gn_epsilon)
-                torch.nn.init.constant_(gn.bias, 0)
                 self.add_module(f"gn_{i}", gn)
             else:
-                torch.nn.init.constant_(pw.bias, 0)
+                torch.nn.init.normal_(dw.weight, std=weight)
+                torch.nn.init.normal_(pw.weight, std=weight)
+                torch.nn.init.constant_(pw.bias, bias)
 
             self.add_module(f"act_{i}", deepcopy(final_activation if is_last_repeat else activation))
 
@@ -90,6 +98,8 @@ class _SharedDecoder(nn.Sequential):
                     scale = self.strides[level_idx]
                 else:
                     scale = 2 ** level_idx
+                if self.log_scale:
+                    scale = math.log(scale)
                 level = level * scale
             result.append(level)
         return result

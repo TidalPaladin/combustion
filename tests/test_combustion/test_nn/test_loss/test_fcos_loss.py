@@ -12,7 +12,21 @@ from torch import Tensor
 
 from combustion.nn import FCOSDecoder, FCOSLoss
 from combustion.util import alpha_blend, apply_colormap
+from combustion.util.dataclasses import BatchMixin
 from combustion.vision import visualize_bbox
+from combustion.nn.loss.fcos import FCOSLevelTarget, coordinate_grid, assign_boxes_to_levels, bbox_to_mask, create_regression_target, compute_centerness_targets, create_classification_target
+
+
+def test_struct():
+    size_target = (32, 32)
+    interest_range = (-1, 32)
+
+    bbox = torch.rand(2, 10, 4) * 10
+    bbox[..., (0, 1)] = torch.min(bbox[..., (0, 1)], bbox[..., (2, 3)] - 2)
+    classes = torch.randint(0, 2, (2, 10, 1))
+    x = FCOSLevelTarget.from_boxes(bbox, classes, 2, 4, size_target, interest_range)
+    assert False
+
 
 
 class TestFCOSLoss:
@@ -26,7 +40,7 @@ class TestFCOSLoss:
         ],
     )
     def test_create_coordinate_grid(self, height, width, stride, indexing):
-        grid = FCOSLoss.coordinate_grid(height, width, stride, indexing)
+        grid = coordinate_grid(height, width, stride, indexing)
         assert tuple(grid.shape[-2:]) == (height, width)
         assert grid.shape[0] == 2
         assert torch.allclose(grid[:, 0, 0], torch.tensor([stride / 2, stride / 2]))
@@ -57,7 +71,7 @@ class TestFCOSLoss:
         )
         bbox = torch.cat([torch.tensor([0, 0, 10, 10]).unsqueeze_(0), bbox], dim=0)
         bbox = bbox.unsqueeze(0).repeat(batch_size, 1, 1)
-        assignments = FCOSLoss.assign_boxes_to_levels(bbox, bounds, inclusive)
+        assignments = assign_boxes_to_levels(bbox, bounds, inclusive)
 
         has_assignment = assignments.any(dim=-1)
         assert has_assignment.all(), "one or more boxes was not assigned a level"
@@ -98,7 +112,7 @@ class TestFCOSLoss:
                 [1, 1, 2, 2],
             ]
         )
-        result = FCOSLoss.bbox_to_mask(bbox, stride, size_target, center_radius)
+        result = bbox_to_mask(bbox, stride, size_target, center_radius)
 
         assert isinstance(result, Tensor)
         assert result.shape == torch.Size([bbox.shape[-2], *size_target])
@@ -153,17 +167,17 @@ class TestFCOSLoss:
                 [2, 3, 8, 7],
             ]
         ).mul_(stride)
-        result = FCOSLoss.create_regression_target(bbox, stride, size_target)
+        result = create_regression_target(bbox.unsqueeze(0), stride, size_target).squeeze(0)
 
         assert isinstance(result, Tensor)
         assert result.shape == torch.Size([bbox.shape[-2], 4, *size_target])
 
         for box, res in zip(bbox, result):
             h1, w1, h2, w2 = box[1], box[0], box[3], box[2]
-            hs1 = h1.floor_divide(stride)
-            ws1 = w1.floor_divide(stride)
-            hs2 = h2.floor_divide(stride)
-            ws2 = w2.floor_divide(stride)
+            hs1 = h1.div(stride, rounding_mode="floor")
+            ws1 = w1.div(stride, rounding_mode="floor")
+            hs2 = h2.div(stride, rounding_mode="floor")
+            ws2 = w2.div(stride, rounding_mode="floor")
 
             pos_region = res[..., hs1:hs2, ws1:ws2]
             if pos_region.numel():
@@ -171,7 +185,7 @@ class TestFCOSLoss:
                 assert pos_region.max() <= box.max()
 
             def discretize(x):
-                return x.float().floor_divide(stride).mul_(stride).add_(stride / 2)
+                return x.float().div(stride, rounding_mode="floor").mul_(stride).add_(stride / 2)
 
             # left
             assert res[0, hs1, ws1] == stride / 2, "left target at top left corner"
@@ -213,44 +227,13 @@ class TestFCOSLoss:
             ]
         )
         cls = torch.tensor([0, 0, 1]).unsqueeze_(-1)
-        mask = FCOSLoss.bbox_to_mask(bbox, stride, size_target, center_radius)
+        mask = bbox_to_mask(bbox, stride, size_target, center_radius)
         num_classes = 2
 
-        result = FCOSLoss.create_classification_target(bbox, cls, mask, num_classes, size_target)
+        result = create_classification_target(bbox.unsqueeze(0), cls.unsqueeze(0), mask.unsqueeze(0), num_classes).squeeze(0)
 
         assert isinstance(result, Tensor)
         assert result.shape == torch.Size([num_classes, *size_target])
-
-    @pytest.mark.parametrize(
-        "stride,center_radius,size_target",
-        [
-            pytest.param(1, None, (10, 10)),
-            pytest.param(1, 1, (15, 15)),
-        ],
-    )
-    def test_create_target_for_level(self, stride, center_radius, size_target):
-        bbox = torch.tensor(
-            [
-                [0, 0, 9, 9],
-                [3, 4, 8, 6],
-                [4, 4, 6, 6],
-            ]
-        )
-        cls = torch.tensor([0, 0, 1]).unsqueeze_(-1)
-        num_classes = 2
-
-        cls, reg, centerness = FCOSLoss.create_target_for_level(
-            bbox, cls, num_classes, stride, size_target, (-1, 64), center_radius
-        )
-
-        assert cls.shape == torch.Size([num_classes, *size_target])
-        assert reg.shape == torch.Size([4, *size_target])
-        assert centerness.shape == torch.Size([1, *size_target])
-
-        # TODO expand on this test
-
-        assert centerness.max() <= 1.0
-        assert ((centerness >= 0) | (centerness == -1)).all()
 
     @pytest.mark.parametrize("center_radius", [None, 1])
     def test_create_targets(self, center_radius):
@@ -264,42 +247,6 @@ class TestFCOSLoss:
 
         criterion = FCOSLoss(strides, num_classes)
         criterion.create_targets(target_bbox, target_cls, sizes)
-
-    def test_compute_loss(self):
-        target_bbox = torch.tensor(
-            [
-                [0, 0, 9, 9],
-                [3, 4, 8, 6],
-                [4, 4, 6, 6],
-                [32, 32, 88, 88],
-            ]
-        )
-        target_cls = torch.tensor([0, 0, 1, 0]).unsqueeze_(-1)
-
-        num_classes = 2
-        strides = (8, 16, 32, 64, 128)
-        base_size = 512
-        sizes = [(base_size // stride,) * 2 for stride in strides]
-
-        pred_cls = [torch.rand(num_classes, *size, requires_grad=True) for size in sizes]
-        pred_reg = [torch.rand(4, *size, requires_grad=True).mul(512).round() for size in sizes]
-        pred_centerness = [torch.rand(1, *size, requires_grad=True) for size in sizes]
-
-        criterion = FCOSLoss(strides, num_classes)
-        cls_loss, reg_loss, centerness_loss = criterion.compute_from_box_target(
-            pred_cls, pred_reg, pred_centerness, target_bbox, target_cls
-        )
-
-        assert isinstance(cls_loss, Tensor)
-        assert isinstance(reg_loss, Tensor)
-        assert isinstance(centerness_loss, Tensor)
-
-        assert cls_loss.numel() == 1
-        assert reg_loss.numel() == 1
-        assert centerness_loss.numel() == 1
-
-        loss = cls_loss + reg_loss + centerness_loss
-        loss.backward()
 
     def test_call(self):
         target_bbox = torch.tensor(
@@ -370,7 +317,6 @@ class TestFCOSLoss:
         _ = alpha_blend(src, dest)[0].squeeze_(0)
         self.save(path, _)
 
-    @pytest.mark.ci_skip
     @pytest.mark.parametrize(
         "center_radius",
         [
@@ -398,11 +344,200 @@ class TestFCOSLoss:
         strides = (8, 16, 32, 64, 128)
         sizes: Tuple[Tuple[int, int]] = tuple((image_size // stride,) * 2 for stride in strides)  # type: ignore
 
-        criterion = FCOSLoss(strides, num_classes, radius=center_radius)
-        targets = criterion.create_targets(target_bbox, target_cls, sizes)
-        cls_targets = [t[0] for t in targets]
-        reg_targets = [t[1] for t in targets]
-        centerness_targets = [t[2] for t in targets]
+        criterion = FCOSLoss(strides, num_classes, radius=center_radius, cls_smoothing=0.5)
+        targets = criterion.create_targets(target_bbox.unsqueeze(0), target_cls.unsqueeze(0), sizes)
+        cls_targets = [t.cls.squeeze(0) for t in targets]
+        reg_targets = [t.reg.squeeze(0) for t in targets]
+        centerness_targets = [t.centerness.squeeze(0) for t in targets]
+
+        reg_targets = [torch.linalg.norm(x.float().clamp_min(0), dim=-3, keepdim=True) for x in reg_targets]
+        reg_targets = [x.div(x.amax(dim=(-1, -2, -3), keepdim=True).clamp_min_(1)) for x in reg_targets]
+        centerness_targets = [x.clamp_min_(0) for x in centerness_targets]
+
+        img_with_box = visualize_bbox(img, target_bbox, target_cls)[None]
+
+        subpath = Path(self.DEST, "fcos_targets") if self.DEST is not None else Path(tmp_path)
+        subpath.mkdir(exist_ok=True)
+
+        subpath = Path(subpath, f"radius_{center_radius}")
+        subpath.mkdir(exist_ok=True)
+
+        for level in range(len(strides)):
+            image_path = os.path.join(subpath)
+            c = cls_targets[level][None]
+            r = reg_targets[level][None]
+            cent = centerness_targets[level][None]
+
+            filename = os.path.join(image_path, f"reg_level_{level}.png")
+            self.blend_and_save(filename, r, img_with_box)
+
+            filename = os.path.join(image_path, f"centerness_level_{level}.png")
+            self.blend_and_save(filename, cent, img_with_box)
+
+            for cls_idx in range(c.shape[1]):
+                filename = os.path.join(image_path, f"cls_{cls_idx}_level_{level}.png")
+                self.blend_and_save(filename, c[..., cls_idx, :, :][None], img_with_box)
+
+    @pytest.mark.skip
+    def test_forward_backward(self):
+        target_bbox = torch.tensor(
+            [
+                [
+                    [0, 0, 9, 9],
+                    [10, 10, 490, 490],
+                    [-1, -1, -1, -1],
+                ],
+                [
+                    [32, 32, 88, 88],
+                    [42, 32, 84, 96],
+                    [-1, -1, -1, -1],
+                ],
+                [
+                    [10, 20, 50, 60],
+                    [10, 20, 500, 600],
+                    [20, 20, 84, 84],
+                ],
+                [
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                ],
+            ]
+        )
+
+        target_cls = torch.tensor(
+            [
+                [0, 1, -1],
+                [0, 0, -1],
+                [0, 0, 1],
+                [-1, -1, -1],
+            ]
+        ).unsqueeze_(-1)
+
+        target_bbox.shape[0]
+        num_classes = 2
+        strides = (8, 16, 32, 64, 128)
+        base_size = 512
+        sizes: Tuple[Tuple[int, int], ...] = tuple((base_size // stride,) * 2 for stride in strides)  # type: ignore
+
+        criterion = FCOSLoss(strides, num_classes, radius=1.5)
+        pred_cls, pred_reg, pred_centerness = criterion.create_targets(target_bbox, target_cls, sizes)
+        pred_cls = [torch.logit(x, 1e-4) for x in pred_cls]
+        pred_centerness = [torch.logit(x.clamp_(min=0, max=1), 1e-4) for x in pred_centerness]
+        pred_reg = [x.clamp_min(0) for x in pred_reg]
+
+        output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, list(strides), from_logits=True)
+        criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
+
+    def test_batch_leakage(self):
+        target_bbox = torch.tensor(
+            [
+                [
+                    [0, 0, 9, 9],
+                    [3, 4, 8, 6],
+                    [-1, -1, -1, -1],
+                ],
+                [
+                    [32, 32, 88, 88],
+                    [-1, -1, -1, -1],
+                    [-1, -1, -1, -1],
+                ],
+                [
+                    [-1, -1, -1, -1],
+                    [3, 4, 8, 6],
+                    [-1, -1, -1, -1],
+                ],
+            ]
+        ).float()
+
+        target_cls = torch.tensor(
+            [
+                [0, 1, -1],
+                [0, -1, -1],
+                [0, 1, -1],
+            ]
+        ).unsqueeze_(-1)
+
+        target_bbox[0, ...] = float("nan")
+
+        batch_size = target_bbox.shape[0]
+        num_classes = 2
+        strides = (8, 16, 32, 64, 128)
+        base_size = 512
+        sizes = [(base_size // stride,) * 2 for stride in strides]
+
+        pred_cls = [torch.rand(batch_size, num_classes, *size, requires_grad=True) for size in sizes]
+        pred_reg = [torch.rand(batch_size, 4, *size, requires_grad=True).mul(512).round() for size in sizes]
+        pred_centerness = [torch.rand(batch_size, 1, *size, requires_grad=True) for size in sizes]
+
+        for l in pred_reg:
+            l[0] = float("nan")
+
+        criterion = FCOSLoss(strides, num_classes)
+        cls_loss, reg_loss, centerness_loss = criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
+
+        assert isinstance(cls_loss, Tensor)
+        assert isinstance(reg_loss, Tensor)
+        assert isinstance(centerness_loss, Tensor)
+
+        assert cls_loss.numel() == 1
+        assert reg_loss.numel() == 1
+        assert centerness_loss.numel() == 1
+
+        loss = cls_loss + reg_loss + centerness_loss
+        assert not loss.isnan().any()
+        loss.backward()
+
+    # Set this to a directory to write out some sample images from test cases
+    # DEST: Optional[str] = None
+    DEST: Optional[str] = "/home/tidal"
+
+    def save(self, path, result):
+        import matplotlib.pyplot as plt
+
+        plt.imsave(path, result.permute(1, 2, 0).cpu().numpy())
+
+    def blend_and_save(self, path, src, dest):
+        src = apply_colormap(src)[..., :3, :, :]
+        src = F.interpolate(src, dest.shape[-2:])
+        _ = alpha_blend(src, dest)[0].squeeze_(0)
+        self.save(path, _)
+
+    @pytest.mark.parametrize(
+        "center_radius",
+        [
+            pytest.param(None),
+            pytest.param(1),
+            pytest.param(3),
+            pytest.param(20),
+        ],
+    )
+    def test_save_output(self, center_radius, tmp_path):
+        image_size = 512
+        num_classes = 2
+        target_bbox = torch.tensor(
+            [
+                [140, 140, 144, 144],
+                [10, 10, 128, 128],
+                [32, 64, 128, 256],
+                [250, 10, 250 + 31, 10 + 19],
+                [256, 256, 400, 512],
+            ]
+        )
+        img = torch.zeros(1, image_size, image_size)
+        target_cls = torch.tensor([1, 0, 1, 1, 0]).unsqueeze_(-1)
+
+        strides = (8, 16, 32, 64, 128)
+        sizes: Tuple[Tuple[int, int]] = tuple((image_size // stride,) * 2 for stride in strides)  # type: ignore
+
+        criterion = FCOSLoss(strides, num_classes, radius=center_radius, cls_smoothing=0.5)
+        targets = criterion.create_targets(target_bbox.unsqueeze(0), target_cls.unsqueeze(0), sizes)
+        cls_targets = [t.cls.squeeze(0) for t in targets]
+        reg_targets = [t.reg.squeeze(0) for t in targets]
+        centerness_targets = [t.centerness.squeeze(0) for t in targets]
+
+        if center_radius is None:
+            assert False
 
         reg_targets = [torch.linalg.norm(x.float().clamp_min(0), dim=-3, keepdim=True) for x in reg_targets]
         reg_targets = [x.div(x.amax(dim=(-1, -2, -3), keepdim=True).clamp_min_(1)) for x in reg_targets]
@@ -474,10 +609,10 @@ class TestFCOSLoss:
         sizes: Tuple[Tuple[int, int], ...] = tuple((base_size // stride,) * 2 for stride in strides)  # type: ignore
 
         criterion = FCOSLoss(strides, num_classes, radius=1.5)
-        pred_cls, pred_reg, pred_centerness = criterion.create_targets(target_bbox, target_cls, sizes)
-        pred_cls = [torch.logit(x, 1e-4) for x in pred_cls]
-        pred_centerness = [torch.logit(x.clamp_(min=0, max=1), 1e-4) for x in pred_centerness]
-        pred_reg = [x.clamp_min(0) for x in pred_reg]
+        target = criterion.create_targets(target_bbox, target_cls, sizes)
+        pred_cls = [torch.logit(x.cls, 1e-4) for x in target]
+        pred_centerness = [torch.logit(x.centerness.clamp_(min=0, max=1), 1e-4) for x in target]
+        pred_reg = [x.reg.clamp_min(0) for x in target]
 
         output = FCOSDecoder.postprocess(pred_cls, pred_reg, pred_centerness, list(strides), from_logits=True)
-        criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)
+        loss = criterion(pred_cls, pred_reg, pred_centerness, target_bbox, target_cls)

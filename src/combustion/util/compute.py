@@ -1,9 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Union
+from typing import Union, Optional
 
 from torch import Tensor
+
+def slice_along_dim(x: Tensor, dim: int, start: Optional[int]=None, end: Optional[int] = None, step: Optional[int] = None):
+    if dim < 0:
+        dim = dim + x.ndim
+    slices = [slice(0, None) if i != dim else slice(start, end, step) for i in range(x.ndim)]
+    return x[slices]
 
 
 def percent_change(old: Union[Tensor, float], new: Union[Tensor, float]) -> Union[Tensor, float]:

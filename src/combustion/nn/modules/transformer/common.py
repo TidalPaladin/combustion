@@ -3,10 +3,11 @@
 
 from copy import deepcopy
 from math import log, pi
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Type, Any, Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch import Tensor
 
 
@@ -117,29 +118,49 @@ class MLP(nn.Module):
         dropout: float = 0,
         act: nn.Module = nn.ReLU(),
         se_ratio: Optional[int] = None,
+        num_hidden_layers: int = 1,
+        norm_layer: Any = nn.Identity,
     ):
         super().__init__()
         self.d_out = d_out = d_out or d
         self.d_in = d
-        self.l1 = nn.Linear(d, d_hidden)
-        self.d1 = nn.Dropout(dropout)
-        self.l2 = nn.Linear(d_hidden, d_out)
-        self.d2 = nn.Dropout(dropout)
-        self.act = deepcopy(act)
 
-        if se_ratio:
-            self.se = SqueezeExcite(d_hidden, d_hidden // se_ratio, act=deepcopy(act))
-        else:
-            self.se = None
+        self.input = nn.Sequential(
+            nn.Linear(d, d_hidden),
+            norm_layer(d_hidden),
+            nn.Dropout(dropout),
+            deepcopy(act),
+        )
+
+        self.hidden_layers = nn.ModuleList()
+        for _ in range(num_hidden_layers-1):
+            hidden_layer = nn.Sequential(
+                nn.Linear(d_hidden, d_hidden),
+                norm_layer(d_hidden),
+                nn.Dropout(dropout),
+                deepcopy(act),
+            )
+            self.hidden_layers.append(hidden_layer)
+
+        self.output = nn.Linear(d_hidden, d_out)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_normal_(p)
+            else:
+                nn.init.constant_(p, 0)
+
+    def init_binary_prior(self, p: float, eps: Optional[float] = None) -> None:
+        logit_bias = float(torch.tensor(p).logit(eps).item())
+        nn.init.constant_(self.output.bias, logit_bias)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = self.l1(x)
-        x = self.act(x)
-        if self.se is not None:
-            x = self.se(x)
-        x = self.d1(x)
-        x = self.l2(x)
-        x = self.d2(x)
+        x = self.input(x)
+        for hidden_layer in self.hidden_layers:
+            x = hidden_layer(x)
+        x = self.output(x)
         return x
 
 
@@ -213,3 +234,26 @@ class FourierEncoder(nn.Module):
         requires_grad = requires_grad or (proto is not None and proto.requires_grad)
         grid.requires_grad = requires_grad
         return grid
+
+
+class Patch(nn.Module):
+
+    def __init__(self, patch_size: int):
+        self.patch_size = patch_size
+
+    def forward(self, x: Tensor) -> Tensor:
+        N, C, H, W = x.shape
+        x = x.view(N, C, -1).movedim(-1, 0)
+        return x
+
+
+class UnPatch(nn.Module):
+
+    def __init__(self, size: Tuple[int, int]):
+        self.size = size
+
+    def forward(self, x: Tensor) -> Tensor:
+        L, N, D = x.shape
+        H, W = self.size
+        x = x.movedim(0, -1).view(N, -1, H, W)
+        return x

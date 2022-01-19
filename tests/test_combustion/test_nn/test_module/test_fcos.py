@@ -163,7 +163,10 @@ class TestFCOSDecoder(TorchScriptTestMixin):
         sizes: Tuple[Tuple[int, int]] = tuple((image_size // stride,) * 2 for stride in strides)  # type: ignore
 
         criterion = FCOSLoss(strides, num_classes, radius=center_radius)
-        cls_targets, reg_targets, centerness_targets = criterion.create_targets(target_bbox, target_cls, sizes)
+        targets = criterion.create_targets(target_bbox, target_cls, sizes)
+        cls_targets = [t.cls for t in targets]
+        reg_targets = [t.reg for t in targets]
+        centerness_targets = [t.centerness for t in targets]
 
         final_pred = model_type.postprocess(cls_targets, reg_targets, centerness_targets, strides, threshold=0.5)
         final_boxes = final_pred[..., :4]
@@ -256,3 +259,50 @@ class TestFCOSDecoder(TorchScriptTestMixin):
     def test_script(self, model):
         scripted = torch.jit.script(model)
         assert isinstance(scripted, nn.Module)
+
+
+    def test_postprocess_no_batch_leakage(self, model_type):
+        num_classes = 2
+        strides = [8, 16, 32, 64, 128]
+        base_size = 512
+        sizes = [(base_size // stride,) * 2 for stride in strides]
+
+        pred_cls = [torch.ones(2, num_classes, *size) for size in sizes]
+        pred_reg = [torch.ones(2, 4, *size).mul(10).round() for size in sizes]
+        pred_centerness = [torch.ones(2, 1, *size).mul(0.5) for size in sizes]
+
+        for p in pred_reg:
+            p[0] = float("inf")
+        boxes = model_type.postprocess(pred_cls, pred_reg, pred_centerness, strides, use_raw_score=True)
+        assert not boxes[1:].isnan().any()
+        assert isinstance(boxes, Tensor)
+
+        padding = (boxes == -1).all(dim=-1)
+        assert (~padding)[0].sum() == 1
+        assert (~padding)[1:].sum() > 1
+
+    def test_postprocess_no_batch_leakage2(self, model_type):
+        num_classes = 2
+        strides = [8, 16, 32, 64, 128]
+        base_size = 512
+        sizes = [(base_size // stride,) * 2 for stride in strides]
+
+        pred_cls = [torch.rand(2, num_classes, *size) for size in sizes]
+        pred_reg = [torch.rand(2, 4, *size).mul(10) for size in sizes]
+        pred_centerness = [torch.rand(2, 1, *size) for size in sizes]
+
+        batched_result = model_type.postprocess(pred_cls, pred_reg, pred_centerness, strides, use_raw_score=True)
+
+        pred_cls1 = [x[0, None] for x in pred_cls]
+        pred_reg1 = [x[0, None] for x in pred_reg]
+        pred_centerness1 = [x[0, None] for x in pred_centerness]
+        unbatched_1 = model_type.postprocess(pred_cls1, pred_reg1, pred_centerness1, strides, use_raw_score=True)
+
+        pred_cls2 = [x[1, None] for x in pred_cls]
+        pred_reg2 = [x[1, None] for x in pred_reg]
+        pred_centerness2 = [x[1, None] for x in pred_centerness]
+        unbatched_2 = model_type.postprocess(pred_cls2, pred_reg2, pred_centerness2, strides, use_raw_score=True)
+
+        assert torch.allclose(batched_result[0], unbatched_1[0])
+        assert torch.allclose(batched_result[1], unbatched_2[0])
+

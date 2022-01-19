@@ -52,7 +52,7 @@ def focal_loss(
             If given, output loss will be divided by the number of positive elements
             in ``target``.
     """
-    positive_indices = target == 1
+    positive_indices = target > 0
 
     with torch.no_grad():
         target = target.clone().detach()
@@ -123,7 +123,7 @@ def focal_loss_with_logits(
             in ``target``.
     """
 
-    positive_indices = target == 1
+    positive_indices = target > 0
 
     # apply label smoothing, clamping true labels between x, 1-x
     if label_smoothing is not None:
@@ -146,9 +146,10 @@ def focal_loss_with_logits(
     neg_logits = input.neg().float()
 
     if gamma != 0:
-        _ = torch.tensor([0.0], device=neg_logits.device).type_as(neg_logits)
-        _ = gamma * (target.floor() * neg_logits - torch.logaddexp(neg_logits, _))
-        focal_term = torch.exp(_)
+        #_ = torch.tensor([0.0], device=neg_logits.device).type_as(neg_logits)
+        #_ = gamma * (target.floor() * neg_logits - torch.logaddexp(neg_logits, _))
+        #focal_term = torch.exp(_)
+        focal_term = (target - input.sigmoid()).abs().pow(gamma)
         loss = focal_term * ce_loss
     else:
         loss = ce_loss

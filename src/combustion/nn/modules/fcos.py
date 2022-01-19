@@ -5,6 +5,7 @@
 from abc import ABC, abstractstaticmethod
 from typing import Callable, List, Optional, Tuple
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,8 +30,16 @@ class BaseFCOSDecoder(nn.Module, ABC):
         num_groups: int = 32,
         gn_epsilon: float = 1e-5,
         cls_prior: float = 0.01,
+        reg_prior: float = 2,
+        centerness_prior: float = 0.1,
+        dropout: float = 0,
     ):
         super().__init__()
+
+        cls_bias_value = float(torch.tensor(cls_prior).logit().item())
+        centerness_bias_value = float(torch.tensor(centerness_prior).logit().item())
+        reg_bias_value = math.log(reg_prior)
+
         self.cls_head = SharedDecoder2d(
             in_channels,
             num_classes,
@@ -41,31 +50,51 @@ class BaseFCOSDecoder(nn.Module, ABC):
             final_activation=nn.Identity(),
             num_groups=num_groups,
             gn_epsilon=gn_epsilon,
+            bias=cls_bias_value,
+            dropout=dropout,
         )
-
         self.reg_head = SharedDecoder2d(
             in_channels,
-            num_regressions + 1,
+            num_regressions,
             num_convs,
-            scaled=False,
+            scaled=True,
             strides=strides,
             activation=activation,
             final_activation=nn.Identity(),
             num_groups=num_groups,
             gn_epsilon=gn_epsilon,
+            weight=0.05,
+            bias=reg_bias_value,
+            log_scale=True,
+            dropout=dropout,
         )
+        self.centerness_head = SharedDecoder2d(
+            in_channels,
+            1,
+            num_convs,
+            strides=strides,
+            activation=activation,
+            final_activation=nn.Identity(),
+            num_groups=num_groups,
+            gn_epsilon=gn_epsilon,
+            bias=centerness_bias_value,
+            dropout=dropout,
+        )
+
         self.reg_activation = reg_activation
         self.strides = strides
 
-        bias_value = float(torch.tensor(cls_prior).logit().item())
-        bias: Tensor = self.cls_head.final_conv_pw.bias  # type: ignore
-        torch.nn.init.constant_(bias, bias_value)
+        # detection head bias
+
+        ## regression head bias
+        #reg_bias = nn.Parameter(torch.tensor([centerness_prior] + [reg_bias]*4, dtype=torch.float))
+        #self.reg_head.final_conv_pw.bias = reg_bias
 
     def forward(self, fpn: Tuple[Tensor]) -> Tuple[List[Tensor], List[Tensor], List[Tensor]]:
         cls = self.cls_head(fpn)
-        _ = self.reg_head(fpn)
-        centerness = [layer[..., 0:1, :, :] for layer in _]
-        reg = [self.reg_activation(layer[..., 1:, :, :] * s) for s, layer in zip(self.strides, _)]
+        reg = self.reg_head(fpn)
+        centerness = self.centerness_head(fpn)
+        reg = [self.reg_activation(r) for r in reg]
         return cls, reg, centerness
 
     @abstractstaticmethod
@@ -77,6 +106,7 @@ class BaseFCOSDecoder(nn.Module, ABC):
         heatmap: Tuple[Tensor, ...],
         reduction: Callable[[Tensor, Tensor], Tensor] = torch.max,
         mode: str = "nearest",
+        reduce_channels: bool = True,
     ) -> Tensor:
         r"""Helper function that reduces FCOS FPN heatmaps into a single channel heatmap
         suitable for visualization.
@@ -98,18 +128,20 @@ class BaseFCOSDecoder(nn.Module, ABC):
             result = reduction(current_level, result)
 
         # reduce across channels to a 1 channel heatmap
-        if C != 1:
+        if C != 1 and reduce_channels:
             result = torch.amax(result, dim=1, keepdim=True)
 
         return result
 
 
 def _postprocess_level(
-    stride: int, level_cls: Tensor, level_reg: Tensor, level_centerness: Tensor, threshold: float, from_logits: bool
+    stride: int, level_cls: Tensor, level_reg: Tensor, level_centerness: Tensor, threshold: float, from_logits: bool, log_reg: bool
 ):
     if from_logits:
         level_cls = torch.sigmoid(level_cls)
         level_centerness = torch.sigmoid(level_centerness)
+    if log_reg:
+        level_reg = level_reg.exp()
 
     # scale classifications based on centerness
     scaled_score = (level_cls * level_centerness.expand_as(level_cls)).sqrt_()
@@ -139,8 +171,12 @@ def _postprocess_level(
     return boxes, batch
 
 
-def _apply_nms(
-    final_boxes: Tensor, final_batch_idx: Tensor, nms_threshold: float, num_classes: int
+def apply_nms(
+    final_boxes: Tensor, 
+    final_batch_idx: Tensor, 
+    nms_threshold: float, 
+    num_classes: int,
+    separate_classes: bool = True,
 ) -> Tuple[Tensor, Tensor]:
     coords = final_boxes[..., :4]
     final_boxes[..., -3, None]
@@ -149,7 +185,10 @@ def _apply_nms(
 
     # torchvision NMS cant do batches of images, but it can separate based on class id
     # create a new "class id" that distinguishes batch and class
-    idx = (final_batch_idx * num_classes + class_id.view_as(final_batch_idx)).view(-1).long()
+    if separate_classes:
+        idx = (final_batch_idx * num_classes + class_id.view_as(final_batch_idx)).view(-1).long()
+    else:
+        idx = (final_batch_idx).view(-1).long()
     keep = batched_nms(coords.float(), scaled_score.view(-1), idx, nms_threshold)
     final_boxes = final_boxes[keep, :]
     final_batch_idx = final_batch_idx[keep, :]
@@ -226,8 +265,11 @@ class FCOSDecoder(BaseFCOSDecoder):
         activation: nn.Module = nn.SiLU(),
         num_groups: int = 32,
         gn_epsilon: float = 1e-5,
+        cls_prior: float = 0.01,
+        reg_prior: float = 2,
+        centerness_prior: float = 0.1,
+        dropout: float = 0,
     ):
-
         super().__init__(
             in_channels,
             num_classes,
@@ -238,10 +280,13 @@ class FCOSDecoder(BaseFCOSDecoder):
             nn.ReLU(),
             num_groups,
             gn_epsilon,
+            cls_prior,
+            reg_prior,
+            centerness_prior,
+            dropout,
         )
 
     @staticmethod
-    @torch.jit.script
     def postprocess(
         cls: List[Tensor],  # type: ignore
         reg: List[Tensor],
@@ -254,6 +299,8 @@ class FCOSDecoder(BaseFCOSDecoder):
         use_raw_score: bool = False,
         max_boxes: Optional[int] = None,
         pre_nms_max_boxes: Optional[int] = 1000,
+        log_reg: bool = False,
+        separate_classes: bool = True,
     ) -> Tensor:
         r"""Postprocesses detection, regression, and centerness predictions into a set
         of anchor boxes.
@@ -319,7 +366,7 @@ class FCOSDecoder(BaseFCOSDecoder):
 
         # iterate over each FPN level
         for stride, level_cls, level_reg, level_centerness in zip(strides, cls, reg, centerness):
-            bbox, batch = _postprocess_level(stride, level_cls, level_reg, level_centerness, threshold, from_logits)
+            bbox, batch = _postprocess_level(stride, level_cls, level_reg, level_centerness, threshold, from_logits, log_reg)
             boxes.append(bbox)
             batch_idx.append(batch)
 
@@ -347,7 +394,7 @@ class FCOSDecoder(BaseFCOSDecoder):
 
         # apply NMS to final_boxes
         if nms_threshold is not None:
-            final_boxes, final_batch_idx = _apply_nms(final_boxes, final_batch_idx, nms_threshold, num_classes)
+            final_boxes, final_batch_idx = apply_nms(final_boxes, final_batch_idx, nms_threshold, num_classes, separate_classes)
 
         # create final box using raw or centerness adjusted score as specified
         coords, raw_score, scaled_score, class_id = final_boxes.split((4, 1, 1, 1), dim=-1)

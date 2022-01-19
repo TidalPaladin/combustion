@@ -11,7 +11,6 @@ from .assertions import (
     assert_zero_grad,
 )
 from .decorators import cuda_or_skip
-from .lightning import LightningModuleTest
 from .mixins import TorchScriptTestMixin, TorchScriptTraceTestMixin
 
 

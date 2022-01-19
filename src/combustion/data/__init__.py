@@ -3,6 +3,7 @@
 
 from .serialize import SerializeMixin, TorchDataset, save_torch
 from .window import DenseWindow, SparseWindow, Window
+from .sample import MixedDataset
 
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "Window",
     "save_torch",
     "TorchDataset",
+    "MixedDataset",
 ]
