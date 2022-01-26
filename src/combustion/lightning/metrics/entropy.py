@@ -41,6 +41,7 @@ class Entropy(AverageMeter):
         from_logits: bool = True,
     ):
         super().__init__(
+            "error",
             compute_on_step,
             dist_sync_on_step,
             process_group,

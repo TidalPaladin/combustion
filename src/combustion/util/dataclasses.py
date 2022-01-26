@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from dataclasses import dataclass, replace, is_dataclass, asdict
 from abc import abstractmethod, abstractclassmethod, abstractproperty
-from typing import TypeVar, Iterable, Generic, Iterator, cast, List, Dict, Any, Union, Optional, Callable, ClassVar, Mapping, Type, Tuple
+from typing import TypeVar, Iterable, Generic, Iterator, cast, List, Dict, Any, Union, Optional, Callable, ClassVar, Mapping, Type, Tuple, Sequence
 from itertools import chain
 from functools import wraps
 from .compute import slice_along_dim
@@ -107,6 +107,12 @@ class TensorDataclass:
     def apply(self: T, dtype: Union[type, Any, Tuple[Union[type, Any]]], func: Callable, *args, **kwargs) -> T:
         return apply_to_collection(self, dtype, func, *args, **kwargs)
 
+    def detach(self: T) -> T:
+        return apply_to_collection(self, torch.Tensor, lambda x: x.detach())
+
+    def clone(self: T) -> T:
+        return apply_to_collection(self, torch.Tensor, lambda x: x.clone())
+
     def cpu(self: T) -> T:
         return move_data_to_device(self, "cpu")
 
@@ -125,6 +131,10 @@ class BatchMixin:
     def __len__(self) -> int:
         ...
 
+    @abstractclassmethod
+    def from_unbatched(cls: U, examples: Iterable[U]) -> U: 
+        ...
+
     def __getitem__(self: U, idx: int) -> U:
         if not is_dataclass(self):
             raise NotImplementedError("BatchMixin.__getitem__ only supports dataclasses, please override __getitem__.")
@@ -136,15 +146,12 @@ class BatchMixin:
             raise AttributeError("Please define `__slice_fields__` to use `BatchMixin.__getitem__`")
 
         kwargs = {
-            name: val
+            name: val[idx]
             for name in self.__slice_fields__
-            if isinstance((val := getattr(self, name)), Iterable)
+            if isinstance((val := getattr(self, name)), (Sequence, Tensor))
         }
-        return replace(self, **kwargs)
-
-    @abstractclassmethod
-    def from_unbatched(cls: U, examples: Iterable[U]) -> U: 
-        ...
+        result = replace(self, **kwargs)
+        return result
 
     def __iter__(self: U) -> Iterator[U]:
         for pos in range(len(self)):
