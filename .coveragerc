@@ -7,6 +7,7 @@ exclude_lines =
 ignore_errors = True
 omit =
     tests/*
+    combustion/points/*
 
 [xml]
 output=coverage.xml
