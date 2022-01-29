@@ -8,7 +8,7 @@ import torch
 from torch import Tensor
 
 from combustion.util.compute import slice_along_dim
-from combustion.util.dataclasses import BatchMixin
+from combustion.util.dataclasses import BatchMixin, TensorDataclass
 
 
 @pytest.mark.parametrize(
@@ -28,6 +28,29 @@ def test_slice_along_dim(slice_val, dim, slice_fn):
     expected = slice_fn(x, slice_val)
     actual = slice_along_dim(x, dim, slice_val.start, slice_val.stop, slice_val.step)
     assert torch.allclose(expected, actual)
+
+
+@dataclass
+class BatchedDC(BatchMixin):
+    __slice_fields__ = ["img"]
+    img: Tensor
+
+    @classmethod
+    def from_unbatched(cls):
+        pass
+
+    @property
+    def is_batched(self):
+        return self.img.ndim == 4
+
+    def __len__(self):
+        assert self.is_batched
+        return self.img.shape[0]
+
+
+@dataclass
+class TensorDC(TensorDataclass):
+    img: Tensor
 
 
 class TestBatchMixin:
@@ -108,30 +131,39 @@ class TestBatchMixin:
 
     def test_getitem(self):
         torch.random.manual_seed(42)
-
-        @dataclass
-        class SimpleDC(BatchMixin):
-            __slice_fields__ = ["img"]
-            img: Tensor
-
-            @classmethod
-            def from_unbatched(cls):
-                pass
-
-            @property
-            def is_batched(self):
-                return self.img.ndim == 4
-
-            def __len__(self):
-                assert self.is_batched
-                return self.img.shape[0]
-
         B = 2
         img = torch.rand(B, 3, 32, 32)
-        dc = SimpleDC(img)
+        dc = BatchedDC(img)
 
         for i in range(B):
             sliced = dc[i]
-            assert isinstance(sliced, SimpleDC)
+            assert isinstance(sliced, BatchedDC)
             assert torch.allclose(sliced.img, img[i])
             assert not sliced.is_batched
+
+    def test_detach(self):
+        torch.random.manual_seed(42)
+        B = 2
+        img = torch.rand(B, 3, 32, 32, requires_grad=True)
+        dc = TensorDC(img)
+        out = dc.detach()
+        assert isinstance(out, TensorDC)
+        assert not out.img.requires_grad
+
+    def test_cpu(self):
+        torch.random.manual_seed(42)
+        B = 2
+        img = torch.rand(B, 3, 32, 32, requires_grad=True)
+        dc = TensorDC(img)
+        out = dc.cpu()
+        assert isinstance(out, TensorDC)
+        assert torch.allclose(out.img, img)
+
+    def test_to(self):
+        torch.random.manual_seed(42)
+        B = 2
+        img = torch.rand(B, 3, 32, 32, requires_grad=True)
+        dc = TensorDC(img)
+        out = dc.to("cpu")
+        assert isinstance(out, TensorDC)
+        assert torch.allclose(out.img, img)

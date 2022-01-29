@@ -102,6 +102,12 @@ class TensorDataclass:
     def cpu(self: T) -> T:
         return move_data_to_device(self, "cpu")
 
+    def to(self: T, *args, **kwargs) -> T:
+        return self.apply(Tensor, Tensor.to, *args, **kwargs)
+
+    def detach(self: T, *args, **kwargs) -> T:
+        return self.apply(Tensor, Tensor.detach, *args, **kwargs)
+
 
 U = TypeVar("U", bound="BatchMixin")
 

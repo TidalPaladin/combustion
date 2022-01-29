@@ -138,7 +138,7 @@ multirun/
 coverage.xml
 .coverage
 
-src/combustion/version.py
+combustion/version.py
 node_modules/
 performer.py
 BinaryMNIST
