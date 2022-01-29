@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from dataclasses import dataclass
+
 import pytest
 import torch
+from torch import Tensor
 
 from combustion.util.compute import slice_along_dim
 from combustion.util.dataclasses import BatchMixin
@@ -102,3 +105,33 @@ class TestBatchMixin:
         result = BatchMixin.unpad(x, value=0)
         assert result.shape == (1, 10, 10)
         assert (result == 1).all()
+
+    def test_getitem(self):
+        torch.random.manual_seed(42)
+
+        @dataclass
+        class SimpleDC(BatchMixin):
+            __slice_fields__ = ["img"]
+            img: Tensor
+
+            @classmethod
+            def from_unbatched(cls):
+                pass
+
+            @property
+            def is_batched(self):
+                return self.img.ndim == 4
+
+            def __len__(self):
+                assert self.is_batched
+                return self.img.shape[0]
+
+        B = 2
+        img = torch.rand(B, 3, 32, 32)
+        dc = SimpleDC(img)
+
+        for i in range(B):
+            sliced = dc[i]
+            assert isinstance(sliced, SimpleDC)
+            assert torch.allclose(sliced.img, img[i])
+            assert not sliced.is_batched

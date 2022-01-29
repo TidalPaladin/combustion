@@ -103,10 +103,10 @@ class TestProjectionMaskFunctional:
         torch.random.manual_seed(42)
         coords = torch.randint(-2 * size, 2 * size + 1, (10000, 3)).float()
         x, y, z = coords[..., 0], coords[..., 1], coords[..., 2]
-        outside_circle = x ** 2 + y ** 2 > size ** 2
+        outside_circle = x**2 + y**2 > size**2
 
         grid_x, grid_y = torch.meshgrid(torch.arange(-size, size + 1), torch.arange(-size, size + 1))
-        expected_within_circle = grid_x ** 2 + grid_y ** 2 <= size ** 2
+        expected_within_circle = grid_x**2 + grid_y**2 <= size**2
 
         coords = coords[~outside_circle]
         mask = projection_mask(coords, 1.0, (2 * size + 1, 2 * size + 1))

@@ -89,10 +89,10 @@ class Anchors(nn.Module):
     ):
         super(Anchors, self).__init__()
         self.levels = levels
-        self.strides = [2 ** x for x in self.levels] if strides is None else strides
+        self.strides = [2**x for x in self.levels] if strides is None else strides
         self.sizes = [2 ** (x + 2) for x in self.levels] if sizes is None else sizes
         self.ratios = torch.tensor([0.5, 1, 2] if ratios is None else ratios)
-        self.scales = torch.tensor([2 ** 0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)] if scales is None else scales)
+        self.scales = torch.tensor([2**0, 2 ** (1.0 / 3.0), 2 ** (2.0 / 3.0)] if scales is None else scales)
 
         # buffer for anchors based on last image shape
         self._buffered_anchors = None
@@ -111,8 +111,8 @@ class Anchors(nn.Module):
             return self._buffered_anchors
 
         image_shape = np.array(image_shape)
-        image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in self.levels]
-        image_shapes = [(image_shape + 2 ** x - 1) // (2 ** x) for x in range(len(self.levels))]
+        image_shapes = [(image_shape + 2**x - 1) // (2**x) for x in self.levels]
+        image_shapes = [(image_shape + 2**x - 1) // (2**x) for x in range(len(self.levels))]
 
         all_anchors = []
 

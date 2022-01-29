@@ -178,7 +178,7 @@ class MatchShapes(nn.Module):
         if shape_override is None:
             for i in range(2, len(target_shape)):
                 biggest_size = 0
-                smallest_size = 2 ** 60
+                smallest_size = 2**60
                 for tensor in tensors:
                     biggest_size = max(tensor.shape[i], biggest_size)
                     smallest_size = min(tensor.shape[i], smallest_size)

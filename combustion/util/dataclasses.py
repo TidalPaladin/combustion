@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from abc import abstractclassmethod, abstractmethod, abstractproperty
+from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from dataclasses import is_dataclass, replace
 from itertools import chain
 from typing import Any, Callable, ClassVar, Dict, Iterable, Iterator, List, Optional, Tuple, TypeVar, Union, cast
@@ -106,7 +106,7 @@ class TensorDataclass:
 U = TypeVar("U", bound="BatchMixin")
 
 
-class BatchMixin:
+class BatchMixin(ABC):
     r"""Mixin for objects that are batched"""
     __slice_fields__: ClassVar[List[str]] = []
 
@@ -128,7 +128,12 @@ class BatchMixin:
         if not len(self.__slice_fields__):
             raise AttributeError("Please define `__slice_fields__` to use `BatchMixin.__getitem__`")
 
-        kwargs = {name: val for name in self.__slice_fields__ if isinstance((val := getattr(self, name)), Iterable)}
+        kwargs = {
+            name: val[idx]  # type: ignore
+            for name in self.__slice_fields__
+            if isinstance((val := getattr(self, name)), (Tensor, Iterable))
+        }
+
         return replace(self, **kwargs)
 
     @abstractclassmethod

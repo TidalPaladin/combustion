@@ -64,7 +64,7 @@ def complete_iou_loss(inputs: Tensor, targets: Tensor, reduction: str = "mean", 
     pred_w, pred_h = pred_size[..., 0], pred_size[..., 1].clamp_min(1e-4)
     target_w, target_h = target_size[..., 0], target_size[..., 1].clamp_min(1e-5)
     _ = torch.atan(target_w / target_h) - torch.atan(pred_w / pred_h)
-    v = 4 / pi ** 2 * _.pow(2)
+    v = 4 / pi**2 * _.pow(2)
 
     # compute alpha, the tradeoff parameter
     alpha = v / ((1 - iou) + v).clamp_min(1e-5)

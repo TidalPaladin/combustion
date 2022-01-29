@@ -61,7 +61,7 @@ class CLAHE:
             if channels == 1:
                 batch_elem = batch_elem.view(height, width)
                 if is_float:
-                    batch_elem = batch_elem.mul(2 ** 16).numpy().astype(np.uint16)
+                    batch_elem = batch_elem.mul(2**16).numpy().astype(np.uint16)
                 assert batch_elem.dtype in [np.uint8, np.uint16]
                 output = self.clahe.apply(batch_elem)
                 if is_float:
@@ -73,7 +73,7 @@ class CLAHE:
                 # RGB -> YUV and extract luminance for CLAHE
                 batch_elem = batch_elem.permute(1, 2, 0)
                 if is_float:
-                    batch_elem = batch_elem.mul(2 ** 16).numpy().astype(np.uint16)
+                    batch_elem = batch_elem.mul(2**16).numpy().astype(np.uint16)
                 batch_elem = cv2.cvtColor(batch_elem, cv2.COLOR_RGB2YUV)  # type: ignore
                 luminance = batch_elem[0, ...]
 
@@ -92,7 +92,7 @@ class CLAHE:
 
             # restore floats to range [0, 1]
             if is_float:
-                output = output.type_as(result).div_(2 ** 16)
+                output = output.type_as(result).div_(2**16)
 
             result[i] = output.type_as(result).view(channels, height, width)
 
