@@ -14,7 +14,7 @@ from .convert import to_8bit
 
 
 try:
-    from kornia.feature import non_maxima_suppression2d
+    from kornia.feature import non_maxima_suppression2d  # type: ignore
 except ImportError:
 
     def non_maxima_suppression2d(*args, **kwargs) -> None:

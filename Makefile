@@ -1,7 +1,7 @@
 .PHONY: docs docker clean clean-venv check ci-test pre-commit quality run style tag-version test venv upload upload-test
 
 PROJECT=combustion
-PY_VER=python3.8
+PY_VER=python3.9
 PY_VER_SHORT=py$(shell echo $(PY_VER) | sed 's/[^0-9]*//g')
 QUALITY_DIRS=src tests setup.py
 CLEAN_DIRS=src tests
@@ -99,6 +99,7 @@ test: $(VENV)/bin/activate-test
 		-rs \
 		--cov=./src \
 		--cov-report=xml \
+		--cov-report=term \
 		./tests/
 
 test-%: $(VENV)/bin/activate-test
@@ -130,5 +131,5 @@ $(VENV)/bin/activate: setup.py requirements.txt
 $(VENV)/bin/activate-%: requirements.%.txt
 	test -d $(VENV) || $(PY_VER) -m venv $(VENV)
 	$(PYTHON) -m pip install -U pip 
-	$(PYTHON) -m pip install -r $<
+	$(PYTHON) -m pip install -Ur $<
 	touch $(VENV)/bin/activate-$*

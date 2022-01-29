@@ -196,8 +196,8 @@ class TestErrorAtUncertainty:
             metric = metric.cuda()
             true = true.cuda()
 
-        entropy, err, has_items = metric(probs, true)
-        fig = metric.plot(entropy[has_items], err[has_items])  # type: ignore
+        entropy, err, totals = metric(probs, true)
+        fig = metric.plot(entropy[totals.bool()], err[totals.bool()])  # type: ignore
         dest = Path("/home/tidal/test_imgs")
         if dest.is_dir():
             dest = Path(dest, "TestUCE")
@@ -215,8 +215,8 @@ class TestErrorAtUncertainty:
             metric = metric.cuda()
             true = true.cuda()
 
-        entropy, err, has_items = metric(probs, true)
-        fig = metric.plot(entropy[has_items], err[has_items])  # type: ignore
+        entropy, err, totals = metric(probs, true)
+        fig = metric.plot(entropy[totals.bool()], err[totals.bool()])  # type: ignore
         dest = Path("/home/tidal/test_imgs")
         if dest.is_dir():
             dest = Path(dest, "TestUCE2")
@@ -229,7 +229,7 @@ class TestErrorAtUncertainty:
         true = torch.randint(0, N, (1000,))
 
         metric = ErrorAtUncertainty(num_bins=100, from_logits=True, classwise=False, num_classes=N)
-        entropy, err, has_items = metric(probs, true)  # type: ignore
-        entropy = entropy[has_items]
+        entropy, err, totals = metric(probs, true)  # type: ignore
+        entropy = entropy[totals.bool()]
         sorted_entropy = entropy.sort(descending=True).values
         assert (entropy == sorted_entropy).all()

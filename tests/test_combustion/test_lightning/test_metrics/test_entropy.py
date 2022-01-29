@@ -14,7 +14,6 @@ class TestEntropy:
             pytest.param(1.0, False, 0.0),
             pytest.param(0.5, False, 1.0),
             pytest.param(0.0, True, 1.0),
-            pytest.param(0.0, True, 1.0),
         ],
     )
     def test_binary_entropy_basics(self, inp, logits, out, cuda):
