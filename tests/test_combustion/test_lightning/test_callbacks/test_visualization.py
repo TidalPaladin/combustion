@@ -158,7 +158,7 @@ class TestVisualizeCallback:
                 F.interpolate(i, scale_factor=s, mode=resize_mode) if s < 1 else i for i, s in zip(img, scale_factor)
             ]
 
-        if (colormap := callback.colormap) :
+        if colormap := callback.colormap:
             if isinstance(colormap, str):
                 colormap = [colormap] * len(img)
             img = [apply_colormap(i, cmap)[..., :3, :, :] if cmap is not None else i for cmap, i in zip(colormap, img)]
@@ -377,7 +377,7 @@ class TestKeypointVisualizeCallback(TestVisualizeCallback):
             needs_resize = [i.shape[-2] > H_max or i.shape[-1] > W_max for i in img]
             img = [F.interpolate(i, target, mode=resize_mode) if resize else i for i, resize in zip(img, needs_resize)]
 
-        if (colormap := callback.colormap) :
+        if colormap := callback.colormap:
             if isinstance(colormap, str):
                 colormap = [colormap] * len(img)
             img = [apply_colormap(i, cmap)[..., :3, :, :] if cmap is not None else i for cmap, i in zip(colormap, img)]
@@ -476,7 +476,7 @@ class TestBlendVisualizeCallback(TestVisualizeCallback):
                 ]
 
         for pos in range(2):
-            if (colormap := callback.colormap[pos]) :
+            if colormap := callback.colormap[pos]:
                 if isinstance(colormap, str):
                     colormap = [colormap] * len(img[pos])
                 img[pos] = [

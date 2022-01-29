@@ -9,6 +9,9 @@ from combustion.testing import cuda_or_skip
 from combustion.vision import PointsToAnchors
 
 
+pytestmark = pytest.mark.skip()
+
+
 @pytest.fixture(params=[None, 1, 2])
 def batch_size(request):
     return request.param

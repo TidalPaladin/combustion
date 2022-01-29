@@ -23,7 +23,7 @@ jobs:
     check_code_quality:
         working_directory: ~/combustion
         docker:
-            - image: circleci/python:3.8
+            - image: circleci/python:3.9
         steps:
             - checkout
             - run: 
@@ -34,7 +34,7 @@ jobs:
     run_tests:
         working_directory: ~/combustion
         docker:
-            - image: circleci/python:3.8
+            - image: circleci/python:3.9
         steps:
             - checkout
             - run: 

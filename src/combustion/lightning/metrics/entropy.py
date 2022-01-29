@@ -6,12 +6,15 @@ from typing import Any, Callable, Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from torchmetrics import AverageMeter
+from torchmetrics import MeanMetric as AverageMeter
 
 
 class Entropy(AverageMeter):
-    r"""Computes categorical or binary entropy over an input.
-    Inputs are expected to be unnormalized logits (no Sigmoid/Softmax applied).
+    r"""Computes normalized categorical or binary entropy over an input.
+
+    .. note:
+        Although this metric supports inputs as logits or normalized probabilities, the computation
+        will likely be more accurate when using logits as input.
 
     Args:
         dim:
@@ -33,10 +36,11 @@ class Entropy(AverageMeter):
             will be used to perform the allgather
 
         from_logits:
-            If ``False``, expect ``x`` to contain probabilities. Otherwise, ``x`` should contain logits.
+            If ``True``, assume inputs will be unnormalized logits. Otherwise, assume inputs
+            are normalized probabilities.
 
-        eps: float
-            Numerical stabilizer applied to :math:`\log(p)` when ``from_logits=False``.
+        eps:
+            Numerical stabilizer for non-logit inputs
     """
 
     def __init__(
@@ -47,8 +51,10 @@ class Entropy(AverageMeter):
         process_group: Optional[Any] = None,
         dist_sync_fn: Callable = None,
         from_logits: bool = True,
+        eps: float = 1e6,
     ):
         super().__init__(
+            "ignore",
             compute_on_step,
             dist_sync_on_step,
             process_group,
@@ -57,35 +63,39 @@ class Entropy(AverageMeter):
         self.dim = int(dim) if dim is not None else None
         self.num_classes: Optional[int] = None
         self.from_logits = from_logits
+        self.eps = eps
+
+    def log(self, x: Tensor) -> Tensor:
+        return x.log2() if self.bits else x.log()
+
+    def log_(self, x: Tensor) -> Tensor:
+        return x.log2_() if self.bits else x.log_()
 
     def update(self, preds: Tensor) -> None:
         if self.dim is None:
-            entropy = self.compute_binary_entropy(preds, False, self.from_logits)
+            entropy = self.compute_binary_entropy(preds, from_logits=self.from_logits, eps=self.eps)
         else:
-            entropy = self.compute_categorical_entropy(preds, dim=self.dim, inplace=False, from_logits=self.from_logits)
+            entropy = self.compute_categorical_entropy(preds, dim=self.dim, from_logits=self.from_logits, eps=self.eps)
         super().update(entropy)
 
     @staticmethod
-    def compute_binary_entropy(
-        x: Tensor,
-        inplace: bool = True,
-        from_logits: bool = True,
-        eps: float = 1e6,
-    ) -> Tensor:
-        r"""Computes binary entropy pointwise over a tensor.
+    def compute_binary_entropy(x: Tensor, from_logits: bool = True, eps: float = 1e6) -> Tensor:
+        r"""Computes normalized binary entropy pointwise over a tensor. The output is
+        dimensionless (i.e. not in nats or bits) because the output is normalized.
 
         Args:
-            x (:class:`torch.Tensor`):
+            x:
                 Tensor to compute binary entropy over
 
-            inplace:
-                If ``True``, perform the operation in place.
+            dim:
+                Dimension to compute entropy over. Only relevant for categorical entropy.
 
             from_logits:
-                If ``False``, expect ``x`` to contain probabilities. Otherwise, ``x`` should contain logits.
+                If ``True``, assume inputs will be unnormalized logits. Otherwise, assume inputs
+                are normalized probabilities.
 
-            eps: float
-                Numerical stabilizer applied to :math:`\log(p)` when ``from_logits=False``.
+            eps:
+                Numerical stabilizer for non-logit inputs
         """
         if from_logits:
             p = x.sigmoid()
@@ -96,41 +106,36 @@ class Entropy(AverageMeter):
             log_p = x.log().clamp_min(-eps)
             log_p_inv = (1 - x).log().clamp_min(-eps)
 
-        p_inv = 1 - p
+        # 2-class normalization divisor
         with torch.no_grad():
-            C = 2
-            divisor = p.new_tensor(C).log_()
+            divisor = p.new_tensor(2).log_()
 
-        if inplace:
-            return log_p.mul_(p).add_(log_p_inv.mul_(p_inv)).neg_().div_(divisor)
-        else:
-            return log_p.mul(p).add(log_p_inv.mul(p_inv)).neg().div(divisor)
+        p_inv = 1 - p
+        return log_p.mul(p).add(log_p_inv.mul(p_inv)).neg().div(divisor)
 
     @staticmethod
     def compute_categorical_entropy(
         x: Tensor,
         dim: int = -1,
-        inplace: bool = True,
         from_logits: bool = True,
         eps: float = 1e6,
     ) -> Tensor:
-        r"""Computes categorical or binary entropy along a given tensor dimension.
+        r"""Computes normalized categorical entropy along a given tensor dimension. The output is
+        dimensionless (i.e. not in nats or bits) because the output is normalized.
 
         Args:
-            x (:class:`torch.Tensor`):
+            x:
                 Tensor to compute entropy over
 
-            dim (int):
+            dim:
                 Dimension to compute entropy over. Only relevant for categorical entropy.
 
-            inplace:
-                If ``True``, perform the operation in place.
-
             from_logits:
-                If ``False``, expect ``x`` to contain probabilities. Otherwise, ``x`` should contain logits.
+                If ``True``, assume inputs will be unnormalized logits. Otherwise, assume inputs
+                are normalized probabilities.
 
-            eps: float
-                Numerical stabilizer applied to :math:`\log(p)` when ``from_logits=False``.
+            eps:
+                Numerical stabilizer for non-logit inputs
         """
         if from_logits:
             p = x.softmax(dim=dim)
@@ -142,10 +147,8 @@ class Entropy(AverageMeter):
         C = x.shape[dim]
         assert C > 0
 
+        # C-class normalization divisor
         with torch.no_grad():
             divisor = p.new_tensor(C).log_()
 
-        if inplace:
-            return log_p.mul_(p).sum(dim=dim).neg_().div_(divisor)
-        else:
-            return log_p.mul(p).sum(dim=dim).neg().div(divisor)
+        return log_p.mul(p).sum(dim=dim).neg().div(divisor)
