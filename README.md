@@ -4,12 +4,11 @@
 [![Documentation Status](https://readthedocs.org/projects/combustion/badge/?version=latest)](https://combustion.readthedocs.io/en/latest/?badge=latest)
 [![codecov](https://codecov.io/gh/TidalPaladin/combustion/branch/master/graph/badge.svg)](https://codecov.io/gh/TidalPaladin/combustion)
 
-Combustion is a collection of layers/models/helper functions for deep learning.
+Combustion is a collection of layers/helper functions for deep learning.
 
-Combustion is designed with PyTorch in mind, with some emphasis on the following 
-3rd party libraries:
-* PyTorch-Lightning, a high level API for model training
-* Hydra, a library that enables YAML based configuration of hyperparameters
+**NOTE** Highly specialized layers/models are being pruned and will be relocated to separate model-specific repoistories.
+See tag `pre-submodule` to return to a state before this pruning.
+
 
 ## Installation
 
@@ -47,4 +46,3 @@ Multiple make recipes are provided to aid in development:
 
 ## References
 * [PyTorch Lightning](https://github.com/PytorchLightning/pytorch-lightning)
-* [Hydra](https://github.com/facebookresearch/hydra)

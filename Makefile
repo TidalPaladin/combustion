@@ -3,8 +3,8 @@
 PROJECT=combustion
 PY_VER=python3.9
 PY_VER_SHORT=py$(shell echo $(PY_VER) | sed 's/[^0-9]*//g')
-QUALITY_DIRS=src tests setup.py
-CLEAN_DIRS=src tests
+QUALITY_DIRS=combustion tests setup.py
+CLEAN_DIRS=combustion tests
 VENV=$(shell pwd)/venv
 PYTHON=$(VENV)/bin/python
 
@@ -26,8 +26,9 @@ check:
 ci-test: $(VENV)/bin/activate-test
 	$(PYTHON) -m pytest \
 		-rs \
-		--cov=./src \
+		--cov=./combustion \
 		--cov-report=xml \
+		--cov-report=term \
 		-s -v \
 		-m "not ci_skip" \
 		./tests/
@@ -97,7 +98,7 @@ tag-version:
 test: $(VENV)/bin/activate-test
 	$(PYTHON) -m pytest \
 		-rs \
-		--cov=./src \
+		--cov=./combustion \
 		--cov-report=xml \
 		--cov-report=term \
 		./tests/

@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .centernet import CenterNetLoss
 from .ciou import CompleteIoULoss
-from .fcos import FCOSLoss
 from .focal import (
     CategoricalFocalLoss,
     FocalLoss,
@@ -15,7 +13,6 @@ from .focal import (
 
 
 __all__ = [
-    "CenterNetLoss",
     "CategoricalFocalLoss",
     "categorical_focal_loss",
     "CompleteIoULoss",
@@ -23,5 +20,4 @@ __all__ = [
     "focal_loss",
     "FocalLoss",
     "FocalLossWithLogits",
-    "FCOSLoss",
 ]

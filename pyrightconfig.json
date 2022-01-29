@@ -1,6 +1,6 @@
 {
   "include": [
-    "src/combustion",
+    "combustion",
     "tests"
   ],
   "exclude": [
