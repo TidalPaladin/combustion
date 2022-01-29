@@ -31,7 +31,7 @@ To create the package for pypi.
 
 import os
 
-from setuptools import find_packages, setup
+from setuptools import setup
 
 
 TORCH = "torch>=1.6.0,<=2.0.0"
@@ -63,7 +63,7 @@ def write_version_info():
     elif sha != "Unknown":
         version += "+" + sha[:7]
 
-    version_path = os.path.join(cwd, "src", "combustion", "version.py")
+    version_path = os.path.join(cwd, "combustion", "version.py")
     with open(version_path, "w") as f:
         f.write("__version__ = '{}'\n".format(version))
         f.write("git_version = {}\n".format(repr(sha)))
@@ -81,8 +81,6 @@ def install(version):
         keywords="deep learning pytorch",
         license="Apache",
         url="https://github.com/TidalPaladin/combustion",
-        package_dir={"": "src"},
-        packages=find_packages("src"),
         install_requires=[
             "decorator",
             "matplotlib",
