@@ -90,6 +90,7 @@ def install(version):
             "hydra-core>=1.0.0",
             TORCH,
             "packaging",
+            "pandas",
             "pynvml",
         ],
         extras_require=extras,
