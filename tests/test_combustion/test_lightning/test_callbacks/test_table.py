@@ -42,6 +42,12 @@ class TestDistributedDataFrame:
         df = DistributedDataFrame({"col1": rank, "col2": rank}, index=[0])
         assert isinstance(df, pd.DataFrame)
 
+    def test_no_process_group(self):
+        rank = 0
+        df = DistributedDataFrame({"col1": rank, "col2": rank}, index=[0])
+        out = df.gather_all()
+        assert (out == df).all().all()
+
     @pytest.mark.skipif(condition=torch.cuda.device_count() < 2, reason="missing GPUs")
     def test_distributed_gather(self):
         """This test ensures state are properly collected across processes.

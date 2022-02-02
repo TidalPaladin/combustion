@@ -10,6 +10,8 @@ T = TypeVar("T")
 
 
 def all_gather_object(obj: T, group: Optional[Any] = None) -> List[T]:
+    if not dist.is_initialized():
+        return [obj]
     if group is None:
         group = dist.group.WORLD
 
