@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
 
 import pytest
 import torch
 from torch import Tensor
 
+from combustion.testing import cuda_or_skip
 from combustion.util.compute import slice_along_dim
 from combustion.util.dataclasses import BatchMixin, TensorDataclass
 
@@ -30,8 +32,8 @@ def test_slice_along_dim(slice_val, dim, slice_fn):
     assert torch.allclose(expected, actual)
 
 
-@dataclass
-class BatchedDC(BatchMixin):
+@dataclass(repr=False)
+class BatchedDC(TensorDataclass, BatchMixin):
     __slice_fields__ = ["img"]
     img: Tensor
 
@@ -48,9 +50,41 @@ class BatchedDC(BatchMixin):
         return self.img.shape[0]
 
 
-@dataclass
+B = 2
+
+
+@dataclass(repr=False)
+class NestedBatchedDC(TensorDataclass, BatchMixin):
+    tensor: Tensor = torch.rand(B, 3, 32, 32)
+    tensor_list: List[Tensor] = field(default_factory=lambda: [torch.rand(B, 1, 16, 16)] * 2)
+    tensor_tuple: Tuple[Tensor, ...] = field(default_factory=lambda: (torch.rand(B, 2, 32, 16),) * 3)
+    optional_tensor: Optional[Tensor] = None
+    string: str = "".join(["x"] * B)
+    dc: BatchedDC = BatchedDC(torch.rand(B, 3, 32, 32))
+    flat_tensor: Tensor = torch.rand(1).squeeze()
+
+    @classmethod
+    def from_unbatched(cls):
+        pass
+
+    @property
+    def is_batched(self):
+        return self.tensor.ndim == 4
+
+    def __len__(self):
+        assert self.is_batched
+        return self.tensor.shape[0]
+
+
+@dataclass(repr=False)
 class TensorDC(TensorDataclass):
     img: Tensor
+
+
+@dataclass(repr=False)
+class DoubleTensorDC(TensorDataclass):
+    img1: Tensor
+    img2: Tensor
 
 
 class TestBatchMixin:
@@ -167,3 +201,80 @@ class TestBatchMixin:
         out = dc.to("cpu")
         assert isinstance(out, TensorDC)
         assert torch.allclose(out.img, img)
+
+    @cuda_or_skip
+    def test_chain(self):
+        torch.random.manual_seed(42)
+        B = 2
+        img = torch.rand(B, 3, 32, 32, requires_grad=True, device="cuda:0")
+        dc = TensorDC(img)
+        out1 = dc.detach().cpu()
+        out2 = dc.cpu().detach()
+        for out in out1, out2:
+            assert out.img.device == torch.device("cpu")
+            assert not out.img.requires_grad
+
+    def test_device_cpu(self):
+        torch.random.manual_seed(42)
+        B = 2
+        dev1 = dev2 = "cpu"
+        exp = "cpu"
+        img = torch.rand(B, 3, 32, 32, device=dev1)
+        img2 = torch.rand(B, 3, 32, 32, device=dev2)
+
+        dc = DoubleTensorDC(img, img2)
+        assert dc.device == torch.device(exp)
+
+    @cuda_or_skip
+    @pytest.mark.parametrize(
+        "dev1,dev2,exp",
+        [
+            pytest.param("cpu", "cpu", "cpu"),
+            pytest.param("cpu", "cuda:0", None),
+            pytest.param("cuda:0", "cpu", None),
+            pytest.param("cuda:0", "cuda:0", "cuda:0"),
+        ],
+    )
+    def test_device(self, dev1, dev2, exp):
+        torch.random.manual_seed(42)
+        B = 2
+        img = torch.rand(B, 3, 32, 32, device=dev1)
+        img2 = torch.rand(B, 3, 32, 32, device=dev2)
+
+        dc = DoubleTensorDC(img, img2)
+        assert dc.device == (torch.device(exp) if exp is not None else None)
+
+    @pytest.mark.parametrize(
+        "grad1,grad2,exp",
+        [
+            pytest.param(True, True, True),
+            pytest.param(False, False, False),
+            pytest.param(True, False, True),
+            pytest.param(False, True, True),
+        ],
+    )
+    def test_requires_grad(self, grad1, grad2, exp):
+        torch.random.manual_seed(42)
+        B = 2
+        img = torch.rand(B, 3, 32, 32, requires_grad=grad1)
+        img2 = torch.rand(B, 3, 32, 32, requires_grad=grad2)
+
+        dc = DoubleTensorDC(img, img2)
+        assert dc.requires_grad == exp
+
+    def test_getitem_nested(self):
+        dc = NestedBatchedDC()
+
+        for idx in range(len(dc)):
+            expected = NestedBatchedDC(
+                dc.tensor[idx],
+                [t[idx] for t in dc.tensor_list],
+                tuple([t[idx] for t in dc.tensor_tuple]),
+                None,
+                dc.string,
+                dc.dc[idx],
+                dc.flat_tensor,
+            )
+            sliced = dc[idx]
+            assert torch.allclose(sliced.tensor, expected.tensor)
+            # TODO test other fields once apply_to_collections supports dataclasses

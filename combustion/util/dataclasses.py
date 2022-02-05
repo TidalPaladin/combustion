@@ -4,7 +4,7 @@
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from dataclasses import is_dataclass, replace
 from itertools import chain
-from typing import Any, Callable, ClassVar, Dict, Iterable, Iterator, List, Optional, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, ClassVar, Dict, Iterable, Iterator, List, Optional, Set, Tuple, TypeVar, Union, cast
 
 import numpy as np
 import torch
@@ -75,25 +75,28 @@ def unpad(t: Tensor, value: float) -> Tensor:
     return result
 
 
+def pretty_repr(attr: Tensor) -> Union[str, Tuple[int, ...]]:
+    if attr.numel() > 1:
+        return tuple(attr.shape)
+    else:
+        return repr(attr)
+
+
 class TensorDataclass:
     def replace(self: T, *args, **kwargs) -> T:
         return replace(self, *args, **kwargs)
 
     def __repr__(self) -> str:
         assert is_dataclass(self)
-        s = f"{self.__class__.__name__}("
+        repr_dc = apply_to_collection(self, Tensor, pretty_repr)
+        s = f"{self.__class__.__name__}(\n"
         keys = self.__dataclass_fields__.keys()  # type: ignore
+        indent = "    "
         for attr_name in keys:
-            attr = getattr(self, attr_name)
-            if isinstance(attr, Tensor):
-                if attr.numel() > 1:
-                    attr_repr = repr(tuple(attr.shape))
-                else:
-                    attr_repr = repr(attr)
-            else:
-                attr_repr = repr(attr)
-            s += f"{attr_name}={attr_repr}, "
-        s = f"{s[:-2]})"
+            attr = getattr(repr_dc, attr_name)
+            attr_repr = str(attr).replace("\n", f"\n{indent}")
+            s += f"{indent}{attr_name}={attr_repr}, \n"
+        s += ")"
         return s
 
     def apply(self: T, dtype: Union[type, Any, Tuple[Union[type, Any]]], func: Callable, *args, **kwargs) -> T:
@@ -105,11 +108,53 @@ class TensorDataclass:
     def to(self: T, *args, **kwargs) -> T:
         return self.apply(Tensor, Tensor.to, *args, **kwargs)
 
+    def clone(self: T, *args, **kwargs) -> T:
+        return self.apply(Tensor, Tensor.clone, *args, **kwargs)
+
     def detach(self: T, *args, **kwargs) -> T:
         return self.apply(Tensor, Tensor.detach, *args, **kwargs)
 
+    @property
+    def device(self) -> Optional[torch.device]:
+        seen_devices: Set[torch.device] = set()
+
+        def check_device(x: Tensor) -> Tensor:
+            seen_devices.add(x.device)
+            return x
+
+        self.apply(Tensor, check_device)
+        if len(seen_devices) == 1:
+            return next(iter(seen_devices))
+        else:
+            return None
+
+    @property
+    def requires_grad(self) -> bool:
+        requires_grad: Set[bool] = set()
+
+        def check_requires_grad(x: Tensor) -> Tensor:
+            requires_grad.add(x.requires_grad)
+            return x
+
+        self.apply(Tensor, check_requires_grad)
+        return any(requires_grad)
+
 
 U = TypeVar("U", bound="BatchMixin")
+
+
+def slice_attr(attr: Any, idx: int, target_len: int) -> Any:
+    # slice tensors directly
+    if isinstance(attr, BatchMixin) and len(attr) == target_len:
+        return attr[idx]
+    elif isinstance(attr, Tensor) and attr.ndim and len(attr) == target_len:
+        return attr[idx]
+    # slice lists/tuples of tensors itemwise
+    elif isinstance(attr, (list, tuple)):
+        return attr.__class__(slice_attr(x, idx, target_len) for x in attr)
+    # noop
+    else:
+        return attr
 
 
 class BatchMixin(ABC):
@@ -131,16 +176,19 @@ class BatchMixin(ABC):
             raise RuntimeError("Cannot slice an unbatched object")
         if not 0 <= idx < len(self):
             raise IndexError(f"Index {idx} is invalid for object of length {len(self)}")
-        if not len(self.__slice_fields__):
-            raise AttributeError("Please define `__slice_fields__` to use `BatchMixin.__getitem__`")
 
-        kwargs = {
-            name: val[idx]  # type: ignore
-            for name in self.__slice_fields__
-            if isinstance((val := getattr(self, name)), (Tensor, Iterable))
-        }
+        # if __slice_fields__ was specified, only recurse on those fields
+        if len(self.__slice_fields__):
+            kwargs = {
+                name: slice_attr(val, idx, len(self))  # type: ignore
+                for name in self.__slice_fields__
+                if isinstance((val := getattr(self, name)), (Tensor, Iterable))
+            }
+            return replace(self, **kwargs)
 
-        return replace(self, **kwargs)
+        # otherwise apply recursively to all Tensor fields
+        else:
+            return apply_to_collection(self, Tensor, slice_attr, idx=idx, target_len=len(self))
 
     @abstractclassmethod
     def from_unbatched(cls: U, examples: Iterable[U]) -> U:
