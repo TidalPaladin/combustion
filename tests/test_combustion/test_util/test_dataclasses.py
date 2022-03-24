@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
-
 import pytest
 import torch
+from dataclasses import dataclass, field
 from torch import Tensor
+from torch.testing import assert_allclose
+from typing import Optional, Sequence
 
-from combustion.testing import cuda_or_skip
 from combustion.util.compute import slice_along_dim
-from combustion.util.dataclasses import BatchMixin, TensorDataclass
+from combustion.util.dataclasses import BatchMixin, TensorDataclass, trim_padding, sparse_stack, padded_stack, sparse_split, padded_split, max_size, pad
 
 
 @pytest.mark.parametrize(
@@ -33,61 +32,94 @@ def test_slice_along_dim(slice_val, dim, slice_fn):
 
 
 @dataclass(repr=False)
-class BatchedDC(TensorDataclass, BatchMixin):
-    __slice_fields__ = ["img"]
-    img: Tensor
+class DummyDataclass(TensorDataclass, BatchMixin):
+    data: Tensor
+    label: Optional[Tensor] = None
+    sparse_field: Optional[Tensor] = None
+    ragged_field: Optional[Tensor] = None
+    sequence: Sequence[int] = field(default_factory=lambda : [1])
+    other_field: str = "foobar"
 
-    @classmethod
-    def from_unbatched(cls):
-        pass
+    __slice_fields__ = ["data", "label", "sequence", "sparse_field", "ragged_field"]
 
-    @property
-    def is_batched(self):
-        return self.img.ndim == 4
-
-    def __len__(self):
-        assert self.is_batched
-        return self.img.shape[0]
-
-
-B = 2
-
-
-@dataclass(repr=False)
-class NestedBatchedDC(TensorDataclass, BatchMixin):
-    tensor: Tensor = torch.rand(B, 3, 32, 32)
-    tensor_list: List[Tensor] = field(default_factory=lambda: [torch.rand(B, 1, 16, 16)] * 2)
-    tensor_tuple: Tuple[Tensor, ...] = field(default_factory=lambda: (torch.rand(B, 2, 32, 16),) * 3)
-    optional_tensor: Optional[Tensor] = None
-    string: str = "".join(["x"] * B)
-    dc: BatchedDC = BatchedDC(torch.rand(B, 3, 32, 32))
-    flat_tensor: Tensor = torch.rand(1).squeeze()
-
-    @classmethod
-    def from_unbatched(cls):
-        pass
+    def __post_init__(self):
+        self._validate_slice_fields()
+        assert self.sparse_field is None or self.sparse_field.is_sparse
 
     @property
-    def is_batched(self):
-        return self.tensor.ndim == 4
+    def is_batched(self) -> bool:
+        return self.data.ndim == 4
 
-    def __len__(self):
-        assert self.is_batched
-        return self.tensor.shape[0]
-
-
-@dataclass(repr=False)
-class TensorDC(TensorDataclass):
-    img: Tensor
+    @classmethod
+    def from_unbatched(cls, examples) -> "DummyDataclass":
+        ...
 
 
-@dataclass(repr=False)
-class DoubleTensorDC(TensorDataclass):
-    img1: Tensor
-    img2: Tensor
+@pytest.fixture
+def target_factory(padded_coords_factory):
+    def wrapper(
+        batch_size: Optional[int] = None,
+        has_label: bool = False,
+        **kwargs
+    ):
+        coords, _ = padded_coords_factory(batch_size=batch_size, **kwargs)
+        sparse = coords.to_sparse(coords.ndim)
+
+        if batch_size:
+            data = torch.rand(batch_size, 3, 10, 10)
+            label = torch.rand(batch_size, 1) if has_label else None
+            sequence = [1] * batch_size
+        else:
+            data = torch.rand(3, 10, 10)
+            label = torch.rand(1) if has_label else None
+            sequence = [1]
+        return DummyDataclass(data, label, sparse, coords, sequence)
+    return wrapper
 
 
 class TestBatchMixin:
+
+    @pytest.mark.parametrize("has_label", [False, True])
+    def test_repr(self, target_factory, has_label):
+        dc = target_factory(has_label=has_label)
+        s = str(dc)
+        assert isinstance(s, str)
+
+    @pytest.mark.parametrize("has_label", [False, True])
+    @pytest.mark.parametrize("batch_size", [None, 2])
+    @pytest.mark.parametrize("traces", [3, 5])
+    def test_len(self, target_factory, has_label, batch_size, traces):
+        dc = target_factory(batch_size, has_label, traces=traces)
+        assert len(dc) == batch_size if batch_size else traces
+
+    @pytest.mark.parametrize("has_label", [False, True])
+    def test_stack(self, target_factory, has_label):
+        dc1 = target_factory(has_label=has_label)
+        dc2 = target_factory(has_label=has_label)
+        out: BatchMixin = torch.stack([dc1, dc2]) # type: ignore
+        assert out.is_batched
+        assert len(out) == 2
+
+    @pytest.mark.parametrize("has_label", [False, True])
+    def test_collate(self, target_factory, has_label):
+        dc1 = target_factory(has_label=has_label, traces=5)
+        dc2 = target_factory(has_label=has_label, traces=10)
+        out: BatchMixin = DummyDataclass.collate([dc1, dc2])
+        assert out.is_batched
+        assert len(out) == 2
+        out1 = out[0]
+        out2 = out[1]
+
+        assert out1.sequence == dc1.sequence
+        assert_allclose(out1.data, dc1.data)
+        assert_allclose(out1.ragged_field, dc1.ragged_field)
+        assert_allclose(out1.sparse_field, dc1.sparse_field)
+
+        assert out2.sequence == dc2.sequence
+        assert_allclose(out2.data, dc2.data)
+        assert_allclose(out2.ragged_field, dc2.ragged_field)
+        assert_allclose(out2.sparse_field, dc2.sparse_field)
+
     @pytest.mark.parametrize(
         "ndim,lengths,dim",
         [
@@ -106,7 +138,7 @@ class TestBatchMixin:
         tensors = [torch.rand(*size) for size in sizes]
         max_tensor = tensors[longest_index]
 
-        result = BatchMixin.padded_stack(tensors, value=-1, dim=0)
+        result = padded_stack(tensors, pad_value=-1, dim=0)
         assert result.shape
 
         assert result.ndim == ndim + 1
@@ -119,8 +151,8 @@ class TestBatchMixin:
         x2 = torch.rand(3, 18, 19)
 
         expected = [3, 32, 19]
-        p1 = BatchMixin.pad(x1, expected)
-        p2 = BatchMixin.pad(x2, expected)
+        p1 = pad(x1, expected)
+        p2 = pad(x2, expected)
         expected = tuple(expected)
 
         assert p1.shape == expected
@@ -138,8 +170,8 @@ class TestBatchMixin:
         x2 = torch.empty(0, 5)
 
         expected = [0, 5]
-        p1 = BatchMixin.pad(x1, expected)
-        p2 = BatchMixin.pad(x2, expected)
+        p1 = pad(x1, expected)
+        p2 = pad(x2, expected)
         expected = tuple(expected)
         assert p1.shape == expected
         assert p2.shape == expected
@@ -150,131 +182,16 @@ class TestBatchMixin:
         x1 = torch.rand(10, 4)
         x2 = torch.rand(0, 4)
 
-        result = BatchMixin.padded_stack([x1, x2], value=-1, dim=0)
+        result = padded_stack([x1, x2], pad_value=-1, dim=0)
         assert result.shape == (2, 10, 4)
         assert (result[1] == -1).all()
 
-    def test_unpad(self):
+    @pytest.mark.parametrize("pad_val", [0, float("nan")])
+    def test_trim_padding(self, pad_val):
         torch.random.manual_seed(42)
-        x = torch.zeros(1, 32, 32)
+        x = torch.empty(1, 32, 32).fill_(pad_val)
         x[..., :10, :10] = torch.ones(1, 10, 10)
 
-        result = BatchMixin.unpad(x, value=0)
+        result = trim_padding(x, pad_value=pad_val)
         assert result.shape == (1, 10, 10)
         assert (result == 1).all()
-
-    def test_getitem(self):
-        torch.random.manual_seed(42)
-        B = 2
-        img = torch.rand(B, 3, 32, 32)
-        dc = BatchedDC(img)
-
-        for i in range(B):
-            sliced = dc[i]
-            assert isinstance(sliced, BatchedDC)
-            assert torch.allclose(sliced.img, img[i])
-            assert not sliced.is_batched
-
-    def test_detach(self):
-        torch.random.manual_seed(42)
-        B = 2
-        img = torch.rand(B, 3, 32, 32, requires_grad=True)
-        dc = TensorDC(img)
-        out = dc.detach()
-        assert isinstance(out, TensorDC)
-        assert not out.img.requires_grad
-
-    def test_cpu(self):
-        torch.random.manual_seed(42)
-        B = 2
-        img = torch.rand(B, 3, 32, 32, requires_grad=True)
-        dc = TensorDC(img)
-        out = dc.cpu()
-        assert isinstance(out, TensorDC)
-        assert torch.allclose(out.img, img)
-
-    def test_to(self):
-        torch.random.manual_seed(42)
-        B = 2
-        img = torch.rand(B, 3, 32, 32, requires_grad=True)
-        dc = TensorDC(img)
-        out = dc.to("cpu")
-        assert isinstance(out, TensorDC)
-        assert torch.allclose(out.img, img)
-
-    @cuda_or_skip
-    def test_chain(self):
-        torch.random.manual_seed(42)
-        B = 2
-        img = torch.rand(B, 3, 32, 32, requires_grad=True, device="cuda:0")
-        dc = TensorDC(img)
-        out1 = dc.detach().cpu()
-        out2 = dc.cpu().detach()
-        for out in out1, out2:
-            assert out.img.device == torch.device("cpu")
-            assert not out.img.requires_grad
-
-    def test_device_cpu(self):
-        torch.random.manual_seed(42)
-        B = 2
-        dev1 = dev2 = "cpu"
-        exp = "cpu"
-        img = torch.rand(B, 3, 32, 32, device=dev1)
-        img2 = torch.rand(B, 3, 32, 32, device=dev2)
-
-        dc = DoubleTensorDC(img, img2)
-        assert dc.device == torch.device(exp)
-
-    @cuda_or_skip
-    @pytest.mark.parametrize(
-        "dev1,dev2,exp",
-        [
-            pytest.param("cpu", "cpu", "cpu"),
-            pytest.param("cpu", "cuda:0", None),
-            pytest.param("cuda:0", "cpu", None),
-            pytest.param("cuda:0", "cuda:0", "cuda:0"),
-        ],
-    )
-    def test_device(self, dev1, dev2, exp):
-        torch.random.manual_seed(42)
-        B = 2
-        img = torch.rand(B, 3, 32, 32, device=dev1)
-        img2 = torch.rand(B, 3, 32, 32, device=dev2)
-
-        dc = DoubleTensorDC(img, img2)
-        assert dc.device == (torch.device(exp) if exp is not None else None)
-
-    @pytest.mark.parametrize(
-        "grad1,grad2,exp",
-        [
-            pytest.param(True, True, True),
-            pytest.param(False, False, False),
-            pytest.param(True, False, True),
-            pytest.param(False, True, True),
-        ],
-    )
-    def test_requires_grad(self, grad1, grad2, exp):
-        torch.random.manual_seed(42)
-        B = 2
-        img = torch.rand(B, 3, 32, 32, requires_grad=grad1)
-        img2 = torch.rand(B, 3, 32, 32, requires_grad=grad2)
-
-        dc = DoubleTensorDC(img, img2)
-        assert dc.requires_grad == exp
-
-    def test_getitem_nested(self):
-        dc = NestedBatchedDC()
-
-        for idx in range(len(dc)):
-            expected = NestedBatchedDC(
-                dc.tensor[idx],
-                [t[idx] for t in dc.tensor_list],
-                tuple([t[idx] for t in dc.tensor_tuple]),
-                None,
-                dc.string,
-                dc.dc[idx],
-                dc.flat_tensor,
-            )
-            sliced = dc[idx]
-            assert torch.allclose(sliced.tensor, expected.tensor)
-            # TODO test other fields once apply_to_collections supports dataclasses

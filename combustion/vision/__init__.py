@@ -15,6 +15,7 @@ from .bbox import (
 )
 from .contour import mask_to_polygon
 from .convert import to_8bit
+from .coords import BoundingBox2d, Coordinates
 from .iou_assign import BinaryLabelIoU, CategoricalLabelIoU, ConfusionMatrixIoU
 
 
@@ -34,4 +35,6 @@ __all__ = [
     "flatten_box_target",
     "append_bbox_label",
     "filter_bbox_classes",
+    "Coordinates",
+    "BoundingBox2d",
 ]

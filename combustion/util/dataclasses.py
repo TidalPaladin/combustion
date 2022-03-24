@@ -4,22 +4,52 @@
 from abc import ABC, abstractclassmethod, abstractmethod, abstractproperty
 from dataclasses import is_dataclass, replace
 from itertools import chain
-from typing import Any, Callable, ClassVar, Dict, Iterable, Iterator, List, Optional, Set, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, ClassVar, Dict, Iterable, Iterator, List, Optional, Tuple, TypeVar, Union, cast, Sequence, Type
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+import math
 from pytorch_lightning.utilities.apply_func import apply_to_collection, move_data_to_device
 from torch import Tensor
+import functools
+
 
 
 T = TypeVar("T", bound="TensorDataclass")
+S = TypeVar("S")
+DEFAULT_PAD_VAL = float("nan")
+
+
+def requires_batched(func: Callable) -> Callable:
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        assert isinstance(self, BatchMixin), "requires_batched decorator should only be used with BatchMixin"
+        if not self.is_batched:
+            raise RuntimeError(f"{type(self)} is not batched")
+        return func(self, *args, **kwargs)
+    return wrapper
+
+
+@torch.jit.script
+def max_size(inputs: List[Tensor]) -> List[int]:
+    r"""Find the maximum size per-dimension for a list of input tensors"""
+    if not inputs:
+        raise ValueError("`inputs` cannot be empty")
+    max_ndim = max([t.ndim for t in inputs])
+    if not all([t.ndim == max_ndim for t in inputs]):
+        raise ValueError("All tensors must have the same number of dimensions")
+
+    max_size = torch.as_tensor(inputs[0].shape)
+    for t in inputs:
+        max_size = torch.max(max_size, torch.as_tensor(t.shape))
+    return max_size.tolist()
 
 
 @torch.jit.script
 def pad(t: Tensor, shape: List[int], mode: str = "constant", value: float = 0) -> Tensor:
     r"""Pads tensor ``t`` to ``shape`` over any dimensions that need padding, with padding being
-    added to the right side.
+    added to the end of each dimension.
 
     Args:
         t:
@@ -43,43 +73,76 @@ def pad(t: Tensor, shape: List[int], mode: str = "constant", value: float = 0) -
     if not t.numel():
         return t.new_full(shape, value)
 
-    delta: List[int] = []
-    for i in range(t.ndim):
-        real_index = -(i + 1)
-        target = shape[real_index]
-        current = t.shape[real_index]
-        delta.append(0)
-        delta.append(max(target - current, 0))
-    return F.pad(t, delta, mode, value)
+    # compute padding needed
+    input_size = torch.tensor(t.shape)
+    target_size = torch.tensor(shape)
+    delta = target_size.sub_(input_size).clamp_min_(0)
 
+    # flip delta and interleave with zeros to satisfy F.pad signature (e.g. [0, W, 0, H, 0, D])
+    delta = torch.stack([torch.zeros_like(delta), delta.flip(0)], dim=-1).flatten()
 
-def padded_stack(inputs: List[Tensor], dim: int = 0, mode: str = "constant", value: float = 0) -> Tensor:
-    if not inputs:
-        raise ValueError("`inputs` cannot be empty")
-    max_ndim = max([t.ndim for t in inputs])
-    if not all([t.ndim == max_ndim for t in inputs]):
-        raise ValueError("All tensors must have the same number of dimensions")
-
-    max_size = torch.as_tensor(inputs[0].shape)
-    for t in inputs:
-        max_size = torch.max(max_size, torch.as_tensor(t.shape))
-
-    target_size: List[int] = max_size.tolist()
-    return torch.stack([pad(t, target_size, mode, value) for t in inputs], dim=dim)
-
-
-def unpad(t: Tensor, value: float) -> Tensor:
-    edges = (t != value).nonzero().amax(dim=-2)
-    slices = tuple([slice(0, int(i.item()) + 1) for i in edges])
-    result = t[slices]
+    delta_list: List[int] = delta.tolist()
+    result =  F.pad(t, delta_list, mode, value)
+    assert list(result.shape) == shape
     return result
 
 
-def pretty_repr(attr: Tensor) -> Union[str, Tuple[int, ...]]:
-    if attr.numel() > 1:
-        return tuple(attr.shape)
-    else:
-        return repr(attr)
+@torch.jit.script
+def padded_stack(inputs: List[Tensor], dim: int = 0, mode: str = "constant", pad_value: float = DEFAULT_PAD_VAL) -> Tensor:
+    if not inputs:
+        raise ValueError("`inputs` cannot be empty")
+    target_size = max_size(inputs)
+    return torch.stack([pad(t, target_size, mode, pad_value) for t in inputs], dim=dim)
+
+
+@torch.jit.script
+def sparse_stack(inputs: List[Tensor], dim: int = 0) -> Tensor:
+    if not inputs:
+        raise ValueError("`inputs` cannot be empty")
+    if not all([i.is_sparse for i in inputs]):
+        raise ValueError("`inputs` must all be sparse tensors")
+    target_size = max_size(inputs)
+    inputs = [i.clone().sparse_resize_(target_size, i.sparse_dim(), i.dense_dim()) for i in inputs]
+    return torch.stack(inputs, dim).coalesce()
+
+
+@torch.jit.script
+def trim_padding(t: Tensor, pad_value: float = DEFAULT_PAD_VAL) -> Tensor:
+    pad = torch.tensor(pad_value, device=t.device)
+    # NOTE: comparison of x == float("nan") will always return False
+    mask = t.isnan().logical_not_() if pad.isnan() else (t != pad_value)
+    size: List[int] = mask.nonzero().amax(dim=-2).add_(1).tolist()
+    result = t[mask].view(torch.Size(size))
+    return result
+
+
+@torch.jit.script
+def trim_sparse(t: Tensor) -> Tensor:
+    t = t.coalesce()
+    bounds = t.coalesce().indices().amax(dim=-1).add_(1)
+    bounds_list: List[int] = bounds.tolist() 
+    bounds_list += list(t.shape[t.sparse_dim():])
+    assert len(bounds_list) == t.ndim
+    return torch.sparse_coo_tensor(t.indices(), t.values(), bounds_list, device=t.device).coalesce()
+
+
+@torch.jit.script
+def padded_split(
+    tensor: Tensor, 
+    dim: int = 0, 
+    pad_value: float = DEFAULT_PAD_VAL,
+) -> List[Tensor]:
+    return [trim_padding(t, pad_value) for t in tensor.unbind(dim)]
+
+
+@torch.jit.script
+def sparse_split(
+    tensor: Tensor, 
+    dim: int = 0, 
+) -> List[Tensor]:
+    if tensor.is_sparse:
+        raise ValueError("`tensor` must be sparse")
+    return [trim_sparse(t) for t in tensor.unbind(dim)]
 
 
 class TensorDataclass:
@@ -88,15 +151,19 @@ class TensorDataclass:
 
     def __repr__(self) -> str:
         assert is_dataclass(self)
-        repr_dc = apply_to_collection(self, Tensor, pretty_repr)
-        s = f"{self.__class__.__name__}(\n"
+        s = f"{self.__class__.__name__}("
         keys = self.__dataclass_fields__.keys()  # type: ignore
-        indent = "    "
         for attr_name in keys:
-            attr = getattr(repr_dc, attr_name)
-            attr_repr = str(attr).replace("\n", f"\n{indent}")
-            s += f"{indent}{attr_name}={attr_repr}, \n"
-        s += ")"
+            attr = getattr(self, attr_name)
+            if isinstance(attr, Tensor):
+                if attr.numel() > 1:
+                    attr_repr = repr(tuple(attr.shape))
+                else:
+                    attr_repr = repr(attr)
+            else:
+                attr_repr = repr(attr)
+            s += f"{attr_name}={attr_repr}, "
+        s = f"{s[:-2]})"
         return s
 
     def apply(self: T, dtype: Union[type, Any, Tuple[Union[type, Any]]], func: Callable, *args, **kwargs) -> T:
@@ -105,144 +172,143 @@ class TensorDataclass:
     def cpu(self: T) -> T:
         return move_data_to_device(self, "cpu")
 
-    def to(self: T, *args, **kwargs) -> T:
-        return self.apply(Tensor, Tensor.to, *args, **kwargs)
-
-    def clone(self: T, *args, **kwargs) -> T:
-        return self.apply(Tensor, Tensor.clone, *args, **kwargs)
-
-    def detach(self: T, *args, **kwargs) -> T:
-        return self.apply(Tensor, Tensor.detach, *args, **kwargs)
-
-    @property
-    def device(self) -> Optional[torch.device]:
-        seen_devices: Set[torch.device] = set()
-
-        def check_device(x: Tensor) -> Tensor:
-            seen_devices.add(x.device)
-            return x
-
-        self.apply(Tensor, check_device)
-        if len(seen_devices) == 1:
-            return next(iter(seen_devices))
-        else:
-            return None
-
-    @property
-    def requires_grad(self) -> bool:
-        requires_grad: Set[bool] = set()
-
-        def check_requires_grad(x: Tensor) -> Tensor:
-            requires_grad.add(x.requires_grad)
-            return x
-
-        self.apply(Tensor, check_requires_grad)
-        return any(requires_grad)
-
 
 U = TypeVar("U", bound="BatchMixin")
 
+Sliceable = Union[Tensor, Sequence, "BatchMixin"]
 
-def slice_attr(attr: Any, idx: int, target_len: int) -> Any:
-    # slice tensors directly
-    if isinstance(attr, BatchMixin) and len(attr) == target_len:
-        return attr[idx]
-    elif isinstance(attr, Tensor) and attr.ndim and len(attr) == target_len:
-        return attr[idx]
-    # slice lists/tuples of tensors itemwise
-    elif isinstance(attr, (list, tuple)):
-        return attr.__class__(slice_attr(x, idx, target_len) for x in attr)
-    # noop
-    else:
-        return attr
+
+def check_field(items: Sequence[U], field: str) -> bool:
+    sliceable = [i._field_is_sliceable(field) for i in items]
+    if all(sliceable):
+        return True
+    elif any(sliceable):
+        raise ValueError(f"Found a mix of sliceable and non-sliceable inputs for field {field}")
+    return False
 
 
 class BatchMixin(ABC):
     r"""Mixin for objects that are batched"""
     __slice_fields__: ClassVar[List[str]] = []
 
+    _HANDLED_FUNCTIONS = {}
+
     @abstractproperty
     def is_batched(self) -> bool:
         ...
 
-    @abstractmethod
+    def _validate_slice_fields(self):
+        if not self.is_batched:
+            return
+        for field in self.__slice_fields__:
+            if not hasattr(self, field):
+                raise AttributeError(f"Field {field} was in __slice_fields__ but {type(self)} has no such attribute")
+            attr = getattr(self, field)
+            if self._field_is_sliceable(field) and len(attr) != len(self):
+                raise AttributeError(f"Expected length {len(self)} for field {field}, found {len(field)}")
+
+    def _field_is_sliceable(self, field: str) -> bool:
+        sliceable_types = (Tensor, Sequence, BatchMixin)
+        attr = getattr(self, field)
+        return  isinstance(attr, sliceable_types)
+
     def __len__(self) -> int:
-        ...
+        if not len(self.__slice_fields__):
+            raise AttributeError("Please define `__slice_fields__` to use `BatchMixin.__len__`")
+        field = self.__slice_fields__[0]
+        return len(getattr(self, field))
 
     def __getitem__(self: U, idx: int) -> U:
         if not is_dataclass(self):
             raise NotImplementedError("BatchMixin.__getitem__ only supports dataclasses, please override __getitem__.")
-        if not self.is_batched:
-            raise RuntimeError("Cannot slice an unbatched object")
         if not 0 <= idx < len(self):
             raise IndexError(f"Index {idx} is invalid for object of length {len(self)}")
+        if not len(self.__slice_fields__):
+            raise AttributeError("Please define `__slice_fields__` to use `BatchMixin.__getitem__`")
 
-        # if __slice_fields__ was specified, only recurse on those fields
-        if len(self.__slice_fields__):
-            kwargs = {
-                name: slice_attr(val, idx, len(self))  # type: ignore
-                for name in self.__slice_fields__
-                if isinstance((val := getattr(self, name)), (Tensor, Iterable))
-            }
-            return replace(self, **kwargs)
+        kwargs: Dict[str, Sliceable] = {}
+        for name, ftype, value in self.slice_fields(sliceable_only=True):
+            sliced: Sliceable = value[idx]
+            if isinstance(sliced, Tensor):
+                # TODO triming padded tensors will only work when default pad value is used
+                sliced = trim_sparse(sliced) if sliced.is_sparse else trim_padding(sliced)
+            elif issubclass(ftype, Sequence):
+                sliced = ftype([sliced])
+            kwargs[name] = sliced
 
-        # otherwise apply recursively to all Tensor fields
-        else:
-            return apply_to_collection(self, Tensor, slice_attr, idx=idx, target_len=len(self))
-
-    @abstractclassmethod
-    def from_unbatched(cls: U, examples: Iterable[U]) -> U:
-        ...
+        return replace(self, **kwargs)
 
     def __iter__(self: U) -> Iterator[U]:
         for pos in range(len(self)):
             yield cast(U, self[pos])
 
-    def unbatch(self: U) -> Iterable[U]:
-        if not self.is_batched:
-            raise RuntimeError("This object is already unbatched")
-        return cast(List[U], list(self))
+    def slice_fields(self, sliceable_only: bool = False) -> Iterator[Tuple[str, Type[Sliceable], Sliceable]]:
+        for field in self.__slice_fields__:
+            attr = getattr(self, field)
+            sliceable = self._field_is_sliceable(field)
+            if sliceable or not sliceable_only:
+                yield field, type(attr), attr
 
-    def __add__(self: U, other: U) -> U:
-        unbatched = chain(self.unbatch(), other.unbatch())
-        return self.from_unbatched(unbatched)
+    @classmethod
+    def collate(cls: Type[U], items: Sequence[U], pad_value: float = DEFAULT_PAD_VAL) -> U:
+        replacement = {}
+        for field, ftype, attr in items[0].slice_fields():
+            if check_field(items, field):
+                if issubclass(ftype, Tensor):
+                    assert isinstance(attr, Tensor)
+                    size = max_size([getattr(i, field) for i in items])
+                    if attr.is_sparse:
+                        replacement[field] =  sparse_stack([getattr(i, field) for i in items])
+                    else:
+                        replacement[field] = padded_stack([getattr(i, field) for i in items], pad_value=pad_value)
+                elif issubclass(ftype, BatchMixin):
+                    replacement[field] = ftype.collate(items, pad_value)
+                elif issubclass(ftype, Sequence):
+                    replacement[field] = sum([getattr(i, field) for i in items], ftype())
+        return cls(**replacement)
 
-    @staticmethod
-    def unpad(t: Tensor, value: float) -> Tensor:
-        return unpad(t, value)
+    @classmethod
+    def implements(cls, torch_function):
+        """Register a torch function override"""
+        @functools.wraps(torch_function)
+        def decorator(func):
+            cls._HANDLED_FUNCTIONS[torch_function] = func
+            return func
+        return decorator
 
-    @staticmethod
-    def pad(t: Tensor, shape: List[int], mode: str = "constant", value: float = 0) -> Tensor:
-        r"""Pads tensor ``t`` to ``shape`` over any dimensions that need padding, with padding being
-        added to the right side.
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+        if func not in cls._HANDLED_FUNCTIONS or not all(
+            issubclass(t, (BatchMixin))
+            for t in types
+        ):
+            return NotImplemented
+        return cls._HANDLED_FUNCTIONS[func](*args, **kwargs)
 
-        Args:
-            t:
-                Tensor to pad
 
-            shape:
-                Target shape after padding
+@BatchMixin.implements(torch.cat)
+def cat(items: List[U], *args, **kwargs) -> U:
+    replacement = {
+        field: torch.cat([getattr(i, field) for i in items], *args, **kwargs)
+        for field, _, _ in items[0].slice_fields()
+        if check_field(items, field)
+    }
+    return replace(items[0], **replacement)
 
-            mode:
-                Passed to :func:`torch.nn.functional.pad`
 
-            value:
-                Passed to :func:`torch.nn.functional.pad`
-        """
-        return pad(t, shape, mode, value)
-
-    @staticmethod
-    def padded_stack(inputs: List[Tensor], dim: int = 0, mode: str = "constant", value: float = 0) -> Tensor:
-        return padded_stack(inputs, dim, mode, value)
-
-    @staticmethod
-    def requires_batched(func: Callable) -> Callable:
-        def wrapper(self, *args, **kwargs):
-            if not self.is_batched:
-                raise RuntimeError("Object is not batched")
-            return func(self, *args, **kwargs)
-
-        return wrapper
+@BatchMixin.implements(torch.stack)
+def stack(items: List[U], *args, **kwargs) -> U:
+    replacement = {}
+    for field, _, _ in items[0].slice_fields():
+        if check_field(items, field):
+            if isinstance(getattr(items[0], field), (Tensor, BatchMixin)):
+                replacement[field] = torch.stack([getattr(i, field) for i in items], *args, **kwargs)
+            else:
+                start = type(getattr(items[0], field))()
+                replacement[field] = sum((getattr(i, field) for i in items), start)
+    return replace(items[0], **replacement)
 
 
 class WandBMixin:

@@ -3,19 +3,12 @@
 import os
 
 import pytest
+import torch
+from torch import Tensor
 
 from combustion.testing import cuda_or_skip as cuda_or_skip_mark
 from combustion.testing.utils import cuda_available
-
-
-@pytest.fixture(scope="session")
-def torch():
-    return pytest.importorskip("torch", reason="test requires torch")
-
-
-@pytest.fixture(scope="session")
-def ignite():
-    return pytest.importorskip("ignite", reason="test requires ignite")
+from typing import Any, Optional, Sequence, Tuple, Union
 
 
 @pytest.fixture(
@@ -24,12 +17,12 @@ def ignite():
         pytest.param(True, marks=cuda_or_skip_mark, id="cuda"),
     ]
 )
-def cuda(torch, request):
+def cuda(request):
     return request.param
 
 
 @pytest.fixture(scope="session")
-def cuda_or_skip(torch):
+def cuda_or_skip():
     if not cuda_available():
         pytest.skip("test requires cuda")
 
@@ -126,3 +119,50 @@ def matlab_saver():
 @pytest.fixture(autouse=True)
 def chdir_to_tmp_path(tmp_path):
     os.chdir(tmp_path)
+
+
+@pytest.fixture
+def padded_coords_factory():
+    def func(
+        traces: int = 3,
+        trace_len: int = 10,
+        batch_size: Optional[int] = None,
+        seed: int = 42,
+        pad_val: Any = 0,
+        cuda: bool = False,
+        requires_grad: bool = False,
+        lower_bound: Union[float, Sequence[float]] = 0.0,
+        upper_bound: Union[float, Sequence[float]] = 1.0,
+        coord_dims: int = 2,
+    ) -> Tuple[Tensor, Tensor]:
+        MIN_TRACE_LEN = 3
+        assert trace_len >= MIN_TRACE_LEN
+        shape = (traces, trace_len, coord_dims)
+        torch.random.manual_seed(seed)
+        data = torch.rand(*shape)
+
+        low = data.new_tensor(lower_bound).broadcast_to(data.shape)
+        high = data.new_tensor(upper_bound).broadcast_to(data.shape)
+        data = (data + low) * (high - low)
+        data[..., 0, :] = data.new_tensor(lower_bound)
+        data[..., 1, :] = data.new_tensor(upper_bound)
+
+        coord_id = torch.arange(trace_len).view(1, -1, 1).expand(traces, -1, coord_dims)
+        limit = torch.randint(MIN_TRACE_LEN, trace_len + 1, (traces, 1, 1))
+        padding = (coord_id > limit).any(dim=-1)
+        data[padding] = pad_val
+
+        if batch_size is not None:
+            data = data.unsqueeze_(0).expand(batch_size, -1, -1, -1)
+            padding = padding.unsqueeze_(0).expand(batch_size, -1, -1)
+
+        if cuda:
+            data = data.cuda()
+            padding = padding.cuda()
+
+        if requires_grad:
+            data.requires_grad = True
+
+        return data, padding
+
+    return func

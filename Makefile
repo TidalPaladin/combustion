@@ -68,7 +68,7 @@ pre-commit:
 
 quality: $(VENV)/bin/activate-quality
 	$(MAKE) clean
-	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) $(QUALITY_DIRS)
+	$(PYTHON) -m black --check --line-length $(LINE_LEN) --target-version $(PY_VER_SHORT) --exclude $(PROJECT)/version.py $(QUALITY_DIRS)
 	$(PYTHON) -m flake8 --max-doc-length $(DOC_LEN) --max-line-length $(LINE_LEN) $(QUALITY_DIRS) 
 
 DATA_PATH=$(shell pwd)/examples/basic/data
