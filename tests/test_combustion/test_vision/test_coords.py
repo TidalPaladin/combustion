@@ -1,21 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Any, Generic, Optional, Sequence, Tuple, Type, TypeVar, Union
 from dataclasses import dataclass
+from functools import partial
+from typing import Any, Generic, Optional, Sequence, Type, TypeVar, Union
 
 import pytest
 import torch
 from torch import Tensor
 from torch.testing import assert_allclose
-from functools import partial
 
 from combustion.vision.coords import BoundingBox2d, Coordinates
 
 
 U = TypeVar("U", bound="Coordinates")
-
-
 
 
 class TestCoordinates(Generic[U]):
@@ -271,9 +269,7 @@ class TestCoordinates(Generic[U]):
     @pytest.mark.parametrize("pad_val", [-1, -2])
     @pytest.mark.parametrize("seed", [42, 43])
     @pytest.mark.parametrize("requires_grad", [False, True])
-    def test_from_unbatched(
-        self, coords_factory, pad_val, seed, cuda, requires_grad, coord_dims
-    ):
+    def test_from_unbatched(self, coords_factory, pad_val, seed, cuda, requires_grad, coord_dims):
         coords = coords_factory(
             seed=seed,
             pad_val=pad_val,
@@ -311,7 +307,7 @@ class TestCoordinatesWithAttributes(TestCoordinates):
             lower_bound: Union[float, Sequence[float]] = 0.0,
             upper_bound: Union[float, Sequence[float]] = 1.0,
             coord_dims: int = 2,
-        ) -> U:
+        ) -> Coordinates:
             coords, padding = padded_coords_factory(
                 traces, trace_len, batch_size, seed, pad_val, cuda, requires_grad, lower_bound, upper_bound, coord_dims
             )

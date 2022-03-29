@@ -4,10 +4,11 @@
 
 from dataclasses import dataclass, replace
 from functools import cached_property
-from typing import Any, Dict, Optional, Sequence, Tuple, Type, TypeVar, Union, Iterable, cast
+from typing import Any, Dict, Iterable, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 import torch
 from torch import Tensor
+
 from ..util.dataclasses import BatchMixin, TensorDataclass
 
 
@@ -132,7 +133,8 @@ class Coordinates(TensorDataclass, BatchMixin):
         sparse_coords = torch.sparse_coo_tensor(indices, coords[keep], coords.shape, device=coords.device).coalesce()
         sparse_tensors = {
             name: torch.sparse_coo_tensor(indices, tensor[keep], tensor.shape, device=tensor.device).coalesce()
-            for name, tensor in tensors.items() if isinstance(tensor, Tensor)
+            for name, tensor in tensors.items()
+            if isinstance(tensor, Tensor)
         }
         return cls(sparse_coords, **sparse_tensors)
 

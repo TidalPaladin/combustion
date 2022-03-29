@@ -109,6 +109,13 @@ test-%: $(VENV)/bin/activate-test
 test-pdb-%: $(VENV)/bin/activate-test
 	$(PYTHON) -m pytest -rs --pdb -k $* ./tests/ 
 
+torch-fix: ## installs torch with cuda11.3 support (for Ampere GPUs)
+	$(PYTHON) -m pip install \
+		torch==1.11.0+cu113 \
+		torchvision==0.12.0+cu113 \
+		torchaudio==0.11.0+cu113 \
+		-f https://download.pytorch.org/whl/cu113/torch_stable.html
+
 types: $(VENV)/bin/activate-dev node_modules ## checks types with pyright
 	npx --no-install pyright -p pyrightconfig.json 
 

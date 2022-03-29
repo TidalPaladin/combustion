@@ -4,6 +4,7 @@
 from inspect import signature
 
 import pytest
+import torch
 
 from combustion.util import input, output
 
@@ -30,7 +31,7 @@ def assert_has_names(tensor, names):
 
 
 class TestInput:
-    def test_calls_original_func(self, func, torch):
+    def test_calls_original_func(self, func):
         tensor = torch.ones(10)
         decorated = input("arg1", shape=(tensor.shape))(func)
         decorated(tensor)
@@ -43,7 +44,7 @@ class TestInput:
             pytest.param((4, 5), ("A", "B"), id="dim=2"),
         ],
     )
-    def test_drop_names(self, func, shape, names, torch):
+    def test_drop_names(self, func, shape, names):
         tensor = torch.ones(*shape, names=names)
         decorated = input("arg1", name=names, drop_names=True)(func)
         decorated(tensor)
@@ -66,7 +67,7 @@ class TestInput:
             ),
         ],
     )
-    def test_coerce_named_input(self, func, shape, names_in, names_out, torch):
+    def test_coerce_named_input(self, func, shape, names_in, names_out):
         tensor = torch.ones(*shape, names=names_in)
         decorated = input("arg1", name=names_out)(func)
         decorated(tensor)
@@ -113,14 +114,14 @@ class TestInput:
             ),
         ],
     )
-    def test_validates_shape(self, func, pre, post, torch):
+    def test_validates_shape(self, func, pre, post):
         tensor = torch.ones(*post)
         decorated = input("arg1", shape=pre)(func)
         decorated(tensor)
         func.assert_called_once()
         assert func.call_args[0][0].shape == post
 
-    def test_selects_correct_arg_by_name(self, func, torch):
+    def test_selects_correct_arg_by_name(self, func):
         arg1 = torch.ones(10)
         arg2 = torch.ones(10)
         added_name = ("A",)
@@ -142,7 +143,7 @@ class TestInput:
         assert decorated.__doc__
         assert decorated.__doc__ == f.__doc__
 
-    def test_multiple_decorators(self, func, torch):
+    def test_multiple_decorators(self, func):
         args = [torch.ones(10), torch.ones(10)]
         _ = input("arg1", shape=(args[0].shape), name=("A",))(func)
         decorated = input("arg2", shape=(args[1].shape), name=("B",))(_)
@@ -153,7 +154,7 @@ class TestInput:
 
     @pytest.mark.parametrize("optional", [True, False])
     @pytest.mark.parametrize("arg_given", [True, False])
-    def test_optional(self, func, torch, optional, arg_given):
+    def test_optional(self, func, optional, arg_given):
         decorated = input("arg2", shape=(None,), optional=optional)(func)
         if not optional and not arg_given:
             with pytest.raises(ValueError):
@@ -165,7 +166,7 @@ class TestInput:
                 decorated(arg1=torch.ones(10))
             func.assert_called()
 
-    def test_kw_only_args(self, torch):
+    def test_kw_only_args(self):
         def f(*, arg1, arg2=None, **kwargs):
             """foo bar baz"""
 
@@ -174,7 +175,7 @@ class TestInput:
 
 
 class TestOutput:
-    def test_calls_original_func(self, func, torch):
+    def test_calls_original_func(self, func):
         tensor = torch.ones(10)
         func.return_value = tensor
         decorated = output(shape=(tensor.shape))(func)
@@ -197,7 +198,7 @@ class TestOutput:
             ),
         ],
     )
-    def test_coerce_named_output(self, shape, names_in, names_out, torch):
+    def test_coerce_named_output(self, shape, names_in, names_out):
         tensor = torch.ones(*shape, names=names_in)
 
         def f():
@@ -247,7 +248,7 @@ class TestOutput:
             ),
         ],
     )
-    def test_validates_shape(self, pre, post, torch):
+    def test_validates_shape(self, pre, post):
         tensor = torch.ones(*post)
 
         def f():
@@ -265,7 +266,7 @@ class TestOutput:
             pytest.param(2, id="oob", marks=pytest.mark.xfail(raises=IndexError)),
         ],
     )
-    def test_selects_correct_arg_by_pos(self, pos, torch):
+    def test_selects_correct_arg_by_pos(self, pos):
         args = [torch.ones(10), torch.ones(10)]
 
         def f():
@@ -293,7 +294,7 @@ class TestOutput:
         assert decorated.__doc__
         assert decorated.__doc__ == f.__doc__
 
-    def test_multiple_decorators(self, func, torch):
+    def test_multiple_decorators(self, func):
         ret = (torch.ones(10), torch.ones(10))
         func.return_value = ret
         _ = output(0, shape=(ret[0].shape), name=("A",))(func)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import os
+from typing import Any, Optional, Sequence, Tuple, Union
 
 import pytest
 import torch
@@ -8,7 +9,6 @@ from torch import Tensor
 
 from combustion.testing import cuda_or_skip as cuda_or_skip_mark
 from combustion.testing.utils import cuda_available
-from typing import Any, Optional, Sequence, Tuple, Union
 
 
 @pytest.fixture(

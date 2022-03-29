@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import pytest
+import torch
 
 from combustion.data.window import DenseWindow, SparseWindow
 
@@ -62,7 +63,7 @@ def test_estimate_size(window_type, before, after, num, exp):
         pytest.param(SparseWindow, 2, 2, 5, id="sparse_2->2"),
     ],
 )
-def test_call(window_type, before, after, num, torch):
+def test_call(window_type, before, after, num):
     window = window_type(before, after)
     examples = [(torch.ones(2, 2),) * 2] * num
     for x, y in window(examples):

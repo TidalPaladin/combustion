@@ -11,6 +11,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from combustion.lightning.callbacks.table import DistributedDataFrame
+from combustion.testing import cuda_or_skip
 
 
 RANDOM_PORTS = list(np.random.randint(12000, 19000, 1000))
@@ -48,6 +49,7 @@ class TestDistributedDataFrame:
         out = df.gather_all()
         assert (out == df).all().all()
 
+    @cuda_or_skip
     @pytest.mark.skipif(condition=torch.cuda.device_count() < 2, reason="missing GPUs")
     def test_distributed_gather(self):
         """This test ensures state are properly collected across processes.

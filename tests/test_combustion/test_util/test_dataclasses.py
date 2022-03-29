@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import pytest
-import torch
 from dataclasses import dataclass, field
-from torch import Tensor
-from torch.testing import assert_allclose
 from typing import Optional, Sequence
 
+import pytest
+import torch
+from torch import Tensor
+from torch.testing import assert_allclose
+
+from combustion.testing import cuda_or_skip
 from combustion.util.compute import slice_along_dim
-from combustion.util.dataclasses import BatchMixin, TensorDataclass, trim_padding, sparse_stack, padded_stack, sparse_split, padded_split, max_size, pad
+from combustion.util.dataclasses import BatchMixin, TensorDataclass, pad, padded_stack, trim_padding
 
 
 @pytest.mark.parametrize(
@@ -37,7 +39,7 @@ class DummyDataclass(TensorDataclass, BatchMixin):
     label: Optional[Tensor] = None
     sparse_field: Optional[Tensor] = None
     ragged_field: Optional[Tensor] = None
-    sequence: Sequence[int] = field(default_factory=lambda : [1])
+    sequence: Sequence[int] = field(default_factory=lambda: [1])
     other_field: str = "foobar"
 
     __slice_fields__ = ["data", "label", "sequence", "sparse_field", "ragged_field"]
@@ -60,25 +62,28 @@ def target_factory(padded_coords_factory):
     def wrapper(
         batch_size: Optional[int] = None,
         has_label: bool = False,
-        **kwargs
+        cuda: bool = False,
+        requires_grad: bool = False,
+        **kwargs,
     ):
-        coords, _ = padded_coords_factory(batch_size=batch_size, **kwargs)
+        coords, _ = padded_coords_factory(batch_size=batch_size, cuda=cuda, **kwargs)
         sparse = coords.to_sparse(coords.ndim)
 
+        device = "cuda:0" if cuda else "cpu"
         if batch_size:
-            data = torch.rand(batch_size, 3, 10, 10)
-            label = torch.rand(batch_size, 1) if has_label else None
+            data = torch.rand(batch_size, 3, 10, 10, device=device, requires_grad=requires_grad)
+            label = torch.rand(batch_size, 1, device=device) if has_label else None
             sequence = [1] * batch_size
         else:
-            data = torch.rand(3, 10, 10)
-            label = torch.rand(1) if has_label else None
+            data = torch.rand(3, 10, 10, device=device, requires_grad=requires_grad)
+            label = torch.rand(1, device=device) if has_label else None
             sequence = [1]
         return DummyDataclass(data, label, sparse, coords, sequence)
+
     return wrapper
 
 
 class TestBatchMixin:
-
     @pytest.mark.parametrize("has_label", [False, True])
     def test_repr(self, target_factory, has_label):
         dc = target_factory(has_label=has_label)
@@ -96,7 +101,7 @@ class TestBatchMixin:
     def test_stack(self, target_factory, has_label):
         dc1 = target_factory(has_label=has_label)
         dc2 = target_factory(has_label=has_label)
-        out: BatchMixin = torch.stack([dc1, dc2]) # type: ignore
+        out: BatchMixin = torch.stack([dc1, dc2])  # type: ignore
         assert out.is_batched
         assert len(out) == 2
 
@@ -195,3 +200,34 @@ class TestBatchMixin:
         result = trim_padding(x, pad_value=pad_val)
         assert result.shape == (1, 10, 10)
         assert (result == 1).all()
+
+    def test_detach(self, target_factory):
+        dc = target_factory(requires_grad=True)
+        out = dc.detach()
+        assert isinstance(out, type(dc))
+        assert not out.data.requires_grad
+
+    def test_cpu(self, target_factory, cuda):
+        dc = target_factory(cuda=cuda)
+        out = dc.cpu()
+        assert isinstance(out, type(dc))
+        assert out.data.device == torch.device("cpu")
+        assert torch.allclose(out.data.cpu(), dc.data.cpu())
+
+    def test_to(self, target_factory, cuda):
+        dc = target_factory(cuda=cuda)
+        out = dc.to("cpu")
+        assert isinstance(out, type(dc))
+        assert out.data.device == torch.device("cpu")
+        assert torch.allclose(out.data.cpu(), dc.data.cpu())
+
+    @cuda_or_skip
+    def test_chain(self, target_factory):
+        dc = target_factory()
+        dc.data.requires_grad = True
+        dc.data = dc.data.to("cuda:0")
+        out1 = dc.detach().cpu()
+        out2 = dc.cpu().detach()
+        for out in out1, out2:
+            assert out.data.device == torch.device("cpu")
+            assert not out.data.requires_grad

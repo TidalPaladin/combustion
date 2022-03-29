@@ -8,6 +8,7 @@ from pathlib import Path
 from shutil import copyfile
 
 import pytest
+import torch
 from torch.utils.data import DataLoader, Dataset, IterableDataset
 
 from combustion.data import SerializeMixin, TorchDataset
@@ -25,7 +26,7 @@ class TestTorchSerialize:
     fmt = "torch"
 
     @pytest.fixture
-    def data(self, torch):
+    def data(self):
         return [(torch.rand(1, 10, 10), torch.randint(1, (1,))) for _ in range(10)]
 
     @pytest.fixture(params=["map", "iterable"])
@@ -51,7 +52,7 @@ class TestTorchSerialize:
         return DatasetImpl()
 
     @pytest.fixture
-    def input_file(self, torch, tmp_path, data):
+    def input_file(self, tmp_path, data):
         for i, example in enumerate(data):
             path = os.path.join(tmp_path, f"example_{i}.pth")
             torch.save(example, path)
@@ -93,7 +94,7 @@ class TestTorchSerialize:
         check_file_exists(target)
 
     @pytest.mark.usefixtures("input_file")
-    def test_load(self, torch, tmp_path, dataset, data):
+    def test_load(self, tmp_path, dataset, data):
         path = tmp_path
         new_dataset: Dataset = dataset.__class__.load(path)
         assert isinstance(new_dataset, TorchDataset)
@@ -120,7 +121,7 @@ class TestTorchSerialize:
             assert Path(tmp_path, f) in new_dataset.files
 
     @pytest.mark.parametrize("num_workers", [1, 4])
-    def test_dataloader(self, torch, tmp_path, dataset, num_workers):
+    def test_dataloader(self, tmp_path, dataset, num_workers):
         path = tmp_path
         new_dataset = dataset.__class__.load(path)
         dataloader = DataLoader(new_dataset, num_workers=num_workers, batch_size=1)
