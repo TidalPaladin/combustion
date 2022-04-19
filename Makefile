@@ -1,7 +1,7 @@
 .PHONY: docs docker clean clean-venv check ci-test pre-commit quality run style tag-version test venv upload upload-test
 
 PROJECT=combustion
-PY_VER=python3.9
+PY_VER=python3.10
 PY_VER_SHORT=py$(shell echo $(PY_VER) | sed 's/[^0-9]*//g')
 QUALITY_DIRS=combustion tests setup.py
 CLEAN_DIRS=combustion tests

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from typing import Any, Callable, Optional
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -47,19 +47,11 @@ class Entropy(AverageMeter):
         self,
         dim: Optional[int] = None,
         compute_on_step: bool = True,
-        dist_sync_on_step: bool = False,
-        process_group: Optional[Any] = None,
-        dist_sync_fn: Callable = None,
         from_logits: bool = True,
         eps: float = 1e6,
+        **kwargs,
     ):
-        super().__init__(
-            "ignore",
-            compute_on_step,
-            dist_sync_on_step,
-            process_group,
-            dist_sync_fn,
-        )
+        super().__init__("ignore", compute_on_step, **kwargs)
         self.dim = int(dim) if dim is not None else None
         self.num_classes: Optional[int] = None
         self.from_logits = from_logits
